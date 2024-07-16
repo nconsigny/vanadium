@@ -1,0 +1,39 @@
+[package]
+name = "app-vanadium"
+version = "0.0.1"
+authors = []
+edition = "2021"
+
+[dependencies]
+ledger_device_sdk = { version="1.10.4" }
+include_gif = "1.1.0"
+serde = {version="1.0.192", default_features = false, features = ["derive"]}
+serde-json-core = { git = "https://github.com/rust-embedded-community/serde-json-core"}
+hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
+numtoa = "0.2.4"
+
+[profile.release]
+opt-level = 'z'
+lto = true
+
+[features]
+default = ["pending_review_screen"]
+pending_review_screen = []
+
+[package.metadata.ledger]
+curve = ["secp256k1"]
+flags = "0"
+path = ["44'/1'"]
+name = "Vanadium"
+
+[package.metadata.ledger.nanox]
+icon = "crab_14x14.gif"
+
+[package.metadata.ledger.nanosplus]
+icon = "crab_14x14.gif"
+
+[package.metadata.ledger.stax]
+icon = "crab_32x32.gif"
+
+[package.metadata.ledger.flex]
+icon = "crab_40x40.gif"
