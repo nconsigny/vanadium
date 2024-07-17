@@ -54,7 +54,7 @@ pub fn ui_menu_main(comm: &mut Comm) -> Event<Instruction> {
     let pages = [
         // The from trait allows to create different styles of pages
         // without having to use the new() function.
-        &Page::from((["Boilerplate", "is ready"], &APP_ICON)),
+        &Page::from((["Vanadium", "is ready"], &APP_ICON)),
         &Page::from((["Version", env!("CARGO_PKG_VERSION")], true)),
         &Page::from(("About", &CERTIFICATE)),
         &Page::from(("Quit", &DASHBOARD_X)),
