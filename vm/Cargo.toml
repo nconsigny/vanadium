@@ -17,7 +17,7 @@ opt-level = 'z'
 lto = true
 
 [features]
-default = ["pending_review_screen"]
+default = []
 pending_review_screen = []
 
 [package.metadata.ledger]
