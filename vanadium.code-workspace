@@ -1,0 +1,39 @@
+{
+  "folders": [
+    {
+      "path": "vm"
+    },
+    {
+      "path": "host"
+    },
+    {
+      "path": "common"
+    },
+    {
+      "path": "client-sdk"
+    },
+    {
+      "path": "app-sdk"
+    },
+    {
+      "path": "docs",
+    },
+    {
+      "path": "apps/test/app",
+      "name": "vnd-test"
+    },
+    {
+      "path": "apps/test/client",
+      "name": "vnd-test-client"
+    }
+  ],
+  "settings": {
+    "[apps/test/app]": {
+      "rust-analyzer.cargo-watch.allTargets": false,
+      "rust-analyzer.cargo-watch.arguments": [
+        "--target",
+        "x86_64-unknown-linux-gnu"
+      ]
+    }
+  }
+}
