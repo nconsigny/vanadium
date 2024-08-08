@@ -1,0 +1,105 @@
+name: Run unit tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Manually triggered'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test_app_sdk:
+    name: Run V-App SDK tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Unit tests
+        working-directory: app-sdk
+        run: |
+          cargo +nightly test --target x86_64-unknown-linux-gnu
+
+  test_client_sdk:
+    name: Run V-App Client SDK tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Unit tests
+        working-directory: client-sdk
+        run: |
+          cargo +nightly test --target x86_64-unknown-linux-gnu
+
+  test_common:
+    name: Run common crate tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Unit tests
+        working-directory: app-sdk
+        run: |
+          cargo +nightly test --target x86_64-unknown-linux-gnu
+
+  test_vnd_test_app:
+    name: Run vnd-test app tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Unit tests
+        working-directory: apps/test/app
+        run: |
+          cargo +nightly test --target x86_64-unknown-linux-gnu
+
+  test_vnd_test_app_client:
+    name: Run vnd-test app client tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Unit tests
+        working-directory: apps/test/client
+        run: |
+          cargo +nightly test --target x86_64-unknown-linux-gnu

@@ -20,23 +20,21 @@
 
 mod utils;
 mod app_ui {
-    pub mod address;
     pub mod menu;
-    pub mod sign;
 }
 mod handlers {
-    pub mod get_public_key;
     pub mod get_version;
-    pub mod sign_tx;
+    pub mod register_vapp;
+    pub mod start_vapp;
 }
 
 mod settings;
 
 use app_ui::menu::ui_menu_main;
 use handlers::{
-    get_public_key::handler_get_public_key,
     get_version::handler_get_version,
-    sign_tx::{handler_sign_tx, TxContext},
+    register_vapp::handler_register_vapp,
+    start_vapp::handler_start_vapp,
 };
 use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
 #[cfg(feature = "pending_review_screen")]
@@ -51,30 +49,38 @@ extern crate alloc;
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::init_comm;
 
-// P2 for last APDU to receive.
-const P2_SIGN_TX_LAST: u8 = 0x00;
-// P2 for more APDU to receive.
-const P2_SIGN_TX_MORE: u8 = 0x80;
-// P1 for first APDU number.
-const P1_SIGN_TX_START: u8 = 0x00;
-// P1 for maximum APDU number.
-const P1_SIGN_TX_MAX: u8 = 0x03;
+// define print! and println! macros using debug_printf (only for running on Speculos)
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ({
+        use core::fmt::Write;
+        let mut buf = alloc::string::String::new();
+        write!(&mut buf, $($arg)*).unwrap();
+        ledger_device_sdk::testing::debug_print(&buf);
+    });
+}
+
+#[macro_export]
+macro_rules! println {
+    () => (print!("\n"));
+    ($($arg:tt)*) => ({
+        $crate::print!("{}\n", format_args!($($arg)*));
+    });
+}
+
 
 // Application status words.
 #[repr(u16)]
 pub enum AppSW {
     Deny = 0x6985,
+    IncorrectData = 0x6A80,
     WrongP1P2 = 0x6A86,
     InsNotSupported = 0x6D00,
     ClaNotSupported = 0x6E00,
-    TxDisplayFail = 0xB001,
-    AddrDisplayFail = 0xB002,
-    TxWrongLength = 0xB004,
-    TxParsingFail = 0xB005,
-    TxHashFail = 0xB006,
-    TxSignFail = 0xB008,
+    SignatureFail = 0xB008,
     KeyDeriveFail = 0xB009,
     VersionParsingFail = 0xB00A,
+    InterruptedExecution = 0xE000,
     WrongApduLength = StatusWords::BadLen as u16,
 }
 
@@ -88,8 +94,9 @@ impl From<AppSW> for Reply {
 pub enum Instruction {
     GetVersion,
     GetAppName,
-    GetPubkey { display: bool },
-    SignTx { chunk: u8, more: bool },
+    RegisterVApp,
+    StartVApp,
+    Continue(u8, u8), // client response to a request from the VM
 }
 
 impl TryFrom<ApduHeader> for Instruction {
@@ -108,19 +115,12 @@ impl TryFrom<ApduHeader> for Instruction {
     /// [`sample_main`] to have this verification automatically performed by the SDK.
     fn try_from(value: ApduHeader) -> Result<Self, Self::Error> {
         match (value.ins, value.p1, value.p2) {
-            (3, 0, 0) => Ok(Instruction::GetVersion),
-            (4, 0, 0) => Ok(Instruction::GetAppName),
-            (5, 0 | 1, 0) => Ok(Instruction::GetPubkey {
-                display: value.p1 != 0,
-            }),
-            (6, P1_SIGN_TX_START, P2_SIGN_TX_MORE)
-            | (6, 1..=P1_SIGN_TX_MAX, P2_SIGN_TX_LAST | P2_SIGN_TX_MORE) => {
-                Ok(Instruction::SignTx {
-                    chunk: value.p1,
-                    more: value.p2 == P2_SIGN_TX_MORE,
-                })
-            }
-            (3..=6, _, _) => Err(AppSW::WrongP1P2),
+            (0, 0, 0) => Ok(Instruction::GetVersion),
+            (1, 0, 0) => Ok(Instruction::GetAppName),
+            (2, 0, 0) => Ok(Instruction::RegisterVApp),
+            (3, 0, 0) => Ok(Instruction::StartVApp),
+            (0..=3, _, _) => Err(AppSW::WrongP1P2),
+            (0xff, p1, p2) => Ok(Instruction::Continue(p1, p2)),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
     }
@@ -144,13 +144,11 @@ extern "C" fn sample_main() {
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
     display_pending_review(&mut comm);
 
-    let mut tx_ctx = TxContext::new();
-
     loop {
         // Wait for either a specific button push to exit the app
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins, &mut tx_ctx) {
+            match handle_apdu(&mut comm, ins) {
                 Ok(()) => comm.reply_ok(),
                 Err(sw) => comm.reply(sw),
             }
@@ -158,14 +156,15 @@ extern "C" fn sample_main() {
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction, ctx: &mut TxContext) -> Result<(), AppSW> {
+fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<(), AppSW> {
     match ins {
         Instruction::GetAppName => {
             comm.append(env!("CARGO_PKG_NAME").as_bytes());
             Ok(())
         }
         Instruction::GetVersion => handler_get_version(comm),
-        Instruction::GetPubkey { display } => handler_get_public_key(comm, display),
-        Instruction::SignTx { chunk, more } => handler_sign_tx(comm, chunk, more, ctx),
+        Instruction::RegisterVApp => handler_register_vapp(comm),
+        Instruction::StartVApp => handler_start_vapp(comm),
+        Instruction::Continue(_, _) => Err(AppSW::InsNotSupported), // 'Continue' command is only allowed when requested by the VM
     }
 }

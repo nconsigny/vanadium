@@ -36,7 +36,7 @@ use crate::Instruction;
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 fn ui_about_menu(comm: &mut Comm) -> Event<Instruction> {
     let pages = [
-        &Page::from((["Rust Boilerplate", "(c) 2023 Ledger"], true)),
+        &Page::from((["Vanadium", "(c) 2024 Ledger"], true)),
         &Page::from(("Back", &BACK)),
     ];
     loop {
@@ -81,7 +81,7 @@ pub fn ui_menu_main(_: &mut Comm) -> Event<Instruction> {
         .glyph(&FERRIS)
         .settings(settings.get_mut_ref(), &settings_strings)
         .infos(
-            "Boilerplate",
+            "Vanadium",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_AUTHORS"),
         )
