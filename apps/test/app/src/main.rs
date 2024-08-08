@@ -45,3 +45,12 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
         // comm::send_message(&result).unwrap(); // TODO: what to do on error?
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_placeholder() {
+        assert_eq!(1 + 1, 2);
+    }    
+}
