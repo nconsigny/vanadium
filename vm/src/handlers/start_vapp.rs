@@ -27,6 +27,12 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<(), AppSW> {
     println!("hmac: {:?}", hmac);
 
     let mut pc = manifest.entrypoint;
+    let mut registers = [0u32; 32];
+
+    
+    // x2 is the stack pointer, that grows backwards from the end of the stack
+    // we make sure it's aligned to a multiple of 4
+    registers[2] = (manifest.stack_end - 4) & 0xfffffff0u32;
 
     assert!(pc % 4 == 0, "Unaligned entrypoint");
     assert!(manifest.code_start % PAGE_SIZE as u32 == 0, "Unaligned code start");
