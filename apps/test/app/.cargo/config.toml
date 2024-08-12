@@ -8,3 +8,6 @@ rustflags = [
   # read-only non-executable sections in their own segment.
   "-Clink-arg=--no-rosegment",
 ]
+
+[env]
+RUST_TEST_THREADS = "1"
