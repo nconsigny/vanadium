@@ -4,6 +4,9 @@
 #[cfg(target_arch = "riscv32")]
 use sdk::fatal;
 
+extern crate alloc;
+
+use alloc::vec;
 
 // Temporary to force the creation of a data section
 #[used]
@@ -26,9 +29,18 @@ pub fn _start(_argc: isize, _argv: *const *const u8) -> isize {
 
 #[start]
 pub fn main(_: isize, _: *const *const u8) -> isize {
+    sdk::rust_init_heap();
+
     // TODO: remove
     unsafe {
         core::ptr::read_volatile(&APP_NAME);
+    }
+
+    // TODO: remove
+    // test code to make sure that vector allocations are emitted
+    let x = vec![1, 2, 3];
+    unsafe {
+        core::ptr::read_volatile(&x);
     }
 
     sdk::ux::ux_idle();
