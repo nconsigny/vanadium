@@ -5,6 +5,7 @@
 pub enum ClientCommandCode {
     GetPage = 0,
     CommitPage = 1,
+    CommitPageContent = 2,
 }
 
 impl TryFrom<u8> for ClientCommandCode {
@@ -14,6 +15,7 @@ impl TryFrom<u8> for ClientCommandCode {
         match value {
             0 => Ok(ClientCommandCode::GetPage),
             1 => Ok(ClientCommandCode::CommitPage),
+            2 => Ok(ClientCommandCode::CommitPageContent),
             _ => Err("Invalid value for ClientCommandCode"),
         }
     }

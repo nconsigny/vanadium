@@ -39,8 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         65536, // TODO
         elf_file.code_segment.start,
         elf_file.code_segment.end,
-        0xd47a2000, // TODO
         0xd47a2000 - 65536, // TODO
+        0xd47a2000, // TODO
         elf_file.data_segment.start,
         elf_file.data_segment.end,
         [0u8; 32], // TODO
