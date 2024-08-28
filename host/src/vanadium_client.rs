@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use common::constants::PAGE_SIZE;
 use common::manifest::Manifest;
 use common::client_commands::ClientCommandCode;
@@ -57,7 +59,7 @@ impl<T: Transport> VanadiumClient<T> {
     
         loop {
             let (status, result) = self.transport.exchange(&command).await.map_err(|_| "exchange failed")?;
-            
+
             match status {
                 StatusWord::OK => {
                     // fail if the response is not exactly 32 bytes; otherwise return it as a [u8; 32]
@@ -77,14 +79,17 @@ impl<T: Transport> VanadiumClient<T> {
                             let page_start = (page_index as usize) * PAGE_SIZE;
                             let page_end = page_start + PAGE_SIZE;
 
-                            // if the page is the last one, it might be smaller than PAGE_SIZE; in that case; pad with zeros
-                            let (data, p1) = if page_end > elf.code_segment.data.len() {
-                                let mut data = vec![0; PAGE_SIZE - 1];
-                                data[..elf.code_segment.data.len() - page_start].copy_from_slice(&elf.code_segment.data[page_start..]);
-                                (data, 0u8)
-                            } else {
-                                (elf.code_segment.data[page_start..page_end - 1].to_vec(), elf.code_segment.data[page_end - 1])
-                            };
+                            let mut data = vec![0; PAGE_SIZE];
+                            let code_start = elf.code_segment.start as usize;
+                            let code_end = elf.code_segment.end as usize;
+                            let copy_start = if page_index == 0 { code_start } else { page_start };
+
+                            let copy_end = min(page_end, code_end - code_start);
+                            let data_start = if page_index == 0 { code_start % PAGE_SIZE } else { 0 };
+
+                            data[data_start..data_start + copy_end - copy_start].copy_from_slice(&elf.code_segment.data[copy_start..copy_end]);
+                            
+                            let p1 = data.pop().unwrap();
 
                             // return the content of the page
                             command = APDUCommand {
@@ -96,7 +101,8 @@ impl<T: Transport> VanadiumClient<T> {
                             };
                             continue;
                         }
-                        ClientCommandCode::CommitPage => todo!(),
+                        ClientCommandCode::CommitPage => todo!(), // TODO: Not implemented
+                        ClientCommandCode::CommitPageContent => todo!(), // TODO: Not implemented
                     }
                 },
                 _ => return Err("Failed to run vapp"),
