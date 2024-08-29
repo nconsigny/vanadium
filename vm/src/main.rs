@@ -18,14 +18,8 @@
 #![no_std]
 #![no_main]
 
-mod app_ui {
-    pub mod menu;
-}
-mod handlers {
-    pub mod get_version;
-    pub mod register_vapp;
-    pub mod start_vapp;
-}
+mod app_ui;
+mod handlers;
 
 mod settings;
 
