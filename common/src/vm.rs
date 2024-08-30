@@ -15,7 +15,7 @@ fn page_start(address: u32) -> u32 {
 pub trait PagedMemory {
     type PageRef<'a>: Deref<Target = Page> + DerefMut<Target = Page> + 'a where Self: 'a;
 
-    fn get_page<'a>(&'a mut self, page_index: u32) -> Result<Self::PageRef<'a>, &'static str>;
+    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, &'static str>;
 }
 
 pub struct VecMemory {
@@ -25,7 +25,7 @@ pub struct VecMemory {
 impl PagedMemory for VecMemory {
     type PageRef<'a> = &'a mut Page where Self: 'a;
 
-    fn get_page<'a>(&'a mut self, page_index: u32) -> Result<Self::PageRef<'a>, &'static str> {
+    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, &'static str> {
         self.pages.get_mut(page_index as usize).ok_or("Page not found")
     }
 }
@@ -68,7 +68,7 @@ impl<M: PagedMemory> MemorySegment<M> {
         }
 
         let relative_address = address - page_start(self.start_address);
-        let page_index = (relative_address / (PAGE_SIZE as u32)) as u32;
+        let page_index = relative_address / (PAGE_SIZE as u32);
         let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
 
         let page = self.paged_memory.get_page(page_index)?;
@@ -87,7 +87,7 @@ impl<M: PagedMemory> MemorySegment<M> {
         }
 
         let relative_address = address - page_start(self.start_address);
-        let page_index = (relative_address / (PAGE_SIZE as u32)) as u32;
+        let page_index = relative_address / (PAGE_SIZE as u32);
         let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
 
         let page = self.paged_memory.get_page(page_index)?;
@@ -111,7 +111,7 @@ impl<M: PagedMemory> MemorySegment<M> {
         }
 
         let relative_address = address - page_start(self.start_address);
-        let page_index = (relative_address / (PAGE_SIZE as u32)) as u32;
+        let page_index = relative_address / (PAGE_SIZE as u32);
         let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
 
         let page = self.paged_memory.get_page(page_index)?;
@@ -133,7 +133,7 @@ impl<M: PagedMemory> MemorySegment<M> {
         }
 
         let relative_address = address - page_start(self.start_address);
-        let page_index = (relative_address / (PAGE_SIZE as u32)) as u32;
+        let page_index = relative_address / (PAGE_SIZE as u32);
         let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
 
         let mut page = self.paged_memory.get_page(page_index)?;
@@ -154,7 +154,7 @@ impl<M: PagedMemory> MemorySegment<M> {
         }
 
         let relative_address = address - page_start(self.start_address);
-        let page_index = (relative_address / (PAGE_SIZE as u32)) as u32;
+        let page_index = relative_address / (PAGE_SIZE as u32);
         let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
 
         let mut page = self.paged_memory.get_page(page_index)?;
@@ -176,7 +176,7 @@ impl<M: PagedMemory> MemorySegment<M> {
         }
 
         let relative_address = address - page_start(self.start_address);
-        let page_index = (relative_address / (PAGE_SIZE as u32)) as u32;
+        let page_index = relative_address / (PAGE_SIZE as u32);
         let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
 
         let mut page = self.paged_memory.get_page(page_index)?;
