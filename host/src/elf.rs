@@ -20,7 +20,7 @@ impl Segment {
 
         Self {
             data: data.to_vec(),
-            start: start,
+            start,
             end: start + size,
         }
     }

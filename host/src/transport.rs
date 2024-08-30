@@ -81,7 +81,7 @@ impl Transport for TransportTcp {
         let mut req = vec![0u8; command_bytes.len() + 4];
         req[..4].copy_from_slice(&(command_bytes.len() as u32).to_be_bytes());
         req[4..].copy_from_slice(&command_bytes);
-        stream.write(&req).await?;
+        stream.write_all(&req).await?;
 
         let mut buff = [0u8; 4];
         let len = match stream.read(&mut buff).await? {

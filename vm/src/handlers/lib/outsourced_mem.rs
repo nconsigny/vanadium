@@ -68,14 +68,12 @@ impl<'c> OutsourcedMemory<'c> {
 impl<'c> PagedMemory for OutsourcedMemory<'c> {
     type PageRef<'a> = &'a mut Page where Self: 'a;
 
-    fn get_page<'a>(&'a mut self, page_index: u32) -> Result<Self::PageRef<'a>, &'static str> {
+    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, &'static str> {
         if let Some(idx) = &mut self.idx {
             if *idx == page_index {
                 return Ok(&mut self.page);
-            } else {
-                if !self.is_readonly {
-                    self.commit_page()?;
-                }
+            } else if !self.is_readonly {
+                self.commit_page()?;
             }
         }
 

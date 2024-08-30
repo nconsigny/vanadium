@@ -225,7 +225,7 @@ impl<H: Hasher<OUTPUT_SIZE>, T: AsRef<[u8]> + Clone + Serialize + DeserializeOwn
             } else {
                 (&hash, sibling_hash)
             };
-            hash = Self::hash_internal_node(left, right).into();
+            hash = Self::hash_internal_node(left, right);
             pos = (pos - 1) / 2;
         }
     
