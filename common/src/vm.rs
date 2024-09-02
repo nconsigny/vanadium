@@ -1,10 +1,13 @@
 //! This module provides traits to represent memory segments that are split into pages, and a
 //! simple CPU model that can execute instructions from these memory segments.
 
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
-use crate::constants::PAGE_SIZE;
-use alloc::vec::Vec;
+use crate::{constants::PAGE_SIZE, riscv::op::Op};
+use alloc::{format, vec::Vec};
 
 /// Represents a single page of memory.
 #[derive(Clone, Debug)]
@@ -59,6 +62,7 @@ impl VecMemory {
 }
 
 /// Represents a contiguous region of memory, implemented via a paged memory.
+#[derive(Debug)]
 pub struct MemorySegment<M: PagedMemory> {
     start_address: u32,
     size: u32,
@@ -77,6 +81,12 @@ impl<M: PagedMemory> MemorySegment<M> {
             size,
             paged_memory,
         })
+    }
+
+    #[inline]
+    /// Returns true if this segment contains the byte at the specified address.
+    pub fn contains(&self, address: u32) -> bool {
+        address >= self.start_address && address < self.start_address + self.size
     }
 
     /// Reads a byte from the specified address.
@@ -221,6 +231,15 @@ pub struct Cpu<M: PagedMemory> {
     pub stack_seg: MemorySegment<M>,
 }
 
+impl<M: PagedMemory> fmt::Debug for Cpu<M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Cpu")
+            .field("pc", &format!("{:08x}", self.pc))
+            .field("regs", &self.regs)
+            .finish()
+    }
+}
+
 impl<M: PagedMemory> Cpu<M> {
     /// Creates a new `Cpu` instance.
     pub fn new(
@@ -238,18 +257,75 @@ impl<M: PagedMemory> Cpu<M> {
         }
     }
 
-    #[inline(always)]
-    /// Fetches the next instruction to be executed.
-    pub fn fetch_instruction(&mut self) -> u32 {
-        if let Ok(inst) = self.code_seg.read_u32(self.pc) {
-            inst
-        } else {
-            panic!("Failed to fetch page")
+    fn read_u8(&mut self, address: u32) -> Result<u8, &'static str> {
+        if self.stack_seg.contains(address) {
+            return self.stack_seg.read_u8(address);
+        } else if self.data_seg.contains(address) {
+            return self.data_seg.read_u8(address);
+        } else if self.code_seg.contains(address) {
+            return self.code_seg.read_u8(address);
         }
+        Err("Address out of bounds")
+    }
+
+    fn read_u16(&mut self, address: u32) -> Result<u16, &'static str> {
+        if self.stack_seg.contains(address) {
+            return self.stack_seg.read_u16(address);
+        } else if self.data_seg.contains(address) {
+            return self.data_seg.read_u16(address);
+        } else if self.code_seg.contains(address) {
+            return self.code_seg.read_u16(address);
+        }
+        Err("Address out of bounds")
+    }
+
+    fn read_u32(&mut self, address: u32) -> Result<u32, &'static str> {
+        if self.stack_seg.contains(address) {
+            return self.stack_seg.read_u32(address);
+        } else if self.data_seg.contains(address) {
+            return self.data_seg.read_u32(address);
+        } else if self.code_seg.contains(address) {
+            return self.code_seg.read_u32(address);
+        }
+        Err("Address out of bounds")
+    }
+
+    fn write_u8(&mut self, address: u32, value: u8) -> Result<(), &'static str> {
+        if self.stack_seg.contains(address) {
+            return self.stack_seg.write_u8(address, value);
+        } else if self.data_seg.contains(address) {
+            return self.data_seg.write_u8(address, value);
+        }
+        Err("Address out of bounds")
+    }
+
+    fn write_u16(&mut self, address: u32, value: u16) -> Result<(), &'static str> {
+        if self.stack_seg.contains(address) {
+            return self.stack_seg.write_u16(address, value);
+        } else if self.data_seg.contains(address) {
+            return self.data_seg.write_u16(address, value);
+        }
+        Err("Address out of bounds")
+    }
+
+    fn write_u32(&mut self, address: u32, value: u32) -> Result<(), &'static str> {
+        if self.stack_seg.contains(address) {
+            return self.stack_seg.write_u32(address, value);
+        } else if self.data_seg.contains(address) {
+            return self.data_seg.write_u32(address, value);
+        }
+        Err("Address out of bounds")
     }
 
     #[inline(always)]
-    pub fn execute(&mut self, inst: u32) {
+    /// Fetches the next instruction to be executed.
+    pub fn fetch_instruction(&mut self) -> Result<u32, &'static str> {
+        self.code_seg.read_u32(self.pc)
+    }
+
+    #[rustfmt::skip]
+    #[inline(always)]
+    pub fn execute(&mut self, inst: u32) -> Result<(), &'static str> {
         // TODO: for now, treat everything as a NOP
         // This is a placeholder for actual instruction decoding and execution logic
         // match inst {
@@ -257,8 +333,143 @@ impl<M: PagedMemory> Cpu<M> {
         //     _ => panic!("Unknown instruction"),
         // }
 
-        self.pc += 4;
+        let mut pc_inc: u32 = 4;
+        const INST_SIZE: u32 = 4;
+
+        let op = crate::riscv::decode::decode(inst);
+        match op {
+            Op::Add { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_add(self.regs[rs2 as usize]); },
+            Op::Sub { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_sub(self.regs[rs2 as usize]); },
+            Op::Sll { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] << (self.regs[rs2 as usize] & 0x1f); },
+            Op::Slt { rd, rs1, rs2 } => { self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) < (self.regs[rs2 as usize] as i32)) as u32; },
+            Op::Sltu { rd, rs1, rs2 } => { self.regs[rd as usize] = (self.regs[rs1 as usize] < self.regs[rs2 as usize]) as u32; },
+            Op::Xor { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] ^ self.regs[rs2 as usize]; },
+            Op::Srl { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] >> (self.regs[rs2 as usize] & 0x1f); },
+            Op::Sra { rd, rs1, rs2 } => { self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) >> (self.regs[rs2 as usize] & 0x1f)) as u32; },
+            Op::Or { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] | self.regs[rs2 as usize]; },
+            Op::And { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] & self.regs[rs2 as usize]; },
+            Op::Addi { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_add(imm as u32); },
+            Op::Andi { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] & (imm as u32); },
+            Op::Auipc { rd, imm } => { self.regs[rd as usize] = self.pc.wrapping_add(imm as u32); },
+            Op::Beq { rs1, rs2, imm } => {
+                if self.regs[rs1 as usize] == self.regs[rs2 as usize] {
+                    pc_inc = imm as u32;
+                }
+            },
+            Op::Bne { rs1, rs2, imm } => {
+                if self.regs[rs1 as usize] != self.regs[rs2 as usize] {
+                    pc_inc = imm as u32;
+                }
+            },
+            Op::Blt { rs1, rs2, imm } => {
+                if (self.regs[rs1 as usize] as i32) < (self.regs[rs2 as usize] as i32) {
+                    pc_inc = imm as u32;
+                }
+            },
+            Op::Bge { rs1, rs2, imm } => {
+                if (self.regs[rs1 as usize] as i32) >= (self.regs[rs2 as usize] as i32) {
+                    pc_inc = imm as u32;
+                }
+            },
+            Op::Bltu { rs1, rs2, imm } => {
+                if self.regs[rs1 as usize] < self.regs[rs2 as usize] {
+                    pc_inc = imm as u32;
+                }
+            },
+            Op::Bgeu { rs1, rs2, imm } => {
+                if self.regs[rs1 as usize] >= self.regs[rs2 as usize] {
+                    self.pc = self.pc.wrapping_add(imm as u32);
+                }
+            },
+            Op::Jal { rd, imm } => {
+                pc_inc = imm as u32;
+                self.regs[rd as usize] = self.pc.wrapping_add(INST_SIZE);
+            },
+            Op::Jalr { rd, rs1, imm } => {
+                let new_pc = self.regs[rs1 as usize].wrapping_add(imm as u32) & !1;
+                self.regs[rd as usize] = self.pc.wrapping_add(INST_SIZE);
+                self.pc = new_pc;
+                pc_inc = 0;
+            },
+            Op::Lb { rd, rs1, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                let value = self.read_u8(addr)?;
+                self.regs[rd as usize] = value as i8 as i32 as u32;
+            },
+            Op::Lh { rd, rs1, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                if addr & 1 != 0 {
+                    return Err("Unaligned 16-bit read");
+                }
+                let value = self.read_u16(addr)?;
+                self.regs[rd as usize] = value as i16 as i32 as u32;
+            },
+            Op::Lw { rd, rs1, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                if addr & 3 != 0 {
+                    return Err("Unaligned 32-bit read");
+                }
+                let value = self.read_u32(addr)?;
+                self.regs[rd as usize] = value;
+            },
+            Op::Lbu { rd, rs1, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                let value = self.read_u8(addr)?;
+                self.regs[rd as usize] = value as u32;
+            },
+            Op::Lhu { rd, rs1, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                if addr & 1 != 0 {
+                    return Err("Unaligned 16-bit read");
+                }
+                let value = self.read_u16(addr)?;
+                self.regs[rd as usize] = value as u32;
+            },
+            Op::Lui { rd, imm } => { self.regs[rd as usize] = imm as u32; },
+            Op::Ori { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] | (imm as u32); },
+            Op::Sb { rs1, rs2, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                let value = self.regs[rs2 as usize] as u8;
+                self.write_u8(addr, value)?;
+            },
+            Op::Sh { rs1, rs2, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                if addr & 1 != 0 {
+                    return Err("Unaligned 16-bit write");
+                }
+                let value = self.regs[rs2 as usize] as u16;
+                self.write_u16(addr, value)?;
+            },
+            Op::Sw { rs1, rs2, imm } => {
+                let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
+                if addr & 3 != 0 {
+                    return Err("Unaligned 32-bit write");
+                }
+                let value = self.regs[rs2 as usize];
+                self.write_u32(addr, value)?;
+            },
+            Op::Slli { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] << (imm & 0x1f); },
+            Op::Slti { rd, rs1, imm } => { self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) < imm) as u32; },
+            Op::Sltiu { rd, rs1, imm } => { self.regs[rd as usize] = (self.regs[rs1 as usize] < imm as u32) as u32; },
+            Op::Srli { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] >> (imm & 0x1f); },
+            Op::Srai { rd, rs1, imm } => { self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) >> (imm & 0x1f)) as u32; },
+            Op::Xori { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] ^ (imm as u32); },
+
+            Op::Ecall => {
+                todo!();
+            },
+            Op::Break => {
+                todo!();
+            },
+            Op::Unknown => {
+                return Err("Unknown instruction");
+            },
+        }
+
+        self.pc = self.pc.wrapping_add(pc_inc);
         self.regs[0] = 0;
+
+        Ok(())
     }
 }
 
