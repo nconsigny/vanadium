@@ -6,19 +6,16 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{constants::PAGE_SIZE, riscv::op::Op};
+use crate::{
+    constants::{page_start, PAGE_SIZE},
+    riscv::op::Op,
+};
 use alloc::{format, vec::Vec};
 
 /// Represents a single page of memory.
 #[derive(Clone, Debug)]
 pub struct Page {
     pub data: [u8; PAGE_SIZE],
-}
-
-/// Calculates the start address of the page containing the given address.
-#[inline(always)]
-fn page_start(address: u32) -> u32 {
-    address & !((PAGE_SIZE as u32) - 1)
 }
 
 /// A generic trait representing a memory that is split into pages.

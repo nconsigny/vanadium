@@ -75,6 +75,8 @@ pub enum AppSW {
     VersionParsingFail = 0xB00A,
     InterruptedExecution = 0xE000,
     WrongApduLength = StatusWords::BadLen as u16,
+
+    VMRuntimeError = 0xB020,
 }
 
 impl From<AppSW> for Reply {
