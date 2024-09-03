@@ -8,4 +8,4 @@ pub mod constants;
 pub mod manifest;
 pub mod vm;
 
-mod riscv;
+pub mod riscv;

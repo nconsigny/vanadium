@@ -1,30 +1,47 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt};
 
 use alloc::rc::Rc;
 use common::vm::{Page, PagedMemory};
 use ledger_device_sdk::io;
 
+use common::client_commands::{ClientCommandCode, SectionKind};
 use common::constants::PAGE_SIZE;
-use common::client_commands::ClientCommandCode;
 
-use crate::{AppSW, Instruction};
-
+use crate::{println, AppSW, Instruction};
 
 // TODO: temporary implementation that stores a single page, and without page integrity checks
 pub struct OutsourcedMemory<'c> {
     comm: Rc<RefCell<&'c mut io::Comm>>,
     idx: Option<u32>,
     page: Page,
-    is_readonly: bool
+    is_readonly: bool,
+    section_kind: SectionKind,
+}
+
+impl<'c> fmt::Debug for OutsourcedMemory<'c> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OutsourcedMemory")
+            .field("idx", &self.idx)
+            .field("page", &self.page)
+            .field("is_readonly", &self.is_readonly)
+            .finish()
+    }
 }
 
 impl<'c> OutsourcedMemory<'c> {
-    pub fn new(comm: Rc<RefCell<&'c mut io::Comm>>, is_readonly: bool) -> Self {
+    pub fn new(
+        comm: Rc<RefCell<&'c mut io::Comm>>,
+        is_readonly: bool,
+        section_kind: SectionKind,
+    ) -> Self {
         Self {
             comm,
             idx: None,
-            page: Page { data: [0; PAGE_SIZE] },
-            is_readonly
+            page: Page {
+                data: [0; PAGE_SIZE],
+            },
+            is_readonly,
+            section_kind,
         }
     }
 
@@ -35,9 +52,11 @@ impl<'c> OutsourcedMemory<'c> {
 
         let mut comm = self.comm.borrow_mut();
 
+        println!("Committing page {}", idx);
+
         // First message: communicate the page to commit
-        // TODO: should add a byte to identify in which segment does the page belong
         comm.append(&[ClientCommandCode::CommitPage as u8]);
+        comm.append(&[self.section_kind as u8]);
         comm.append(&idx.to_be_bytes());
         comm.reply(AppSW::InterruptedExecution);
 
@@ -49,9 +68,12 @@ impl<'c> OutsourcedMemory<'c> {
             return Err("Wrong P1/P2");
         }
 
+        println!("Sending content of the page");
+
         // Second message  message: communicate the page content
         comm.append(&[ClientCommandCode::CommitPageContent as u8]);
         comm.append(&self.page.data);
+        comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {
             return Err("INS not supported"); // expected "Continue"
@@ -60,6 +82,8 @@ impl<'c> OutsourcedMemory<'c> {
         if (p1, p2) != (0, 0) {
             return Err("Wrong P1/P2");
         }
+
+        println!("Done");
 
         Ok(())
     }
@@ -79,6 +103,7 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
 
         let mut comm = self.comm.borrow_mut();
         comm.append(&[ClientCommandCode::GetPage as u8]);
+        comm.append(&[self.section_kind as u8]);
         comm.append(&page_index.to_be_bytes());
         comm.reply(AppSW::InterruptedExecution);
 
