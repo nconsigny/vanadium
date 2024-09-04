@@ -69,7 +69,15 @@ pub struct MemorySegment<M: PagedMemory> {
 impl<M: PagedMemory> MemorySegment<M> {
     /// Creates a new `MemorySegment`.
     pub fn new(start_address: u32, size: u32, paged_memory: M) -> Result<Self, &'static str> {
-        if start_address.checked_add(size).is_none() {
+        if size == 0 {
+            return Err("size cannot be 0");
+        }
+
+        if start_address & 3 != 0 {
+            return Err("start_address must be divisible by 4");
+        }
+
+        if start_address.checked_add(size - 1).is_none() {
             return Err("start_address + size does not fit in a u32");
         }
 
@@ -514,5 +522,82 @@ mod tests {
 
         let page = vec_memory.get_page(page_index).expect("Page should exist");
         assert_eq!(page.data[42], 42);
+    }
+
+    #[test]
+    fn test_memory_segment_new() {
+        let size = (PAGE_SIZE * 16) as u32;
+        let paged_memory = VecMemory::new(16);
+        let segment = MemorySegment::new(0, size, paged_memory);
+        assert!(segment.is_ok());
+
+        // Failure cases
+
+        // 0-sized memory
+        assert!(MemorySegment::new(1, 0, VecMemory::new(1)).is_err());
+
+        // Test unaligned start addresses
+        assert!(MemorySegment::new(1, size, VecMemory::new(16)).is_err());
+        assert!(MemorySegment::new(2, size, VecMemory::new(16)).is_err());
+        assert!(MemorySegment::new(3, size, VecMemory::new(16)).is_err());
+
+        // Overflow: ending address is too large
+        assert!(MemorySegment::new(-(size as i32 - 1) as u32, size, VecMemory::new(16)).is_err());
+        // This one is ok, the last byte has address 0xffffffff
+        assert!(MemorySegment::new(-(size as i32) as u32, size, VecMemory::new(16)).is_ok());
+    }
+
+    #[test]
+    fn test_memory_segment_contains() {
+        let paged_memory = VecMemory::new(16);
+        let size = (PAGE_SIZE * 16) as u32;
+        let segment = MemorySegment::new(0, size, paged_memory).unwrap();
+        assert!(segment.contains(0));
+        assert!(segment.contains(size - 1));
+
+        // out of bounds
+        assert!(!segment.contains(size));
+        assert!(!segment.contains(size + 1));
+        assert!(!segment.contains(0xffffffffu32));
+    }
+
+    #[test]
+    fn test_memory_segment_read() {
+        let mut paged_memory = VecMemory::new(16);
+
+        let first_page = paged_memory.get_page(0).unwrap();
+        first_page.data[0] = 1;
+        first_page.data[1] = 2;
+        first_page.data[2] = 3;
+        first_page.data[3] = 4;
+
+        let mut segment = MemorySegment::new(0, 4096, paged_memory).unwrap();
+
+        // Test read_u8
+        assert_eq!(segment.read_u8(0).unwrap(), 1);
+
+        // Test read_u16
+        assert_eq!(segment.read_u16(0).unwrap(), 0x0201);
+
+        // Test read_u32
+        assert_eq!(segment.read_u32(0).unwrap(), 0x04030201);
+    }
+
+    #[test]
+    fn test_memory_segment_write() {
+        let paged_memory = VecMemory::new(16);
+        let mut segment = MemorySegment::new(0, 4096, paged_memory).unwrap();
+
+        // Test write_u8
+        segment.write_u8(0, 42).unwrap();
+        assert_eq!(segment.read_u8(0).unwrap(), 42);
+
+        // Test write_u16
+        segment.write_u16(0, 0x0201).unwrap();
+        assert_eq!(segment.read_u16(0).unwrap(), 0x0201);
+
+        // Test write_u32
+        segment.write_u32(0, 0x04030201).unwrap();
+        assert_eq!(segment.read_u32(0).unwrap(), 0x04030201);
     }
 }
