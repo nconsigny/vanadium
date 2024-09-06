@@ -2,6 +2,7 @@
 //! simple CPU model that can execute instructions from these memory segments.
 
 use core::{
+    cmp::min,
     fmt,
     ops::{Deref, DerefMut},
 };
@@ -221,6 +222,84 @@ impl<M: PagedMemory> MemorySegment<M> {
         page.data[offset + 1] = (value >> 8) as u8;
         page.data[offset + 2] = (value >> 16) as u8;
         page.data[offset + 3] = (value >> 24) as u8;
+
+        Ok(())
+    }
+
+    /// Reads a buffer from the memory segment.
+    ///
+    /// This method reads a buffer of data from the memory segment starting at the specified address.
+    /// The method takes care of page boundary crossing while reading data from pages.
+    pub fn read_buffer(&mut self, address: u32, buffer: &mut [u8]) -> Result<(), &'static str> {
+        let mut current_address = address;
+        let mut bytes_read = 0;
+
+        // Check if the entire buffer is within the bounds of the memory segment
+        let end_address = address
+            .checked_add(buffer.len() as u32)
+            .ok_or("Address out of bounds")?;
+        if address < self.start_address || end_address > self.start_address + self.size {
+            return Err("Address out of bounds");
+        }
+
+        while bytes_read < buffer.len() {
+            // Calculate the relative address within the page and the page index
+            let relative_address = current_address - page_start(self.start_address);
+            let page_index = relative_address / (PAGE_SIZE as u32);
+            let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
+
+            // Get the remaining space in the current page
+            let remaining_in_page = PAGE_SIZE - offset;
+            let bytes_to_read = min(remaining_in_page, buffer.len() - bytes_read);
+
+            // Read data from the page into the buffer
+            let page = self.paged_memory.get_page(page_index)?;
+            buffer[bytes_read..bytes_read + bytes_to_read]
+                .copy_from_slice(&page.data[offset..offset + bytes_to_read]);
+
+            // Update counters and move to the next portion of the buffer (in the next page, if any)
+            bytes_read += bytes_to_read;
+            current_address += bytes_to_read as u32;
+        }
+
+        Ok(())
+    }
+
+    /// Writes a buffer to the memory segment.
+    ///
+    /// This method writes a buffer of data to the memory segment starting at the specified address.
+    /// The method takes care of page boundary crossing and flushes the content to the page.
+    pub fn write_buffer(&mut self, address: u32, buffer: &[u8]) -> Result<(), &'static str> {
+        let mut current_address = address;
+        let mut bytes_written = 0;
+
+        // Check if the entire buffer is within the bounds of the memory segment
+        let end_address = address
+            .checked_add(buffer.len() as u32)
+            .ok_or("Address out of bounds")?;
+        if address < self.start_address || end_address > self.start_address + self.size {
+            return Err("Address out of bounds");
+        }
+
+        while bytes_written < buffer.len() {
+            // Calculate the relative address within the page and the page index
+            let relative_address = current_address - page_start(self.start_address);
+            let page_index = relative_address / (PAGE_SIZE as u32);
+            let offset = (relative_address % (PAGE_SIZE as u32)) as usize;
+
+            // Get the remaining space in the current page
+            let remaining_in_page = PAGE_SIZE - offset;
+            let bytes_to_write = min(remaining_in_page, buffer.len() - bytes_written);
+
+            // Write data into the page
+            let mut page = self.paged_memory.get_page(page_index)?;
+            page.data[offset..offset + bytes_to_write]
+                .copy_from_slice(&buffer[bytes_written..bytes_written + bytes_to_write]);
+
+            // Update counters and move to the next portion of the buffer (in the next page, if any)
+            bytes_written += bytes_to_write;
+            current_address += bytes_to_write as u32;
+        }
 
         Ok(())
     }
@@ -481,6 +560,7 @@ impl<M: PagedMemory> Cpu<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_vec_memory_new() {
@@ -599,5 +679,84 @@ mod tests {
         // Test write_u32
         segment.write_u32(0, 0x04030201).unwrap();
         assert_eq!(segment.read_u32(0).unwrap(), 0x04030201);
+    }
+
+    #[test]
+    fn test_memory_segment_write_buffer_single_page() {
+        let paged_memory = VecMemory::new(1); // Single page of memory
+        let mut segment = MemorySegment::new(0, PAGE_SIZE as u32, paged_memory).unwrap();
+
+        assert!(PAGE_SIZE == 256); // this test would need to be adapted for different page sizes
+
+        let buffer: Vec<u8> = (0..=(PAGE_SIZE - 1) as u8).collect(); // A buffer with values 0..PAGE_SIZE - 1
+        segment.write_buffer(0, &buffer).unwrap(); // Write the buffer to memory
+
+        assert_eq!(segment.paged_memory.get_page(0).unwrap().data, &buffer[..]);
+
+        // Read back each byte and verify it matches the buffer
+        let mut read_buffer = vec![0; PAGE_SIZE];
+        segment.read_buffer(0, &mut read_buffer).unwrap();
+        assert_eq!(read_buffer, buffer);
+    }
+
+    #[test]
+    fn test_memory_segment_write_buffer_cross_page_boundary() {
+        let paged_memory = VecMemory::new(2); // Two pages of memory
+        let mut segment = MemorySegment::new(0, (PAGE_SIZE * 2) as u32, paged_memory).unwrap();
+
+        let buffer: Vec<u8> = (0..32).collect(); // Buffer that spans across two pages
+        let start_address = PAGE_SIZE as u32 - 16; // 16 bytes away from the page boundary
+        segment.write_buffer(start_address, &buffer).unwrap();
+
+        assert_eq!(
+            segment.paged_memory.get_page(0).unwrap().data[PAGE_SIZE - 16..PAGE_SIZE],
+            buffer[0..16]
+        );
+        assert_eq!(
+            segment.paged_memory.get_page(1).unwrap().data[0..16],
+            buffer[16..32]
+        );
+
+        // Read back each byte and verify it matches the buffer
+        let mut read_buffer = vec![0; 32];
+        segment
+            .read_buffer(start_address, &mut read_buffer)
+            .unwrap();
+        assert_eq!(read_buffer, buffer);
+    }
+
+    #[test]
+    fn test_memory_segment_write_buffer_multiple_pages() {
+        let paged_memory = VecMemory::new(4); // Three pages of memory
+        let mut segment = MemorySegment::new(44, (PAGE_SIZE * 3) as u32, paged_memory).unwrap();
+
+        let start_address = 56u32;
+
+        let buffer_size = PAGE_SIZE * 2;
+
+        let buffer: Vec<u8> = (0..buffer_size).map(|i| (i % 256) as u8).collect(); // Buffer that spans three pages (due to misalignment)
+        segment.write_buffer(start_address, &buffer).unwrap(); // Write buffer to memory
+
+        // Read back the entire buffer and verify it matches the original
+        let mut read_buffer = vec![0; buffer_size];
+        segment
+            .read_buffer(start_address, &mut read_buffer)
+            .unwrap();
+        assert_eq!(read_buffer, buffer);
+    }
+
+    #[test]
+    fn test_memory_segment_write_read_empty_buffer() {
+        let paged_memory = VecMemory::new(1);
+        let mut segment = MemorySegment::new(0, PAGE_SIZE as u32, paged_memory).unwrap();
+
+        // Empty buffer write should succeed without doing anything
+        let write_result = segment.write_buffer(0, &[]);
+        assert!(write_result.is_ok());
+
+        // Empty buffer read should also succeed without doing anything
+        let mut read_buffer = vec![0; 0];
+        let read_result = segment.read_buffer(0, &mut read_buffer);
+        assert!(read_result.is_ok());
     }
 }
