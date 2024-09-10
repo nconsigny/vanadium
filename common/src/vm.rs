@@ -315,6 +315,13 @@ pub struct Cpu<M: PagedMemory> {
     pub stack_seg: MemorySegment<M>,
 }
 
+pub trait EcallHandler {
+    type Memory: PagedMemory;
+    type Error;
+
+    fn handle_ecall(&mut self, cpu: &mut Cpu<Self::Memory>) -> Result<(), Self::Error>;
+}
+
 impl<M: PagedMemory> fmt::Debug for Cpu<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Cpu")
@@ -401,6 +408,17 @@ impl<M: PagedMemory> Cpu<M> {
         Err("Address out of bounds")
     }
 
+    pub fn get_segment(&mut self, address: u32) -> Result<&mut MemorySegment<M>, &'static str> {
+        if self.stack_seg.contains(address) {
+            return Ok(&mut self.stack_seg);
+        } else if self.data_seg.contains(address) {
+            return Ok(&mut self.data_seg);
+        } else if self.code_seg.contains(address) {
+            return Ok(&mut self.code_seg);
+        }
+        Err("Address out of bounds")
+    }
+
     #[inline(always)]
     /// Fetches the next instruction to be executed.
     pub fn fetch_instruction(&mut self) -> Result<u32, &'static str> {
@@ -409,14 +427,7 @@ impl<M: PagedMemory> Cpu<M> {
 
     #[rustfmt::skip]
     #[inline(always)]
-    pub fn execute(&mut self, inst: u32) -> Result<(), &'static str> {
-        // TODO: for now, treat everything as a NOP
-        // This is a placeholder for actual instruction decoding and execution logic
-        // match inst {
-        //     0x00 => self.regs[0] = 0, // Example: NOP
-        //     _ => panic!("Unknown instruction"),
-        // }
-
+    pub fn execute(&mut self, inst: u32, ecall_handler: Option<&mut dyn EcallHandler<Memory = M, Error = &'static str>> ) -> Result<(), &'static str> {
         let mut pc_inc: u32 = 4;
         const INST_SIZE: u32 = 4;
 
@@ -540,7 +551,11 @@ impl<M: PagedMemory> Cpu<M> {
             Op::Xori { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] ^ (imm as u32); },
 
             Op::Ecall => {
-                todo!();
+                if let Some(ecall_handler) = ecall_handler {
+                    ecall_handler.handle_ecall(self)?;
+                } else {
+                    return Err("No ECALL handler");
+                }
             },
             Op::Break => {
                 todo!();

@@ -7,6 +7,7 @@ edition = "2021"
 async-trait = "0.1.81"
 common = { path = "../common" }
 goblin = "0.8.2"
+hex = "0.4.3"
 ledger-apdu = "0.11.0"
 ledger-transport-hid = "0.11.0"
 postcard = { version = "1.0.8", features = ["alloc"] }

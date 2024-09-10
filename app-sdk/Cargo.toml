@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+common = { path = "../common" }
 critical-section = "1.1.2"
 ctor = "0.2.8"
 embedded-alloc = "0.5.1"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+hex = "0.4.3"
