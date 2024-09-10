@@ -1,11 +1,13 @@
 #![feature(asm_const)]
-
 #![cfg_attr(target_arch = "riscv32", no_main, no_std)]
+
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 
 pub mod ux;
 
 mod ecalls;
-mod ecall_constants;
 
 #[cfg(target_arch = "riscv32")]
 mod ecalls_riscv;
@@ -20,7 +22,6 @@ use ctor;
 
 const HEAP_SIZE: usize = 65536;
 static mut HEAP_ALLOC: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
-
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -69,6 +70,15 @@ pub fn fatal(msg: &str) {
     let _ = msg;
 }
 
+pub fn xrecv(size: usize) -> Vec<u8> {
+    let mut buffer = vec![0; size];
+    let recv_size = ecalls::ecall_xrecv(buffer.as_mut_ptr(), buffer.len());
+    buffer[0..recv_size].to_vec()
+}
+
+pub fn xsend(buffer: &[u8]) {
+    ecalls::ecall_xsend(buffer.as_ptr(), buffer.len() as usize)
+}
 
 #[cfg(test)]
 mod tests {

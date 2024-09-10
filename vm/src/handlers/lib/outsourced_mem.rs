@@ -4,7 +4,10 @@ use alloc::rc::Rc;
 use common::vm::{Page, PagedMemory};
 use ledger_device_sdk::io;
 
-use common::client_commands::{ClientCommandCode, SectionKind};
+use common::client_commands::{
+    ClientCommandCode, CommitPageContentMessage, CommitPageMessage, GetPageMessage, Message,
+    SectionKind,
+};
 use common::constants::PAGE_SIZE;
 
 use crate::{println, AppSW, Instruction};
@@ -51,13 +54,7 @@ impl<'c> OutsourcedMemory<'c> {
         };
 
         let mut comm = self.comm.borrow_mut();
-
-        println!("Committing page {}", idx);
-
-        // First message: communicate the page to commit
-        comm.append(&[ClientCommandCode::CommitPage as u8]);
-        comm.append(&[self.section_kind as u8]);
-        comm.append(&idx.to_be_bytes());
+        CommitPageMessage::new(self.section_kind, idx).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {
@@ -67,12 +64,9 @@ impl<'c> OutsourcedMemory<'c> {
         if (p1, p2) != (0, 0) {
             return Err("Wrong P1/P2");
         }
-
-        println!("Sending content of the page");
 
         // Second message  message: communicate the page content
-        comm.append(&[ClientCommandCode::CommitPageContent as u8]);
-        comm.append(&self.page.data);
+        CommitPageContentMessage::new(self.page.data.to_vec()).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {
@@ -82,8 +76,6 @@ impl<'c> OutsourcedMemory<'c> {
         if (p1, p2) != (0, 0) {
             return Err("Wrong P1/P2");
         }
-
-        println!("Done");
 
         Ok(())
     }
@@ -102,9 +94,7 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
         }
 
         let mut comm = self.comm.borrow_mut();
-        comm.append(&[ClientCommandCode::GetPage as u8]);
-        comm.append(&[self.section_kind as u8]);
-        comm.append(&page_index.to_be_bytes());
+        GetPageMessage::new(self.section_kind, page_index).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {

@@ -8,6 +8,7 @@ use common::manifest::Manifest;
 use common::vm::{Cpu, MemorySegment};
 
 use super::lib::outsourced_mem::OutsourcedMemory;
+use crate::handlers::lib::ecall::CommEcallHandler;
 use crate::{println, AppSW};
 
 pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<(), AppSW> {
@@ -59,6 +60,8 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<(), AppSW> {
 
     assert!(cpu.pc % 4 == 0, "Unaligned entrypoint");
 
+    let mut ecall_handler = CommEcallHandler::new(comm.clone());
+
     loop {
         // TODO: handle errors
         let instr = cpu
@@ -76,7 +79,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<(), AppSW> {
             common::riscv::decode::decode(instr)
         );
 
-        let result = cpu.execute(instr);
+        let result = cpu.execute(instr, Some(&mut ecall_handler));
 
         if result.is_err() {
             println!("Error executing instruction");
