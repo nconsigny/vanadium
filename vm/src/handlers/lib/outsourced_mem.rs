@@ -9,7 +9,7 @@ use common::client_commands::{
 };
 use common::constants::PAGE_SIZE;
 
-use crate::{println, AppSW, Instruction};
+use crate::{AppSW, Instruction};
 
 #[derive(Clone, Debug)]
 struct CachedPage {
@@ -61,8 +61,6 @@ impl<'c> OutsourcedMemory<'c> {
         let page = &self.pages[index];
         assert!(page.valid, "Trying to commit an invalid page");
 
-        println!("Committing page {}, locally at index {}", page.idx, index); // TODO: remove
-
         let mut comm = self.comm.borrow_mut();
         CommitPageMessage::new(self.section_kind, page.idx).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);
@@ -91,8 +89,6 @@ impl<'c> OutsourcedMemory<'c> {
     }
 
     fn load_page(&mut self, page_index: u32) -> Result<Page, &'static str> {
-        println!("Loading page at index {}", page_index); // TODO: remove
-
         let mut comm = self.comm.borrow_mut();
         GetPageMessage::new(self.section_kind, page_index).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);

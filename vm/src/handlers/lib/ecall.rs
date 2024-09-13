@@ -1,19 +1,17 @@
-use core::{cell::RefCell, cmp::min, ptr};
+use core::{cell::RefCell, cmp::min};
 
 use alloc::{rc::Rc, vec};
 use common::{
-    client_commands::{
-        ClientCommandCode, Message, ReceiveBufferMessage, ReceiveBufferResponse, SendBufferMessage,
-    },
-    constants::{page_start, PAGE_SIZE},
+    client_commands::{Message, ReceiveBufferMessage, ReceiveBufferResponse, SendBufferMessage},
     ecall_constants::*,
     vm::{Cpu, EcallHandler},
 };
 
-use crate::{println, AppSW, Instruction};
+use crate::{AppSW, Instruction};
 
 use super::outsourced_mem::OutsourcedMemory;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum Register {
     Zero, // x0, constant zero
@@ -133,11 +131,7 @@ impl<'a> CommEcallHandler<'a> {
             return Err("Buffer overflow");
         }
 
-        // TODO: we could optimize this a bit, no reason to send only parts of the buffer entirely contained in a single page for each message
         let mut g_ptr = buffer.0;
-
-        // print g_ptr in hex
-        println!("g_ptr: {:08x}", g_ptr); // TODO: remove
 
         let segment = cpu.get_segment(g_ptr)?;
 
