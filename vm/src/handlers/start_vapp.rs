@@ -34,21 +34,21 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<(), AppSW> {
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
         manifest.code_end - manifest.code_start,
-        OutsourcedMemory::new(comm.clone(), true, SectionKind::Code),
+        OutsourcedMemory::new(comm.clone(), 5, true, SectionKind::Code),
     )
     .unwrap();
 
     let data_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.data_start,
         manifest.data_end - manifest.data_start,
-        OutsourcedMemory::new(comm.clone(), false, SectionKind::Data),
+        OutsourcedMemory::new(comm.clone(), 10, false, SectionKind::Data),
     )
     .unwrap();
 
     let stack_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.stack_start,
         manifest.stack_end - manifest.stack_start,
-        OutsourcedMemory::new(comm.clone(), false, SectionKind::Stack),
+        OutsourcedMemory::new(comm.clone(), 10, false, SectionKind::Stack),
     )
     .unwrap();
 
