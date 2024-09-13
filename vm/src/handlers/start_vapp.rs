@@ -69,11 +69,10 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<(), AppSW> {
             .expect("Failed to fetch instruction");
 
         // TODO: remove debug prints
-        println!("Cpu status:");
-        println!("{:?}", cpu);
+        println!("\x1b[93m{:?}\x1b[0m", cpu);
 
         println!(
-            "{:08x?}: {:08x?} -> {:?}",
+            "\x1b[32m{:08x?}: {:08x?} -> {:?}\x1b[0m",
             cpu.pc,
             instr,
             common::riscv::decode::decode(instr)
