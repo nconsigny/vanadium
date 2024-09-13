@@ -73,6 +73,7 @@ impl TryFrom<u8> for SectionKind {
 
 // We use the _Message ending for messages from the VM to the host, and the _Response ending for messages from the host to the VM.
 
+/// Message sent by the VM to commit a page to the host
 #[derive(Debug, Clone)]
 pub struct CommitPageMessage {
     pub command_code: ClientCommandCode,
@@ -119,6 +120,7 @@ impl Message for CommitPageMessage {
     }
 }
 
+/// Part of the flow started with a CommitPageMessage; it contains the content of the page
 #[derive(Debug, Clone)]
 pub struct CommitPageContentMessage {
     pub command_code: ClientCommandCode,
@@ -161,6 +163,7 @@ impl Message for CommitPageContentMessage {
     }
 }
 
+/// Message sent by the VM to request a page from the host
 #[derive(Debug, Clone)]
 pub struct GetPageMessage {
     pub command_code: ClientCommandCode,
@@ -206,6 +209,7 @@ impl Message for GetPageMessage {
     }
 }
 
+/// Message sent by the VM to send a buffer (or the first chunk of it) to the host during an ECALL_XSEND.
 #[derive(Debug, Clone)]
 pub struct SendBufferMessage {
     pub command_code: ClientCommandCode,
@@ -256,6 +260,7 @@ impl Message for SendBufferMessage {
     }
 }
 
+/// Message sent by the VM to receive a buffer during an ECALL_XRECV.
 #[derive(Debug, Clone)]
 pub struct ReceiveBufferMessage {
     pub command_code: ClientCommandCode,
@@ -288,6 +293,7 @@ impl Message for ReceiveBufferMessage {
     }
 }
 
+/// The host's response to a ReceiveBufferMessage.
 #[derive(Debug, Clone)]
 pub struct ReceiveBufferResponse {
     pub remaining_length: u32,
