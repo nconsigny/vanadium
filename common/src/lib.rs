@@ -2,7 +2,10 @@
 
 extern crate alloc;
 
-pub mod constants;
-pub mod manifest;
 pub mod accumulator;
 pub mod client_commands;
+pub mod constants;
+pub mod manifest;
+pub mod vm;
+
+pub mod riscv;

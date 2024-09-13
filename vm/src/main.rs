@@ -18,15 +18,8 @@
 #![no_std]
 #![no_main]
 
-mod utils;
-mod app_ui {
-    pub mod menu;
-}
-mod handlers {
-    pub mod get_version;
-    pub mod register_vapp;
-    pub mod start_vapp;
-}
+mod app_ui;
+mod handlers;
 
 mod settings;
 
@@ -82,6 +75,8 @@ pub enum AppSW {
     VersionParsingFail = 0xB00A,
     InterruptedExecution = 0xE000,
     WrongApduLength = StatusWords::BadLen as u16,
+
+    VMRuntimeError = 0xB020,
 }
 
 impl From<AppSW> for Reply {
