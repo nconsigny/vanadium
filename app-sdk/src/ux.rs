@@ -1,6 +1,5 @@
-
-use crate::ecalls::*;
+use crate::ecalls::{Ecall, EcallsInterface};
 
 pub fn ux_idle() {
-    ecall_ux_idle()
+    Ecall::ux_idle()
 }

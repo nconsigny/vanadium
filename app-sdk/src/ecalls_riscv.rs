@@ -1,11 +1,12 @@
 use core::arch::asm;
 
+use crate::ecalls::EcallsInterface;
 use common::ecall_constants::*;
 
 macro_rules! ecall0v {
     // ECALL with no arguments and no return value
     ($fn_name:ident, $syscall_number:expr) => {
-        pub fn $fn_name() {
+        fn $fn_name() {
             unsafe {
                 asm!(
                     "ecall",
@@ -18,7 +19,7 @@ macro_rules! ecall0v {
 macro_rules! ecall0 {
     // ECALL with no arguments and returning a value
     ($fn_name:ident, $syscall_number:expr, $ret_type:ty) => {
-        pub fn $fn_name() -> $ret_type {
+        fn $fn_name() -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -34,7 +35,7 @@ macro_rules! ecall0 {
 macro_rules! ecall1v {
     // ECALL with 1 argument and no return value
     ($fn_name:ident, $syscall_number:expr, ($arg1:ident: $arg1_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type) {
+        fn $fn_name($arg1: $arg1_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -48,7 +49,7 @@ macro_rules! ecall1v {
 macro_rules! ecall1 {
     // ECALL with 1 argument and returning a value
     ($fn_name:ident, $syscall_number:expr, ($arg1:ident: $arg1_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type) -> $ret_type {
+        fn $fn_name($arg1: $arg1_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -67,7 +68,7 @@ macro_rules! ecall2v {
     ($fn_name:ident, $syscall_number:expr,
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -84,7 +85,7 @@ macro_rules! ecall2 {
     ($fn_name:ident, $syscall_number:expr,
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) -> $ret_type {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -105,7 +106,7 @@ macro_rules! ecall3v {
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty),
      ($arg3:ident: $arg3_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -124,7 +125,7 @@ macro_rules! ecall3 {
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty),
      ($arg3:ident: $arg3_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) -> $ret_type {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -141,30 +142,35 @@ macro_rules! ecall3 {
     };
 }
 
-// ecall_fatal and ecall_exit are diverging, therefore we can't use the macro
-pub fn ecall_fatal(msg: *const u8, size: usize) -> ! {
-    unsafe {
-        asm!(
-            "ecall",
-            in("t0") ECALL_FATAL,
-            in("a0") msg,
-            in("a1") size,
-            options(noreturn)
-        );
-    }
-}
+pub struct Ecall;
 
-pub fn ecall_exit(status: i32) -> ! {
-    unsafe {
-        asm!(
-            "ecall",
-            in("t0") ECALL_EXIT,
-            in("a0") status,
-            options(noreturn)
-        );
-    }
-}
+impl EcallsInterface for Ecall {
+    ecall0v!(ux_idle, ECALL_UX_IDLE);
 
-ecall2v!(ecall_xsend, ECALL_XSEND, (buffer: *const u8), (size: usize));
-ecall2!(ecall_xrecv, ECALL_XRECV, (buffer: *const u8), (size: usize), usize);
-ecall0v!(ecall_ux_idle, ECALL_UX_IDLE);
+    fn exit(status: i32) -> ! {
+        unsafe {
+            asm!(
+                "ecall",
+                in("t0") ECALL_EXIT,
+                in("a0") status,
+                options(noreturn)
+            );
+        }
+    }
+
+    // fatal() and exit() are diverging, therefore we can't use the macro
+    fn fatal(msg: *const u8, size: usize) -> ! {
+        unsafe {
+            asm!(
+                "ecall",
+                in("t0") ECALL_FATAL,
+                in("a0") msg,
+                in("a1") size,
+                options(noreturn)
+            );
+        }
+    }
+
+    ecall2v!(xsend, ECALL_XSEND, (buffer: *const u8), (size: usize));
+    ecall2!(xrecv, ECALL_XRECV, (buffer: *mut u8), (size: usize), usize);
+}
