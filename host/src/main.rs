@@ -77,7 +77,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("HMAC: {:?}", app_hmac);
 
-    client.run_vapp(&manifest, &app_hmac, &elf_file).await?;
+    let result = client.run_vapp(&manifest, &app_hmac, &elf_file).await?;
+    if result.len() != 4 {
+        return Err("The V-App exited, but did not return correctly return a status".into());
+    }
+    let status = i32::from_be_bytes([result[0], result[1], result[2], result[3]]);
+    println!("App exited with status: {}", status);
 
     Ok(())
 }

@@ -23,10 +23,10 @@ mod handlers;
 
 mod settings;
 
+use alloc::{vec, vec::Vec};
 use app_ui::menu::ui_menu_main;
 use handlers::{
-    get_version::handler_get_version,
-    register_vapp::handler_register_vapp,
+    get_version::handler_get_version, register_vapp::handler_register_vapp,
     start_vapp::handler_start_vapp,
 };
 use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
@@ -45,12 +45,12 @@ use ledger_device_sdk::nbgl::init_comm;
 // define print! and println! macros using debug_printf (only for running on Speculos)
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ({
+    ($($arg:tt)*) => {{
         use core::fmt::Write;
         let mut buf = alloc::string::String::new();
         write!(&mut buf, $($arg)*).unwrap();
         ledger_device_sdk::testing::debug_print(&buf);
-    });
+    }};
 }
 
 #[macro_export]
@@ -60,7 +60,6 @@ macro_rules! println {
         $crate::print!("{}\n", format_args!($($arg)*));
     });
 }
-
 
 // Application status words.
 #[repr(u16)]
@@ -77,6 +76,7 @@ pub enum AppSW {
     WrongApduLength = StatusWords::BadLen as u16,
 
     VMRuntimeError = 0xB020,
+    VAppPanic = 0xB021,
 }
 
 impl From<AppSW> for Reply {
@@ -144,18 +144,21 @@ extern "C" fn sample_main() {
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
             match handle_apdu(&mut comm, ins) {
-                Ok(()) => comm.reply_ok(),
+                Ok(data) => {
+                    comm.append(&data);
+                    comm.reply_ok();
+                }
                 Err(sw) => comm.reply(sw),
             }
         }
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<(), AppSW> {
+fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<Vec<u8>, AppSW> {
     match ins {
         Instruction::GetAppName => {
             comm.append(env!("CARGO_PKG_NAME").as_bytes());
-            Ok(())
+            Ok(vec![])
         }
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::RegisterVApp => handler_register_vapp(comm),

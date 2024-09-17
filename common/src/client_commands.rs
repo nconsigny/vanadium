@@ -33,6 +33,7 @@ pub enum ClientCommandCode {
     CommitPageContent = 2,
     SendBuffer = 3,
     ReceiveBuffer = 4,
+    SendPanicBuffer = 5,
 }
 
 impl TryFrom<u8> for ClientCommandCode {
@@ -45,6 +46,7 @@ impl TryFrom<u8> for ClientCommandCode {
             2 => Ok(ClientCommandCode::CommitPageContent),
             3 => Ok(ClientCommandCode::SendBuffer),
             4 => Ok(ClientCommandCode::ReceiveBuffer),
+            5 => Ok(ClientCommandCode::SendPanicBuffer),
             _ => Err("Invalid value for ClientCommandCode"),
         }
     }
@@ -329,6 +331,57 @@ impl Message for ReceiveBufferResponse {
         Ok(ReceiveBufferResponse {
             remaining_length,
             content: data[4..].to_vec(),
+        })
+    }
+}
+
+/// Identical to SendBufferMessage, except for the different command code; used for panics.
+#[derive(Debug, Clone)]
+pub struct SendPanicBufferMessage {
+    pub command_code: ClientCommandCode,
+    pub total_remaining_size: u32,
+    pub data: Vec<u8>,
+}
+
+impl SendPanicBufferMessage {
+    #[inline]
+    pub fn new(total_remaining_size: u32, data: Vec<u8>) -> Self {
+        if data.len() > total_remaining_size as usize {
+            panic!("Data size exceeds total remaining size");
+        }
+
+        SendPanicBufferMessage {
+            command_code: ClientCommandCode::SendPanicBuffer,
+            total_remaining_size,
+            data,
+        }
+    }
+}
+
+impl Message for SendPanicBufferMessage {
+    #[inline]
+    fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
+        f(&[self.command_code as u8]);
+        f(&self.total_remaining_size.to_be_bytes());
+        f(&self.data);
+    }
+
+    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
+        let command_code = ClientCommandCode::try_from(data[0])?;
+        if (!matches!(command_code, ClientCommandCode::SendPanicBuffer)) || (data.len() < 5) {
+            return Err("Invalid data for SendPanicBufferMessage");
+        }
+        let total_remaining_size = u32::from_be_bytes([data[1], data[2], data[3], data[4]]);
+        let data = data[5..].to_vec();
+
+        if data.len() > total_remaining_size as usize {
+            return Err("Data size exceeds total remaining size");
+        }
+
+        Ok(SendPanicBufferMessage {
+            command_code,
+            total_remaining_size,
+            data,
         })
     }
 }

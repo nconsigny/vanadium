@@ -322,12 +322,36 @@ pub trait EcallHandler {
     fn handle_ecall(&mut self, cpu: &mut Cpu<Self::Memory>) -> Result<(), Self::Error>;
 }
 
+pub enum CpuExecutionError<E> {
+    EcallError(E),
+    GenericError(&'static str), // TODO: make errors more specific
+}
+
+impl<E> From<&'static str> for CpuExecutionError<E> {
+    fn from(err: &'static str) -> Self {
+        CpuExecutionError::GenericError(err)
+    }
+}
+
 impl<M: PagedMemory> fmt::Debug for Cpu<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Cpu")
-            .field("pc", &format!("{:08x}", self.pc))
-            .field("regs", &self.regs)
-            .finish()
+        // Array of register names in RISC-V
+        let reg_names = [
+            "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3",
+            "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
+            "t3", "t4", "t5", "t6",
+        ];
+
+        let mut debug_struct = f.debug_struct("Cpu");
+        debug_struct.field("pc", &format!("{:08x}", self.pc));
+
+        // Add the registers with names and values
+        for (i, reg) in self.regs.iter().enumerate() {
+            debug_struct.field(reg_names[i], &format!("{}", reg));
+        }
+
+        // Finish up the debug struct
+        debug_struct.finish()
     }
 }
 
@@ -427,7 +451,7 @@ impl<M: PagedMemory> Cpu<M> {
 
     #[rustfmt::skip]
     #[inline(always)]
-    pub fn execute(&mut self, inst: u32, ecall_handler: Option<&mut dyn EcallHandler<Memory = M, Error = &'static str>> ) -> Result<(), &'static str> {
+    pub fn execute<E>(&mut self, inst: u32, ecall_handler: Option<&mut dyn EcallHandler<Memory = M, Error = E>>) -> Result<(), CpuExecutionError<E>> {
         let mut pc_inc: u32 = 4;
         const INST_SIZE: u32 = 4;
 
@@ -494,7 +518,7 @@ impl<M: PagedMemory> Cpu<M> {
             Op::Lh { rd, rs1, imm } => {
                 let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
                 if addr & 1 != 0 {
-                    return Err("Unaligned 16-bit read");
+                    return Err("Unaligned 16-bit read".into());
                 }
                 let value = self.read_u16(addr)?;
                 self.regs[rd as usize] = value as i16 as i32 as u32;
@@ -502,7 +526,7 @@ impl<M: PagedMemory> Cpu<M> {
             Op::Lw { rd, rs1, imm } => {
                 let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
                 if addr & 3 != 0 {
-                    return Err("Unaligned 32-bit read");
+                    return Err("Unaligned 32-bit read".into());
                 }
                 let value = self.read_u32(addr)?;
                 self.regs[rd as usize] = value;
@@ -515,7 +539,7 @@ impl<M: PagedMemory> Cpu<M> {
             Op::Lhu { rd, rs1, imm } => {
                 let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
                 if addr & 1 != 0 {
-                    return Err("Unaligned 16-bit read");
+                    return Err("Unaligned 16-bit read".into());
                 }
                 let value = self.read_u16(addr)?;
                 self.regs[rd as usize] = value as u32;
@@ -530,7 +554,7 @@ impl<M: PagedMemory> Cpu<M> {
             Op::Sh { rs1, rs2, imm } => {
                 let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
                 if addr & 1 != 0 {
-                    return Err("Unaligned 16-bit write");
+                    return Err("Unaligned 16-bit write".into());
                 }
                 let value = self.regs[rs2 as usize] as u16;
                 self.write_u16(addr, value)?;
@@ -538,7 +562,7 @@ impl<M: PagedMemory> Cpu<M> {
             Op::Sw { rs1, rs2, imm } => {
                 let addr = self.regs[rs1 as usize].wrapping_add(imm as u32);
                 if addr & 3 != 0 {
-                    return Err("Unaligned 32-bit write");
+                    return Err("Unaligned 32-bit write".into());
                 }
                 let value = self.regs[rs2 as usize];
                 self.write_u32(addr, value)?;
@@ -552,16 +576,16 @@ impl<M: PagedMemory> Cpu<M> {
 
             Op::Ecall => {
                 if let Some(ecall_handler) = ecall_handler {
-                    ecall_handler.handle_ecall(self)?;
+                    ecall_handler.handle_ecall(self).map_err(CpuExecutionError::EcallError)?;
                 } else {
-                    return Err("No ECALL handler");
+                    return Err("No ECALL handler".into());
                 }
             },
             Op::Break => {
                 todo!();
             },
             Op::Unknown => {
-                return Err("Unknown instruction");
+                return Err("Unknown instruction".into());
             },
         }
 
