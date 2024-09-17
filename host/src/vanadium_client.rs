@@ -5,6 +5,7 @@ use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulat
 use common::client_commands::{
     ClientCommandCode, CommitPageContentMessage, CommitPageMessage, GetPageMessage, Message,
     ReceiveBufferMessage, ReceiveBufferResponse, SectionKind, SendBufferMessage,
+    SendPanicBufferMessage,
 };
 use common::constants::{page_start, PAGE_SIZE};
 use common::manifest::Manifest;
@@ -331,12 +332,61 @@ impl<'a> VAppEngine<'a> {
         // return Ok((status, result));
     }
 
+    // receive a buffer sent by the V-App during a panic; show it to stdout
+    // TODO: almost identical to process_send_buffer; it might be nice to refactor
+    async fn process_send_panic_buffer<T: Transport>(
+        &mut self,
+        transport: &T,
+        command: &[u8],
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        let SendPanicBufferMessage {
+            command_code: _,
+            total_remaining_size: mut remaining_len,
+            data: mut buf,
+        } = SendPanicBufferMessage::deserialize(command)?;
+
+        if (buf.len() as u32) > remaining_len {
+            return Err("Received data length exceeds expected remaining length");
+        }
+
+        remaining_len -= buf.len() as u32;
+
+        while remaining_len > 0 {
+            let (status, result) = self
+                .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
+                .await
+                .map_err(|_| "exchange failed")?;
+
+            if status != StatusWord::InterruptedExecution || result.len() == 0 {
+                return Err("Unexpected response");
+            }
+            let msg = SendPanicBufferMessage::deserialize(&result)?;
+
+            if msg.total_remaining_size != remaining_len {
+                return Err("Received total_remaining_size does not match expected");
+            }
+
+            buf.extend_from_slice(&msg.data);
+            remaining_len -= msg.data.len() as u32;
+        }
+
+        println!(
+            "Received panic message:\n{}",
+            core::str::from_utf8(&buf).unwrap()
+        );
+
+        Ok(self
+            .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
+            .await
+            .map_err(|_| "exchange failed")?)
+    }
+
     async fn busy_loop<T: Transport>(
         &mut self,
         transport: &T,
         first_sw: StatusWord,
         first_result: Vec<u8>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Vec<u8>, &'static str> {
         // create the pages in the code segment. Each page is aligned to PAGE_SIZE (the first page is zero padded if the initial address is not divisible by
         // PAGE_SIZE, and the last page is zero_padded if it's smaller than PAGE_SIZE).\
 
@@ -344,6 +394,18 @@ impl<'a> VAppEngine<'a> {
         let mut result = first_result;
 
         loop {
+            if status == StatusWord::OK {
+                return Ok(result);
+            }
+
+            if status == StatusWord::VMRuntimeError {
+                return Err("VM runtime error");
+            }
+
+            if status == StatusWord::VAppPanic {
+                return Err("V-App panicked");
+            }
+
             if status != StatusWord::InterruptedExecution {
                 return Err("Unexpected status word");
             }
@@ -368,6 +430,9 @@ impl<'a> VAppEngine<'a> {
                 }
                 ClientCommandCode::ReceiveBuffer => {
                     self.process_receive_buffer(transport, &result).await?
+                }
+                ClientCommandCode::SendPanicBuffer => {
+                    self.process_send_panic_buffer(transport, &result).await?
                 }
             }
         }
@@ -419,7 +484,7 @@ impl<T: Transport> VanadiumClient<T> {
         manifest: &Manifest,
         app_hmac: &[u8; 32],
         elf: &ElfFile,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Vec<u8>, &'static str> {
         // concatenate the serialized manifest and the app_hmac
         let mut data =
             postcard::to_allocvec(manifest).map_err(|_| "manifest serialization failed")?;
@@ -455,10 +520,10 @@ impl<T: Transport> VanadiumClient<T> {
             .await
             .map_err(|_| "exchange failed")?;
 
-        vapp_engine
+        let result = vapp_engine
             .busy_loop(&self.transport, status, result)
             .await?;
 
-        Ok(())
+        Ok(result)
     }
 }

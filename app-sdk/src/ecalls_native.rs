@@ -3,6 +3,17 @@ use std::io::Write;
 
 pub fn ecall_ux_idle() {}
 
+pub fn ecall_exit(status: i32) -> ! {
+    std::process::exit(status);
+}
+
+pub fn ecall_fatal(msg: *const u8, size: usize) -> ! {
+    // print the message as a panic
+    let slice = unsafe { std::slice::from_raw_parts(msg, size) };
+    let msg = std::str::from_utf8(slice).unwrap();
+    panic!("{}", msg);
+}
+
 pub fn ecall_xsend(buffer: *const u8, size: usize) {
     let slice = unsafe { std::slice::from_raw_parts(buffer, size) };
     for byte in slice {

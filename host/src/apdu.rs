@@ -23,6 +23,13 @@ pub enum StatusWord {
     OK = 0x9000,
     /// The command is interrupted, and requires the client's response
     InterruptedExecution = 0xE000,
+
+    /// Unexpected error in the VM while executing the V-App
+    VMRuntimeError = 0xB020,
+
+    /// The V-App panicked
+    VAppPanic = 0xB021,
+
     /// Unknown
     Unknown,
 }
@@ -41,6 +48,8 @@ impl TryFrom<u16> for StatusWord {
             0x6E00 => Ok(StatusWord::ClaNotSupported),
             0xB007 => Ok(StatusWord::BadState),
             0xB008 => Ok(StatusWord::SignatureFail),
+            0xB020 => Ok(StatusWord::VMRuntimeError),
+            0xB021 => Ok(StatusWord::VAppPanic),
             0x9000 => Ok(StatusWord::OK),
             0xE000 => Ok(StatusWord::InterruptedExecution),
             _ => Err(()),

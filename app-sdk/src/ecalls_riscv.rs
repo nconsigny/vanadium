@@ -141,6 +141,30 @@ macro_rules! ecall3 {
     };
 }
 
+// ecall_fatal and ecall_exit are diverging, therefore we can't use the macro
+pub fn ecall_fatal(msg: *const u8, size: usize) -> ! {
+    unsafe {
+        asm!(
+            "ecall",
+            in("t0") ECALL_FATAL,
+            in("a0") msg,
+            in("a1") size,
+            options(noreturn)
+        );
+    }
+}
+
+pub fn ecall_exit(status: i32) -> ! {
+    unsafe {
+        asm!(
+            "ecall",
+            in("t0") ECALL_EXIT,
+            in("a0") status,
+            options(noreturn)
+        );
+    }
+}
+
 ecall2v!(ecall_xsend, ECALL_XSEND, (buffer: *const u8), (size: usize));
 ecall2!(ecall_xrecv, ECALL_XRECV, (buffer: *const u8), (size: usize), usize);
 ecall0v!(ecall_ux_idle, ECALL_UX_IDLE);

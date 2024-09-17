@@ -65,9 +65,12 @@ pub extern "C" fn rust_init_heap() {
     // the initializer is called automatically on native targets
 }
 
-pub fn fatal(msg: &str) {
-    // TODO: placeholder
-    let _ = msg;
+pub fn fatal(msg: &str) -> ! {
+    ecalls::ecall_fatal(msg.as_ptr(), msg.len());
+}
+
+pub fn exit(status: i32) -> ! {
+    ecalls::ecall_exit(status);
 }
 
 pub fn xrecv(size: usize) -> Vec<u8> {

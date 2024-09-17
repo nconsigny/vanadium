@@ -15,13 +15,14 @@
  *  limitations under the License.
  *****************************************************************************/
 use crate::AppSW;
+use alloc::{vec, vec::Vec};
 use core::str::FromStr;
 use ledger_device_sdk::io;
 
-pub fn handler_get_version(comm: &mut io::Comm) -> Result<(), AppSW> {
+pub fn handler_get_version(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     if let Some((major, minor, patch)) = parse_version_string(env!("CARGO_PKG_VERSION")) {
         comm.append(&[major, minor, patch]);
-        Ok(())
+        Ok(vec![])
     } else {
         Err(AppSW::VersionParsingFail)
     }

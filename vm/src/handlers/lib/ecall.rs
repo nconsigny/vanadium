@@ -2,7 +2,10 @@ use core::{cell::RefCell, cmp::min};
 
 use alloc::{rc::Rc, vec};
 use common::{
-    client_commands::{Message, ReceiveBufferMessage, ReceiveBufferResponse, SendBufferMessage},
+    client_commands::{
+        Message, ReceiveBufferMessage, ReceiveBufferResponse, SendBufferMessage,
+        SendPanicBufferMessage,
+    },
     ecall_constants::*,
     vm::{Cpu, EcallHandler},
 };
@@ -99,6 +102,65 @@ pub struct CommEcallHandler<'a> {
 impl<'a> CommEcallHandler<'a> {
     pub fn new(comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm>>) -> Self {
         Self { comm }
+    }
+
+    // TODO: can we refactor this and handle_xsend? They are almost identical
+    fn handle_panic(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        buffer: GuestPointer,
+        mut size: usize,
+    ) -> Result<(), &'static str> {
+        if size == 0 {
+            // We must not read the pointer for an empty buffer; Rust always uses address 0x01 for
+            // an empty buffer
+
+            let mut comm = self.comm.borrow_mut();
+            SendPanicBufferMessage::new(size as u32, vec![]).serialize_to_comm(&mut comm);
+            comm.reply(AppSW::InterruptedExecution);
+
+            let Instruction::Continue(p1, p2) = comm.next_command() else {
+                return Err("INS not supported"); // expected "Continue"
+            };
+
+            if (p1, p2) != (0, 0) {
+                return Err("Wrong P1/P2");
+            }
+            return Ok(());
+        }
+
+        if buffer.0.checked_add(size as u32).is_none() {
+            return Err("Buffer overflow");
+        }
+
+        let mut g_ptr = buffer.0;
+
+        let segment = cpu.get_segment(g_ptr)?;
+
+        // loop while size > 0
+        while size > 0 {
+            let copy_size = min(size, 255 - 4); // send maximum 251 bytes per message
+
+            let mut buffer = vec![0; copy_size];
+            segment.read_buffer(g_ptr, &mut buffer)?;
+
+            let mut comm = self.comm.borrow_mut();
+            SendPanicBufferMessage::new(size as u32, buffer).serialize_to_comm(&mut comm);
+            comm.reply(AppSW::InterruptedExecution);
+
+            let Instruction::Continue(p1, p2) = comm.next_command() else {
+                return Err("INS not supported"); // expected "Continue"
+            };
+
+            if (p1, p2) != (0, 0) {
+                return Err("Wrong P1/P2");
+            }
+
+            size -= copy_size;
+            g_ptr += copy_size as u32;
+        }
+
+        Ok(())
     }
 
     // Sends exactly size bytes from the buffer in the V-app memory to the host
@@ -218,11 +280,19 @@ impl<'a> CommEcallHandler<'a> {
     }
 }
 
+// make an error type for the CommEcallHandler<'a>
+pub enum CommEcallError {
+    Exit(i32),
+    Panic,
+    GenericError(&'static str),
+    UnhandledEcall,
+}
+
 impl<'a> EcallHandler for CommEcallHandler<'a> {
     type Memory = OutsourcedMemory<'a>;
-    type Error = &'static str;
+    type Error = CommEcallError;
 
-    fn handle_ecall(&mut self, cpu: &mut Cpu<OutsourcedMemory<'a>>) -> Result<(), &'static str> {
+    fn handle_ecall(&mut self, cpu: &mut Cpu<OutsourcedMemory<'a>>) -> Result<(), CommEcallError> {
         macro_rules! reg {
             ($reg:ident) => {
                 cpu.regs[Register::$reg.as_index() as usize]
@@ -238,13 +308,20 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
         let ecall_code = reg!(T0);
         crate::println!("ecall_code: {:?}", ecall_code);
         match ecall_code {
-            ECALL_XSEND => {
-                crate::println!("Executing xsend()");
-                self.handle_xsend(cpu, GPreg!(A0), reg!(A1) as usize)?
+            ECALL_EXIT => return Err(CommEcallError::Exit(reg!(A0) as i32)),
+            ECALL_FATAL => {
+                self.handle_panic(cpu, GPreg!(A0), reg!(A1) as usize)
+                    .map_err(|_| CommEcallError::GenericError("xsend failed"))?;
+                return Err(CommEcallError::Panic);
             }
+            ECALL_XSEND => self
+                .handle_xsend(cpu, GPreg!(A0), reg!(A1) as usize)
+                .map_err(|_| CommEcallError::GenericError("xsend failed"))?,
             ECALL_XRECV => {
                 crate::println!("Executing xrecv()");
-                let ret = self.handle_xrecv(cpu, GPreg!(A0), reg!(A1) as usize)?;
+                let ret = self
+                    .handle_xrecv(cpu, GPreg!(A0), reg!(A1) as usize)
+                    .map_err(|_| CommEcallError::GenericError("xrecv failed"))?;
                 reg!(A0) = ret as u32;
             }
             ECALL_UX_IDLE => {
@@ -259,7 +336,7 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                 page.place();
             }
             _ => {
-                return Err("Unhandled ECALL");
+                return Err(CommEcallError::UnhandledEcall);
             }
         }
 
