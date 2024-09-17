@@ -15,6 +15,7 @@ mod ecalls_riscv;
 #[cfg(not(target_arch = "riscv32"))]
 mod ecalls_native;
 
+use ecalls::{Ecall, EcallsInterface};
 use embedded_alloc::Heap;
 
 #[cfg(not(target_arch = "riscv32"))]
@@ -66,21 +67,21 @@ pub extern "C" fn rust_init_heap() {
 }
 
 pub fn fatal(msg: &str) -> ! {
-    ecalls::ecall_fatal(msg.as_ptr(), msg.len());
+    Ecall::fatal(msg.as_ptr(), msg.len());
 }
 
 pub fn exit(status: i32) -> ! {
-    ecalls::ecall_exit(status);
+    Ecall::exit(status);
 }
 
 pub fn xrecv(size: usize) -> Vec<u8> {
     let mut buffer = vec![0; size];
-    let recv_size = ecalls::ecall_xrecv(buffer.as_mut_ptr(), buffer.len());
+    let recv_size = Ecall::xrecv(buffer.as_mut_ptr(), buffer.len());
     buffer[0..recv_size].to_vec()
 }
 
 pub fn xsend(buffer: &[u8]) {
-    ecalls::ecall_xsend(buffer.as_ptr(), buffer.len() as usize)
+    Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
 }
 
 #[cfg(test)]
