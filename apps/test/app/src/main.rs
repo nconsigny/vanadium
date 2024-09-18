@@ -13,12 +13,20 @@ use alloc::vec;
 #[no_mangle]
 pub static mut APP_NAME: [u8; 32] = *b"Test\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
-
 #[cfg(target_arch = "riscv32")]
 #[panic_handler]
-fn my_panic(_info: &core::panic::PanicInfo) -> ! {
-    fatal("panic");
-    loop {}
+fn my_panic(info: &core::panic::PanicInfo) -> ! {
+    let message = if let Some(location) = info.location() {
+        alloc::format!(
+            "Panic occurred in file '{}' at line {}: {}",
+            location.file(),
+            location.line(),
+            info.message()
+        )
+    } else {
+        alloc::format!("Panic occurred: {}", info.message())
+    };
+    fatal(&message); // does not return
 }
 
 #[cfg(target_arch = "riscv32")]
@@ -45,9 +53,22 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
 
     sdk::ux::ux_idle();
     loop {
+        let msg = sdk::xrecv(256);
         // let buffer = comm::receive_message().unwrap(); // TODO: what to do on error?
 
         // sdk::ux::app_loading_start("Handling request...\x00");
+
+        if msg.len() == 0 {
+            sdk::exit(0);
+        }
+        if msg.len() == 1 {
+            panic!("Oh no, how can I reverse a single byte?");
+        }
+
+        // reverse the message
+        let mut reversed = msg.clone();
+        reversed.reverse();
+        sdk::xsend(&reversed);
 
         // let result = handle_req(&buffer, &mut state);
 
@@ -58,11 +79,10 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_placeholder() {
         assert_eq!(1 + 1, 2);
-    }    
+    }
 }

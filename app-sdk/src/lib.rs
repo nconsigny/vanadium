@@ -1,11 +1,13 @@
 #![feature(asm_const)]
-
 #![cfg_attr(target_arch = "riscv32", no_main, no_std)]
+
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 
 pub mod ux;
 
 mod ecalls;
-mod ecall_constants;
 
 #[cfg(target_arch = "riscv32")]
 mod ecalls_riscv;
@@ -13,6 +15,7 @@ mod ecalls_riscv;
 #[cfg(not(target_arch = "riscv32"))]
 mod ecalls_native;
 
+use ecalls::{Ecall, EcallsInterface};
 use embedded_alloc::Heap;
 
 #[cfg(not(target_arch = "riscv32"))]
@@ -20,7 +23,6 @@ use ctor;
 
 const HEAP_SIZE: usize = 65536;
 static mut HEAP_ALLOC: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
-
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -64,11 +66,23 @@ pub extern "C" fn rust_init_heap() {
     // the initializer is called automatically on native targets
 }
 
-pub fn fatal(msg: &str) {
-    // TODO: placeholder
-    let _ = msg;
+pub fn fatal(msg: &str) -> ! {
+    Ecall::fatal(msg.as_ptr(), msg.len());
 }
 
+pub fn exit(status: i32) -> ! {
+    Ecall::exit(status);
+}
+
+pub fn xrecv(size: usize) -> Vec<u8> {
+    let mut buffer = vec![0; size];
+    let recv_size = Ecall::xrecv(buffer.as_mut_ptr(), buffer.len());
+    buffer[0..recv_size].to_vec()
+}
+
+pub fn xsend(buffer: &[u8]) {
+    Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
+}
 
 #[cfg(test)]
 mod tests {

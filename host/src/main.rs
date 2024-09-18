@@ -3,32 +3,56 @@ mod elf;
 mod transport;
 mod vanadium_client;
 
+use clap::Parser;
 use common::manifest::Manifest;
-use transport::{Transport, TransportTcp};
+use hidapi::HidApi;
+use ledger_transport_hid::TransportNativeHID;
+use transport::{Transport, TransportHID, TransportTcp, TransportWrapper};
 
-use std::env;
 use std::path::Path;
+use std::sync::Arc;
 use vanadium_client::VanadiumClient;
 
 use elf::ElfFile;
 
+#[derive(Parser)]
+#[command(name = "Vanadium", about = "Run a V-App on Vanadium")]
+struct Args {
+    /// Path to the ELF file of the V-App
+    #[arg(required = true)]
+    elf: String,
+
+    /// Use the HID interface for a real device, instead of Speculos
+    #[arg(long)]
+    hid: bool,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Get the path to the ELF file from command line arguments
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <path to elf file>", args[0]);
-        std::process::exit(1);
-    }
+    let args = Args::parse();
 
-    let path = Path::new(&args[1]);
+    let elf_path = Path::new(&args.elf);
+    let elf_file = ElfFile::new(elf_path)?;
 
-    let elf_file = ElfFile::new(path)?;
+    // println!("Entrypoint: {:?}", elf_file.entrypoint);
+    // println!("{:?}", elf_file);
 
-    println!("Entrypoint: {:?}", elf_file.entrypoint);
-    println!("{:?}", elf_file);
-
-    let transport = TransportTcp::new().await?;
+    let transport_raw: Arc<dyn Transport<Error = Box<dyn std::error::Error>> + Send + Sync> =
+        if args.hid {
+            Arc::new(TransportHID::new(
+                TransportNativeHID::new(
+                    &HidApi::new().expect("Unable to get connect to the device"),
+                )
+                .unwrap(),
+            ))
+        } else {
+            Arc::new(
+                TransportTcp::new()
+                    .await
+                    .expect("Unable to get TCP transport. Is speculos running?"),
+            )
+        };
+    let transport = TransportWrapper::new(transport_raw);
 
     let manifest = Manifest::new(
         0,
@@ -40,19 +64,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         elf_file.code_segment.start,
         elf_file.code_segment.end,
         0xd47a2000 - 65536, // TODO
-        0xd47a2000, // TODO
+        0xd47a2000,         // TODO
         elf_file.data_segment.start,
         elf_file.data_segment.end,
         [0u8; 32], // TODO
-        0 // TODO
-    ).unwrap();
+        0,         // TODO
+    )
+    .unwrap();
 
     let client = VanadiumClient::new(transport);
     let app_hmac = client.register_vapp(&manifest).await?;
 
     println!("HMAC: {:?}", app_hmac);
 
-    client.run_vapp(&manifest, &app_hmac, &elf_file).await?;
+    let result = client.run_vapp(&manifest, &app_hmac, &elf_file).await?;
+    if result.len() != 4 {
+        return Err("The V-App exited, but did not return correctly return a status".into());
+    }
+    let status = i32::from_be_bytes([result[0], result[1], result[2], result[3]]);
+    println!("App exited with status: {}", status);
 
     Ok(())
 }

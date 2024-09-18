@@ -17,24 +17,23 @@
 
 #![no_std]
 #![no_main]
+#![feature(panic_info_message)]
 
 mod app_ui;
 mod handlers;
 
 mod settings;
 
+use alloc::{vec, vec::Vec};
 use app_ui::menu::ui_menu_main;
 use handlers::{
-    get_version::handler_get_version,
-    register_vapp::handler_register_vapp,
+    get_version::handler_get_version, register_vapp::handler_register_vapp,
     start_vapp::handler_start_vapp,
 };
 use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
 #[cfg(feature = "pending_review_screen")]
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-
-ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 // Required for using String, Vec, format!...
 extern crate alloc;
@@ -45,12 +44,12 @@ use ledger_device_sdk::nbgl::init_comm;
 // define print! and println! macros using debug_printf (only for running on Speculos)
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ({
+    ($($arg:tt)*) => {{
         use core::fmt::Write;
         let mut buf = alloc::string::String::new();
         write!(&mut buf, $($arg)*).unwrap();
         ledger_device_sdk::testing::debug_print(&buf);
-    });
+    }};
 }
 
 #[macro_export]
@@ -61,6 +60,30 @@ macro_rules! println {
     });
 }
 
+// Print panic message to the console. Uses the `print!` macro defined above,
+// therefore it only works when running on Speculos.
+fn handle_panic(info: &core::panic::PanicInfo) -> ! {
+    let message = if let Some(location) = info.location() {
+        alloc::format!(
+            "Panic occurred in file '{}' at line {}: {:?}",
+            location.file(),
+            location.line(),
+            info.message().unwrap_or(&format_args!("no message"))
+        )
+    } else {
+        alloc::format!(
+            "Panic occurred: {}",
+            info.message().unwrap_or(&format_args!("no message"))
+        )
+    };
+    println!("{}", message);
+
+    let mut comm = ledger_device_sdk::io::Comm::new();
+    comm.reply(ledger_device_sdk::io::StatusWords::Panic);
+    ledger_device_sdk::exit_app(0x01);
+}
+
+ledger_device_sdk::set_panic!(handle_panic);
 
 // Application status words.
 #[repr(u16)]
@@ -73,10 +96,11 @@ pub enum AppSW {
     SignatureFail = 0xB008,
     KeyDeriveFail = 0xB009,
     VersionParsingFail = 0xB00A,
-    InterruptedExecution = 0xE000,
+    InterruptedExecution = 0xEEEE,
     WrongApduLength = StatusWords::BadLen as u16,
 
     VMRuntimeError = 0xB020,
+    VAppPanic = 0xB021,
 }
 
 impl From<AppSW> for Reply {
@@ -144,18 +168,21 @@ extern "C" fn sample_main() {
         // or an APDU command
         if let Event::Command(ins) = ui_menu_main(&mut comm) {
             match handle_apdu(&mut comm, ins) {
-                Ok(()) => comm.reply_ok(),
+                Ok(data) => {
+                    comm.append(&data);
+                    comm.reply_ok();
+                }
                 Err(sw) => comm.reply(sw),
             }
         }
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<(), AppSW> {
+fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<Vec<u8>, AppSW> {
     match ins {
         Instruction::GetAppName => {
             comm.append(env!("CARGO_PKG_NAME").as_bytes());
-            Ok(())
+            Ok(vec![])
         }
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::RegisterVApp => handler_register_vapp(comm),
