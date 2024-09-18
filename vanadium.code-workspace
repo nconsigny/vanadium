@@ -4,9 +4,6 @@
       "path": "vm"
     },
     {
-      "path": "host"
-    },
-    {
       "path": "common"
     },
     {

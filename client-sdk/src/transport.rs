@@ -16,14 +16,12 @@ use tokio::{
 
 use crate::apdu::{APDUCommand, StatusWord};
 
-
 /// Communication layer between the bitcoin client and the Ledger device.
 #[async_trait]
 pub trait Transport {
     type Error: Debug;
     async fn exchange(&self, command: &APDUCommand) -> Result<(StatusWord, Vec<u8>), Self::Error>;
 }
-
 
 /// Transport with the Ledger device.
 pub struct TransportHID(TransportNativeHID);
