@@ -17,6 +17,7 @@
 
 #![no_std]
 #![no_main]
+#![feature(panic_info_message)]
 
 mod app_ui;
 mod handlers;
@@ -33,8 +34,6 @@ use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
 #[cfg(feature = "pending_review_screen")]
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-
-ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 // Required for using String, Vec, format!...
 extern crate alloc;
@@ -60,6 +59,31 @@ macro_rules! println {
         $crate::print!("{}\n", format_args!($($arg)*));
     });
 }
+
+// Print panic message to the console. Uses the `print!` macro defined above,
+// therefore it only works when running on Speculos.
+fn handle_panic(info: &core::panic::PanicInfo) -> ! {
+    let message = if let Some(location) = info.location() {
+        alloc::format!(
+            "Panic occurred in file '{}' at line {}: {:?}",
+            location.file(),
+            location.line(),
+            info.message().unwrap_or(&format_args!("no message"))
+        )
+    } else {
+        alloc::format!(
+            "Panic occurred: {}",
+            info.message().unwrap_or(&format_args!("no message"))
+        )
+    };
+    println!("{}", message);
+
+    let mut comm = ledger_device_sdk::io::Comm::new();
+    comm.reply(ledger_device_sdk::io::StatusWords::Panic);
+    ledger_device_sdk::exit_app(0x01);
+}
+
+ledger_device_sdk::set_panic!(handle_panic);
 
 // Application status words.
 #[repr(u16)]
