@@ -96,7 +96,7 @@ pub enum AppSW {
     SignatureFail = 0xB008,
     KeyDeriveFail = 0xB009,
     VersionParsingFail = 0xB00A,
-    InterruptedExecution = 0xE000,
+    InterruptedExecution = 0xEEEE,
     WrongApduLength = StatusWords::BadLen as u16,
 
     VMRuntimeError = 0xB020,
