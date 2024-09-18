@@ -1,5 +1,4 @@
 use std::cmp::min;
-use std::io::{stdin, stdout, Write};
 
 use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulator};
 use common::client_commands::{
@@ -13,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::apdu::{APDUCommand, StatusWord};
 use crate::elf::ElfFile;
-use crate::Transport;
+use crate::transport::Transport;
 
 fn apdu_continue(data: Vec<u8>) -> APDUCommand {
     APDUCommand {
@@ -124,6 +123,7 @@ struct VAppEngine<'a> {
     code_seg: MemorySegment,
     data_seg: MemorySegment,
     stack_seg: MemorySegment,
+    callbacks: &'a dyn Callbacks,
 }
 
 impl<'a> VAppEngine<'a> {
@@ -266,7 +266,7 @@ impl<'a> VAppEngine<'a> {
             remaining_len -= msg.data.len() as u32;
         }
 
-        println!("Received buffer: {}", hex::encode(&buf));
+        self.callbacks.send_buffer(&buf);
 
         Ok(self
             .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
@@ -282,21 +282,10 @@ impl<'a> VAppEngine<'a> {
     ) -> Result<(StatusWord, Vec<u8>), &'static str> {
         ReceiveBufferMessage::deserialize(command)?;
 
-        // Prompt the user to input a data buffer in hex; send it to the V-App
-        let mut buffer = String::new();
-        let bytes = loop {
-            print!("Enter a data buffer in hexadecimal: ");
-            stdout().flush().unwrap();
-            buffer.clear();
-            stdin().read_line(&mut buffer).unwrap();
-            buffer = buffer.trim().to_string();
-
-            if let Ok(bytes) = hex::decode(&buffer) {
-                break bytes;
-            } else {
-                println!("Invalid hexadecimal input. Please try again.");
-            }
-        };
+        let bytes = self
+            .callbacks
+            .receive_buffer()
+            .map_err(|_| "receive buffer callback failed")?;
 
         let mut remaining_len = bytes.len() as u32;
         let mut offset: usize = 0;
@@ -443,6 +432,16 @@ pub struct VanadiumClient<T: Transport> {
     transport: T,
 }
 
+pub enum ReceiveBufferError {
+    ReceiveFailed, // TODO: do we need to distinguish between more errors?
+}
+
+pub trait Callbacks {
+    fn receive_buffer(&self) -> Result<Vec<u8>, ReceiveBufferError>;
+    fn send_buffer(&self, buffer: &[u8]);
+    fn send_panic(&self, msg: &[u8]);
+}
+
 impl<T: Transport> VanadiumClient<T> {
     pub fn new(transport: T) -> Self {
         Self { transport }
@@ -479,11 +478,12 @@ impl<T: Transport> VanadiumClient<T> {
         }
     }
 
-    pub async fn run_vapp(
+    pub async fn run_vapp<C: Callbacks>(
         &self,
         manifest: &Manifest,
         app_hmac: &[u8; 32],
         elf: &ElfFile,
+        callbacks: &C,
     ) -> Result<Vec<u8>, &'static str> {
         // concatenate the serialized manifest and the app_hmac
         let mut data =
@@ -503,6 +503,7 @@ impl<T: Transport> VanadiumClient<T> {
             code_seg,
             data_seg,
             stack_seg,
+            callbacks,
         };
 
         // initial APDU to start the V-App
