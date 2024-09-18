@@ -1,7 +1,12 @@
 use std::cmp::min;
+use std::io::{stdin, stdout, Write};
 
 use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulator};
-use common::client_commands::{ClientCommandCode, SectionKind};
+use common::client_commands::{
+    ClientCommandCode, CommitPageContentMessage, CommitPageMessage, GetPageMessage, Message,
+    ReceiveBufferMessage, ReceiveBufferResponse, SectionKind, SendBufferMessage,
+    SendPanicBufferMessage,
+};
 use common::constants::{page_start, PAGE_SIZE};
 use common::manifest::Manifest;
 use sha2::{Digest, Sha256};
@@ -9,6 +14,16 @@ use sha2::{Digest, Sha256};
 use crate::apdu::{APDUCommand, StatusWord};
 use crate::elf::ElfFile;
 use crate::Transport;
+
+fn apdu_continue(data: Vec<u8>) -> APDUCommand {
+    APDUCommand {
+        cla: 0xE0,
+        ins: 0xff,
+        p1: 0,
+        p2: 0,
+        data,
+    }
+}
 
 pub struct Sha256Hasher {
     hasher: Sha256,
@@ -104,6 +119,326 @@ impl MemorySegment {
     }
 }
 
+struct VAppEngine<'a> {
+    manifest: &'a Manifest,
+    code_seg: MemorySegment,
+    data_seg: MemorySegment,
+    stack_seg: MemorySegment,
+}
+
+impl<'a> VAppEngine<'a> {
+    // Sends and APDU and repeatedly processes the response if it's a GetPage or CommitPage client command.
+    // Returns as soon as a different response is received.
+    async fn exchange_and_process_page_requests<T: Transport>(
+        &mut self,
+        transport: &T,
+        apdu: &APDUCommand,
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        let (mut status, mut result) = transport
+            .exchange(apdu)
+            .await
+            .map_err(|_| "exchange failed")?;
+
+        loop {
+            if status != StatusWord::InterruptedExecution || result.len() == 0 {
+                return Ok((status, result));
+            }
+            let client_command_code: ClientCommandCode = result[0].try_into()?;
+            (status, result) = match client_command_code {
+                ClientCommandCode::GetPage => self.process_get_page(transport, &result).await?,
+                ClientCommandCode::CommitPage => {
+                    self.process_commit_page(transport, &result).await?
+                }
+                _ => return Ok((status, result)),
+            }
+        }
+    }
+
+    async fn process_get_page<T: Transport>(
+        &mut self,
+        transport: &T,
+        command: &[u8],
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        let GetPageMessage {
+            command_code: _,
+            section_kind,
+            page_index,
+        } = GetPageMessage::deserialize(command)?;
+
+        let segment = match section_kind {
+            SectionKind::Code => &self.code_seg,
+            SectionKind::Data => &self.data_seg,
+            SectionKind::Stack => &self.stack_seg,
+        };
+
+        // TODO: for now we're ignoring proofs
+        let (mut data, _) = segment.get_page(page_index)?;
+        let p1 = data.pop().unwrap();
+
+        // return the content of the page
+
+        Ok(transport
+            .exchange(&APDUCommand {
+                cla: 0xE0,
+                ins: 0xff,
+                p1,
+                p2: 0,
+                data,
+            })
+            .await
+            .map_err(|_| "exchange failed")?)
+    }
+
+    async fn process_commit_page<T: Transport>(
+        &mut self,
+        transport: &T,
+        command: &[u8],
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        let msg = CommitPageMessage::deserialize(command)?;
+
+        let segment = match msg.section_kind {
+            SectionKind::Code => {
+                return Err("The code segment is immutable");
+            }
+            SectionKind::Data => &mut self.data_seg,
+            SectionKind::Stack => &mut self.stack_seg,
+        };
+
+        // get the next message, which contains the content of the page
+        let (tmp_status, tmp_result) = transport
+            .exchange(&apdu_continue(vec![]))
+            .await
+            .map_err(|_| "exchange failed")?;
+
+        if tmp_status != StatusWord::InterruptedExecution {
+            return Err("Expected InterruptedExecution status word");
+        }
+
+        let CommitPageContentMessage {
+            command_code: _,
+            data,
+        } = CommitPageContentMessage::deserialize(&tmp_result)?;
+
+        let update_proof = segment.store_page(msg.page_index, &data)?;
+
+        // TODO: for now we ignore the update proof
+
+        Ok(transport
+            .exchange(&apdu_continue(vec![]))
+            .await
+            .map_err(|_| "exchange failed")?)
+    }
+
+    // receive a buffer sent by the V-App via xsend; show it in hex via stdout
+    async fn process_send_buffer<T: Transport>(
+        &mut self,
+        transport: &T,
+        command: &[u8],
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        let SendBufferMessage {
+            command_code: _,
+            total_remaining_size: mut remaining_len,
+            data: mut buf,
+        } = SendBufferMessage::deserialize(command)?;
+
+        if (buf.len() as u32) > remaining_len {
+            return Err("Received data length exceeds expected remaining length");
+        }
+
+        remaining_len -= buf.len() as u32;
+
+        while remaining_len > 0 {
+            let (status, result) = self
+                .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
+                .await
+                .map_err(|_| "exchange failed")?;
+
+            if status != StatusWord::InterruptedExecution || result.len() == 0 {
+                return Err("Unexpected response");
+            }
+            let msg = SendBufferMessage::deserialize(&result)?;
+
+            if msg.total_remaining_size != remaining_len {
+                return Err("Received total_remaining_size does not match expected");
+            }
+
+            buf.extend_from_slice(&msg.data);
+            remaining_len -= msg.data.len() as u32;
+        }
+
+        println!("Received buffer: {}", hex::encode(&buf));
+
+        Ok(self
+            .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
+            .await
+            .map_err(|_| "exchange failed")?)
+    }
+
+    // the V-App is expecting a buffer via xrecv; get it in hex from standard input, and send it to the V-App
+    async fn process_receive_buffer<T: Transport>(
+        &mut self,
+        transport: &T,
+        command: &[u8],
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        ReceiveBufferMessage::deserialize(command)?;
+
+        // Prompt the user to input a data buffer in hex; send it to the V-App
+        let mut buffer = String::new();
+        let bytes = loop {
+            print!("Enter a data buffer in hexadecimal: ");
+            stdout().flush().unwrap();
+            buffer.clear();
+            stdin().read_line(&mut buffer).unwrap();
+            buffer = buffer.trim().to_string();
+
+            if let Ok(bytes) = hex::decode(&buffer) {
+                break bytes;
+            } else {
+                println!("Invalid hexadecimal input. Please try again.");
+            }
+        };
+
+        let mut remaining_len = bytes.len() as u32;
+        let mut offset: usize = 0;
+
+        loop {
+            // TODO: wrong if the buffer is long
+            let chunk_len = min(remaining_len, 255 - 4);
+            let data = ReceiveBufferResponse::new(
+                remaining_len,
+                bytes[offset..offset + chunk_len as usize].to_vec(),
+            )
+            .serialize();
+
+            let (status, result) = self
+                .exchange_and_process_page_requests(transport, &apdu_continue(data))
+                .await
+                .map_err(|_| "exchange failed")?;
+
+            remaining_len -= chunk_len;
+            offset += chunk_len as usize;
+
+            if remaining_len == 0 {
+                return Ok((status, result));
+            } else {
+                // the message is not over, so we expect an InterruptedExecution status word
+                // and another ReceiveBufferMessage to receive the rest.
+                if status != StatusWord::InterruptedExecution || result.len() == 0 {
+                    return Err("Unexpected response");
+                }
+                ReceiveBufferMessage::deserialize(&result)?;
+            }
+        }
+        // return Ok((status, result));
+    }
+
+    // receive a buffer sent by the V-App during a panic; show it to stdout
+    // TODO: almost identical to process_send_buffer; it might be nice to refactor
+    async fn process_send_panic_buffer<T: Transport>(
+        &mut self,
+        transport: &T,
+        command: &[u8],
+    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+        let SendPanicBufferMessage {
+            command_code: _,
+            total_remaining_size: mut remaining_len,
+            data: mut buf,
+        } = SendPanicBufferMessage::deserialize(command)?;
+
+        if (buf.len() as u32) > remaining_len {
+            return Err("Received data length exceeds expected remaining length");
+        }
+
+        remaining_len -= buf.len() as u32;
+
+        while remaining_len > 0 {
+            let (status, result) = self
+                .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
+                .await
+                .map_err(|_| "exchange failed")?;
+
+            if status != StatusWord::InterruptedExecution || result.len() == 0 {
+                return Err("Unexpected response");
+            }
+            let msg = SendPanicBufferMessage::deserialize(&result)?;
+
+            if msg.total_remaining_size != remaining_len {
+                return Err("Received total_remaining_size does not match expected");
+            }
+
+            buf.extend_from_slice(&msg.data);
+            remaining_len -= msg.data.len() as u32;
+        }
+
+        println!(
+            "Received panic message:\n{}",
+            core::str::from_utf8(&buf).unwrap()
+        );
+
+        Ok(self
+            .exchange_and_process_page_requests(transport, &apdu_continue(vec![]))
+            .await
+            .map_err(|_| "exchange failed")?)
+    }
+
+    async fn busy_loop<T: Transport>(
+        &mut self,
+        transport: &T,
+        first_sw: StatusWord,
+        first_result: Vec<u8>,
+    ) -> Result<Vec<u8>, &'static str> {
+        // create the pages in the code segment. Each page is aligned to PAGE_SIZE (the first page is zero padded if the initial address is not divisible by
+        // PAGE_SIZE, and the last page is zero_padded if it's smaller than PAGE_SIZE).\
+
+        let mut status = first_sw;
+        let mut result = first_result;
+
+        loop {
+            if status == StatusWord::OK {
+                return Ok(result);
+            }
+
+            if status == StatusWord::VMRuntimeError {
+                return Err("VM runtime error");
+            }
+
+            if status == StatusWord::VAppPanic {
+                return Err("V-App panicked");
+            }
+
+            if status != StatusWord::InterruptedExecution {
+                return Err("Unexpected status word");
+            }
+
+            if result.len() == 0 {
+                return Err("empty command");
+            }
+
+            let client_command_code: ClientCommandCode = result[0].try_into()?;
+
+            (status, result) = match client_command_code {
+                ClientCommandCode::GetPage => self.process_get_page(transport, &result).await?,
+                ClientCommandCode::CommitPage => {
+                    self.process_commit_page(transport, &result).await?
+                }
+                ClientCommandCode::CommitPageContent => {
+                    // not a top-level command, part of CommitPage handling
+                    return Err("Unexpected CommitPageContent client command");
+                }
+                ClientCommandCode::SendBuffer => {
+                    self.process_send_buffer(transport, &result).await?
+                }
+                ClientCommandCode::ReceiveBuffer => {
+                    self.process_receive_buffer(transport, &result).await?
+                }
+                ClientCommandCode::SendPanicBuffer => {
+                    self.process_send_panic_buffer(transport, &result).await?
+                }
+            }
+        }
+    }
+}
+
 pub struct VanadiumClient<T: Transport> {
     transport: T,
 }
@@ -149,13 +484,29 @@ impl<T: Transport> VanadiumClient<T> {
         manifest: &Manifest,
         app_hmac: &[u8; 32],
         elf: &ElfFile,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Vec<u8>, &'static str> {
         // concatenate the serialized manifest and the app_hmac
         let mut data =
             postcard::to_allocvec(manifest).map_err(|_| "manifest serialization failed")?;
         data.extend_from_slice(app_hmac);
 
-        let mut command = APDUCommand {
+        // Create the memory segments for the code, data, and stack sections
+        let code_seg = MemorySegment::new(elf.code_segment.start, &elf.code_segment.data)?;
+        let data_seg = MemorySegment::new(elf.data_segment.start, &elf.data_segment.data)?;
+        let stack_seg = MemorySegment::new(
+            manifest.stack_start,
+            &vec![0; (manifest.stack_end - manifest.stack_start) as usize],
+        )?;
+
+        let mut vapp_engine = VAppEngine {
+            manifest,
+            code_seg,
+            data_seg,
+            stack_seg,
+        };
+
+        // initial APDU to start the V-App
+        let command = APDUCommand {
             cla: 0xE0,
             ins: 3,
             p1: 0,
@@ -163,123 +514,16 @@ impl<T: Transport> VanadiumClient<T> {
             data,
         };
 
-        // Create the memory segments for the code, data, and stack sections
-        let code_seg = MemorySegment::new(elf.code_segment.start, &elf.code_segment.data)?;
-        let mut data_seg = MemorySegment::new(elf.data_segment.start, &elf.data_segment.data)?;
-        let mut stack_seg = MemorySegment::new(
-            manifest.stack_start,
-            &vec![0; (manifest.stack_end - manifest.stack_start) as usize],
-        )?;
+        let (status, result) = self
+            .transport
+            .exchange(&command)
+            .await
+            .map_err(|_| "exchange failed")?;
 
-        // create the pages in the code segment. Each page is aligned to PAGE_SIZE (the first page is zero padded if the initial address is not divisible by
-        // PAGE_SIZE, and the last page is zero_padded if it's smaller than PAGE_SIZE).\
+        let result = vapp_engine
+            .busy_loop(&self.transport, status, result)
+            .await?;
 
-        loop {
-            let (status, result) = self
-                .transport
-                .exchange(&command)
-                .await
-                .map_err(|_| "exchange failed")?;
-
-            match status {
-                StatusWord::OK => {
-                    // fail if the response is not exactly 32 bytes; otherwise return it as a [u8; 32]
-                    if result.len() != 32 {
-                        return Err("Invalid response length");
-                    }
-
-                    return Ok(());
-                }
-                StatusWord::InterruptedExecution => {
-                    let client_command: ClientCommandCode = result[0].try_into()?;
-                    match client_command {
-                        ClientCommandCode::GetPage => {
-                            let section_kind: SectionKind = result[1].try_into()?;
-
-                            let page_index =
-                                u32::from_be_bytes([result[2], result[3], result[4], result[5]]);
-
-                            let segment = match section_kind {
-                                SectionKind::Code => &code_seg,
-                                SectionKind::Data => &data_seg,
-                                SectionKind::Stack => &stack_seg,
-                            };
-
-                            // TODO: for now we're ignoring proofs
-                            let (mut data, _) = segment.get_page(page_index)?;
-                            let p1 = data.pop().unwrap();
-
-                            // return the content of the page
-                            command = APDUCommand {
-                                cla: 0xE0,
-                                ins: 0xff, // continue execution
-                                p1,        // the last byte of the page
-                                p2: 0,
-                                data,
-                            };
-                            continue;
-                        }
-                        ClientCommandCode::CommitPage => {
-                            let section_kind: SectionKind = result[1].try_into()?;
-                            let page_index =
-                                u32::from_be_bytes([result[2], result[3], result[4], result[5]]);
-
-                            let segment = match section_kind {
-                                SectionKind::Code => {
-                                    return Err("The code segment is immutable");
-                                }
-                                SectionKind::Data => &mut data_seg,
-                                SectionKind::Stack => &mut stack_seg,
-                            };
-
-                            command = APDUCommand {
-                                cla: 0xE0,
-                                ins: 0xff,
-                                p1: 0,
-                                p2: 0,
-                                data: vec![],
-                            };
-
-                            println!("Committing page {}. Requesting content.", page_index);
-
-                            // get the next message, which contains the content of the page
-                            let (status, result) = self
-                                .transport
-                                .exchange(&command)
-                                .await
-                                .map_err(|_| "exchange failed")?;
-
-                            if status != StatusWord::InterruptedExecution {
-                                return Err("Expected InterruptedExecution status word");
-                            }
-                            if result[0] != ClientCommandCode::CommitPageContent as u8 {
-                                return Err("Expected CommitPageContent client command");
-                            }
-                            if result.len() != 1 + PAGE_SIZE {
-                                return Err("Invalid page content length");
-                            }
-
-                            let update_proof = segment.store_page(page_index, &result[1..])?;
-
-                            // TODO: for now we ignore the update proof
-
-                            println!("Updated; should send the proof, but we send an empty message instead");
-
-                            command = APDUCommand {
-                                cla: 0xE0,
-                                ins: 0xff,
-                                p1: 0,
-                                p2: 0,
-                                data: vec![],
-                            };
-                        }
-                        ClientCommandCode::CommitPageContent => {
-                            return Err("Unexpected CommitPageContent client command");
-                        }
-                    }
-                }
-                _ => return Err("Failed to run vapp"),
-            }
-        }
+        Ok(result)
     }
 }
