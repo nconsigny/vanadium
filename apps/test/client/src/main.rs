@@ -9,6 +9,10 @@ use sdk::{
     vanadium_client::{Callbacks, ReceiveBufferError, VanadiumClient},
 };
 
+mod commands;
+
+use commands::Command;
+
 use std::io::{stdin, Write};
 use std::sync::Arc;
 use std::{io::stdout, path::Path};
@@ -21,6 +25,71 @@ struct Args {
     /// Use the HID interface for a real device, instead of Speculos
     #[arg(long)]
     hid: bool,
+}
+
+// TODO: maybe this can be made generic enough to move to the client-sdk
+struct TestClientRunner<T: Transport> {
+    client: VanadiumClient<T>,
+    elf_file: ElfFile,
+    manifest: Manifest,
+    app_hmac: Option<[u8; 32]>,
+}
+
+impl<T: Transport> TestClientRunner<T> {
+    pub fn new(transport: T, elf_path: &str) -> Result<Self, std::io::Error> {
+        let elf_file = ElfFile::new(Path::new(&elf_path))?;
+
+        let manifest = Manifest::new(
+            0,
+            "Test",
+            "0.1.0",
+            [0u8; 32], // TODO
+            elf_file.entrypoint,
+            65536, // TODO
+            elf_file.code_segment.start,
+            elf_file.code_segment.end,
+            0xd47a2000 - 65536, // TODO
+            0xd47a2000,         // TODO
+            elf_file.data_segment.start,
+            elf_file.data_segment.end,
+            [0u8; 32], // TODO
+            0,         // TODO
+        )
+        .unwrap();
+
+        Ok(Self {
+            client: VanadiumClient::new(transport),
+            elf_file,
+            manifest,
+            app_hmac: None,
+        })
+    }
+
+    pub async fn register_vapp(&mut self) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+        let app_hmac = self.client.register_vapp(&self.manifest).await?;
+        self.app_hmac = Some(app_hmac);
+
+        Ok(app_hmac)
+    }
+
+    pub async fn run_vapp(
+        &mut self,
+        callbacks: TestAppCallbacks,
+    ) -> Result<i32, Box<dyn std::error::Error>> {
+        let app_hmac = self.app_hmac.ok_or("V-App not registered")?;
+
+        let result = self
+            .client
+            .run_vapp(&self.manifest, &app_hmac, &self.elf_file, &callbacks)
+            .await?;
+        if result.len() != 4 {
+            panic!("The V-App exited, but did not return correctly return a status");
+        }
+        let status = i32::from_be_bytes([result[0], result[1], result[2], result[3]]);
+        println!("App exited with status: {}", status);
+
+        Ok(status)
+    }
 }
 
 struct TestAppCallbacks;
@@ -64,11 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let default_elf_path = "../app/target/riscv32i-unknown-none-elf/release/vnd-test";
     let elf_path_str = args.elf.unwrap_or(default_elf_path.to_string());
-    let elf_path = Path::new(&elf_path_str);
-    let elf_file = ElfFile::new(elf_path)?;
-
-    // println!("Entrypoint: {:?}", elf_file.entrypoint);
-    // println!("{:?}", elf_file);
 
     let transport_raw: Arc<dyn Transport<Error = Box<dyn std::error::Error>> + Send + Sync> =
         if args.hid {
@@ -87,38 +151,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
     let transport = TransportWrapper::new(transport_raw);
 
-    let manifest = Manifest::new(
-        0,
-        "Test",
-        "0.1.0",
-        [0u8; 32], // TODO
-        elf_file.entrypoint,
-        65536, // TODO
-        elf_file.code_segment.start,
-        elf_file.code_segment.end,
-        0xd47a2000 - 65536, // TODO
-        0xd47a2000,         // TODO
-        elf_file.data_segment.start,
-        elf_file.data_segment.end,
-        [0u8; 32], // TODO
-        0,         // TODO
-    )
-    .unwrap();
-
     let callbacks = TestAppCallbacks;
 
-    let client = VanadiumClient::new(transport);
-    let app_hmac = client.register_vapp(&manifest).await?;
+    let mut test_runner = TestClientRunner::new(transport, &elf_path_str)?;
 
-    println!("HMAC: {:?}", app_hmac);
+    test_runner.register_vapp().await?;
 
-    let result = client
-        .run_vapp(&manifest, &app_hmac, &elf_file, &callbacks)
-        .await?;
-    if result.len() != 4 {
-        return Err("The V-App exited, but did not return correctly return a status".into());
-    }
-    let status = i32::from_be_bytes([result[0], result[1], result[2], result[3]]);
+    let status = test_runner.run_vapp(callbacks).await?;
+
     println!("App exited with status: {}", status);
 
     Ok(())

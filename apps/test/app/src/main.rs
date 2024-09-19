@@ -6,6 +6,12 @@ use sdk::fatal;
 
 extern crate alloc;
 
+mod commands;
+mod handlers;
+
+use commands::Command;
+use handlers::*;
+
 use alloc::vec;
 
 // Temporary to force the creation of a data section
@@ -61,28 +67,34 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
         if msg.len() == 0 {
             sdk::exit(0);
         }
-        if msg.len() == 1 {
-            panic!("Oh no, how can I reverse a single byte?");
-        }
 
-        // reverse the message
-        let mut reversed = msg.clone();
-        reversed.reverse();
-        sdk::xsend(&reversed);
+        let Ok(command) = Command::try_from(msg[0]) else {
+            panic!("Unknown command");
+        };
 
-        // let result = handle_req(&buffer, &mut state);
+        let response = match command {
+            Command::Reverse => {
+                let mut data = msg[1..].to_vec();
+                data.reverse();
+                data
+            }
+            Command::Sum => {
+                // sum all the numbers from 0 to n
+                if msg.len() != 5 {
+                    panic!("Invalid input");
+                }
+                let n = u32::from_be_bytes([msg[1], msg[2], msg[3], msg[4]]);
+                let mut result: u64 = 0;
+                for i in 0..=n {
+                    result += i as u64;
+                }
+                result.to_be_bytes().to_vec()
+            }
+            Command::Base58Encode => handle_base58_encode(&msg[1..]),
+            Command::Sha256 => handle_sha256(&msg[1..]),
+            Command::CountPrimes => handle_count_primes(&msg[1..]),
+        };
 
-        // sdk::ux::app_loading_stop();
-        // sdk::ux::ux_idle();
-
-        // comm::send_message(&result).unwrap(); // TODO: what to do on error?
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_placeholder() {
-        assert_eq!(1 + 1, 2);
+        sdk::xsend(&response);
     }
 }
