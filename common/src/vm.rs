@@ -497,7 +497,7 @@ impl<M: PagedMemory> Cpu<M> {
             },
             Op::Bgeu { rs1, rs2, imm } => {
                 if self.regs[rs1 as usize] >= self.regs[rs2 as usize] {
-                    self.pc = self.pc.wrapping_add(imm as u32);
+                    pc_inc = imm as u32;
                 }
             },
             Op::Jal { rd, imm } => {
