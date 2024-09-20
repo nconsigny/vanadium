@@ -73,3 +73,13 @@ impl APDUCommand {
         vec
     }
 }
+
+pub fn apdu_continue(data: Vec<u8>) -> APDUCommand {
+    APDUCommand {
+        cla: 0xE0,
+        ins: 0xff,
+        p1: 0,
+        p2: 0,
+        data,
+    }
+}
