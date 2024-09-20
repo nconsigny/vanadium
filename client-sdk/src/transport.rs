@@ -18,7 +18,7 @@ use crate::apdu::{APDUCommand, StatusWord};
 
 /// Communication layer between the bitcoin client and the Ledger device.
 #[async_trait]
-pub trait Transport {
+pub trait Transport: Send + Sync {
     type Error: Debug;
     async fn exchange(&self, command: &APDUCommand) -> Result<(StatusWord, Vec<u8>), Self::Error>;
 }

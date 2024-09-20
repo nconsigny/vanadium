@@ -1,11 +1,11 @@
-use serde::{self, Serialize, Deserialize};
+use serde::{self, Deserialize, Serialize};
 
 const APP_NAME_LEN: usize = 32; // Define a suitable length
 const APP_VERSION_LEN: usize = 32; // Define a suitable length
 
 // TODO: copied from vanadium-legacy without much thought; fields are subject to change
 /// The manifest contains all the required info that the application needs in order to execute a V-App.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Manifest {
     pub manifest_version: u32,
     pub app_name: [u8; APP_NAME_LEN],
@@ -50,13 +50,13 @@ impl Manifest {
 
         let mut app_name_arr = [0u8; APP_NAME_LEN];
         let mut app_version_arr = [0u8; APP_VERSION_LEN];
-        
+
         let name_bytes = app_name.as_bytes();
         let version_bytes = app_version.as_bytes();
-        
+
         app_name_arr[..name_bytes.len()].copy_from_slice(name_bytes);
         app_version_arr[..version_bytes.len()].copy_from_slice(version_bytes);
-        
+
         Ok(Self {
             manifest_version,
             app_name: app_name_arr,
