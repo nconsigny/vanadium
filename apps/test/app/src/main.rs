@@ -78,7 +78,7 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                 data.reverse();
                 data
             }
-            Command::Sum => {
+            Command::AddNumbers => {
                 // sum all the numbers from 0 to n
                 if msg.len() != 5 {
                     panic!("Invalid input");
