@@ -29,7 +29,6 @@ Launch Vanadium on speculos. Then execute:
 
 From the `client` folder
 
-
    ```sh
    cargo run
    ```
@@ -39,6 +38,13 @@ If you want to run the V-app on a real device, execute instead:
    ```sh
    cargo run -- --hid
    ```
+
+If you want to run the V-app natively, use:
+
+   ```sh
+   cargo run -- --native
+   ```
+
 
 ### Client commands
 

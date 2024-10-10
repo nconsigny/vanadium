@@ -1,5 +1,9 @@
+use async_trait::async_trait;
 use std::cmp::min;
+use std::path::Path;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
@@ -121,7 +125,7 @@ enum ClientMessage {
     ReceiveBuffer(Vec<u8>),
 }
 
-struct VAppEngine<E: std::fmt::Debug + 'static> {
+struct VAppEngine<E: std::fmt::Debug + Send + Sync + 'static> {
     manifest: Manifest,
     code_seg: MemorySegment,
     data_seg: MemorySegment,
@@ -131,7 +135,7 @@ struct VAppEngine<E: std::fmt::Debug + 'static> {
     client_to_engine_receiver: mpsc::Receiver<ClientMessage>,
 }
 
-impl<E: std::fmt::Debug + 'static> VAppEngine<E> {
+impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
     pub async fn run(mut self) -> Result<(), &'static str> {
         let mut data =
             postcard::to_allocvec(&self.manifest).map_err(|_| "manifest serialization failed")?;
@@ -462,14 +466,14 @@ impl<E: std::fmt::Debug + 'static> VAppEngine<E> {
     }
 }
 
-pub struct VanadiumClient {
+struct GenericVanadiumClient {
     client_to_engine_sender: Option<mpsc::Sender<ClientMessage>>,
     engine_to_client_receiver: Option<Mutex<mpsc::Receiver<VAppMessage>>>,
     vapp_engine_handle: Option<JoinHandle<Result<(), &'static str>>>,
 }
 
 #[derive(Debug)]
-pub enum VanadiumClientError {
+enum VanadiumClientError {
     VAppPanicked(String),
     VAppExited(i32),
     GenericError(String),
@@ -481,7 +485,23 @@ impl From<&str> for VanadiumClientError {
     }
 }
 
-impl VanadiumClient {
+impl std::fmt::Display for VanadiumClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VanadiumClientError::VAppPanicked(msg) => write!(f, "VApp panicked: {}", msg),
+            VanadiumClientError::VAppExited(code) => write!(f, "VApp exited with code: {}", code),
+            VanadiumClientError::GenericError(msg) => write!(f, "Generic error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for VanadiumClientError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+impl GenericVanadiumClient {
     pub fn new() -> Self {
         Self {
             client_to_engine_sender: None,
@@ -490,9 +510,9 @@ impl VanadiumClient {
         }
     }
 
-    pub async fn register_vapp<T: Transport>(
+    pub async fn register_vapp<E: std::fmt::Debug + Send + Sync + 'static>(
         &self,
-        transport: &T,
+        transport: Arc<dyn Transport<Error = E>>,
         manifest: &Manifest,
     ) -> Result<[u8; 32], &'static str> {
         let command = APDUCommand {
@@ -521,7 +541,7 @@ impl VanadiumClient {
         }
     }
 
-    pub fn run_vapp<E: std::fmt::Debug + 'static>(
+    pub fn run_vapp<E: std::fmt::Debug + Send + Sync + 'static>(
         &mut self,
         transport: Arc<dyn Transport<Error = E>>,
         manifest: &Manifest,
@@ -591,5 +611,211 @@ impl VanadiumClient {
             }
             None => Err("VAppEngine not running".into()),
         }
+    }
+}
+
+/// Represents errors that can occur during the execution of a V-App.
+#[derive(Debug)]
+pub enum VAppExecutionError {
+    /// Indicates that the V-App has exited with the specific status code.
+    /// Useful to handle a graceful exit of the V-App.
+    AppExited(i32),
+    /// Any other error.
+    Other(Box<dyn std::error::Error>),
+}
+
+impl std::fmt::Display for VAppExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            VAppExecutionError::AppExited(code) => write!(f, "V-App exited with status {}", code),
+            VAppExecutionError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for VAppExecutionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            VAppExecutionError::Other(e) => Some(&**e),
+            _ => None,
+        }
+    }
+}
+
+/// A trait representing an application that can send messages asynchronously.
+///
+/// This trait defines the behavior for sending messages to an application and
+/// receiving responses.
+#[async_trait]
+pub trait VAppClient {
+    /// Sends a message to the app and returns the response asynchronously.
+    ///
+    /// # Parameters
+    ///
+    /// - `msg`: A `Vec<u8>` containing the message to be sent.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the response message as a `Vec<u8>` if the operation is successful,
+    /// or a `VAppExecutionError` if an error occurs.
+
+    async fn send_message(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, VAppExecutionError>;
+}
+
+/// Implementation of a VAppClient using the Vanadium VM.
+pub struct VanadiumAppClient {
+    client: GenericVanadiumClient,
+}
+
+impl VanadiumAppClient {
+    pub async fn new<E: std::fmt::Debug + Send + Sync + 'static>(
+        elf_path: &str,
+        transport: Arc<dyn Transport<Error = E>>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        // Create ELF file and manifest
+        let elf_file = ElfFile::new(Path::new(&elf_path))?;
+        let manifest = Manifest::new(
+            0,
+            "Test",
+            "0.1.0",
+            [0u8; 32],
+            elf_file.entrypoint,
+            65536,
+            elf_file.code_segment.start,
+            elf_file.code_segment.end,
+            0xd47a2000 - 65536,
+            0xd47a2000,
+            elf_file.data_segment.start,
+            elf_file.data_segment.end,
+            [0u8; 32],
+            0,
+        )
+        .unwrap();
+
+        let mut client = GenericVanadiumClient::new();
+
+        // Register and run the V-App
+        let app_hmac = client.register_vapp(transport.clone(), &manifest).await?;
+        client.run_vapp(transport.clone(), &manifest, &app_hmac, &elf_file)?;
+
+        Ok(Self { client })
+    }
+}
+
+#[async_trait]
+impl VAppClient for VanadiumAppClient {
+    async fn send_message(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, VAppExecutionError> {
+        match self.client.send_message(msg).await {
+            Ok(response) => Ok(response),
+            Err(VanadiumClientError::VAppExited(status)) => {
+                Err(VAppExecutionError::AppExited(status))
+            }
+            Err(e) => Err(VAppExecutionError::Other(Box::new(e))),
+        }
+    }
+}
+
+/// Implementation of a VAppClient for a native app running on the host, and communicating
+/// via standard input and output.
+pub struct NativeAppClient {
+    child: tokio::process::Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+}
+
+impl NativeAppClient {
+    pub async fn new(bin_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let mut child = tokio::process::Command::new(bin_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()?;
+
+        let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
+        let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
+        let stdout = BufReader::new(stdout);
+
+        Ok(Self {
+            child,
+            stdin,
+            stdout,
+        })
+    }
+}
+
+#[async_trait]
+impl VAppClient for NativeAppClient {
+    async fn send_message(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, VAppExecutionError> {
+        // Check if the child process has exited
+        if let Some(status) = self
+            .child
+            .try_wait()
+            .map_err(|e| VAppExecutionError::Other(Box::new(e)))?
+        {
+            return Err(VAppExecutionError::AppExited(status.code().unwrap_or(-1)));
+        }
+
+        // Encode message as hex and append a newline
+        let hex_msg = hex::encode(&msg);
+        let hex_msg_newline = format!("{}\n", hex_msg);
+
+        // Write hex-encoded message to stdin
+        self.stdin
+            .write_all(hex_msg_newline.as_bytes())
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::BrokenPipe {
+                    VAppExecutionError::AppExited(-1)
+                } else {
+                    VAppExecutionError::Other(Box::new(e))
+                }
+            })?;
+
+        // Flush the stdin to ensure the message is sent
+        self.stdin.flush().await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                VAppExecutionError::AppExited(-1)
+            } else {
+                VAppExecutionError::Other(Box::new(e))
+            }
+        })?;
+
+        // Read response from stdout until a newline
+        let mut response_line = String::new();
+        let bytes_read = self
+            .stdout
+            .read_line(&mut response_line)
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                    VAppExecutionError::AppExited(-1)
+                } else {
+                    VAppExecutionError::Other(Box::new(e))
+                }
+            })?;
+
+        if bytes_read == 0 {
+            println!("EOF reached");
+            // read the exit code
+            let status = self
+                .child
+                .wait()
+                .await
+                .map_err(|e| VAppExecutionError::Other(Box::new(e)))?
+                .code()
+                .unwrap_or(-1);
+
+            return Err(VAppExecutionError::AppExited(status));
+        }
+
+        // Remove any trailing newline or carriage return characters
+        response_line = response_line
+            .trim_end_matches(&['\r', '\n'][..])
+            .to_string();
+
+        // Decode the hex-encoded response
+        let response =
+            hex::decode(&response_line).map_err(|e| VAppExecutionError::Other(Box::new(e)))?;
+
+        Ok(response)
     }
 }

@@ -4,6 +4,7 @@ use hidapi::HidApi;
 use ledger_transport_hid::TransportNativeHID;
 
 use sdk::transport::{Transport, TransportHID, TransportTcp, TransportWrapper};
+use sdk::vanadium_client::{NativeAppClient, VanadiumAppClient};
 
 mod commands;
 
@@ -16,11 +17,15 @@ use std::sync::Arc;
 #[command(name = "Vanadium", about = "Run a V-App on Vanadium")]
 struct Args {
     /// Path to the ELF file of the V-App (if not the default one)
-    elf: Option<String>,
+    app: Option<String>,
 
     /// Use the HID interface for a real device, instead of Speculos
-    #[arg(long)]
+    #[arg(long, group = "interface")]
     hid: bool,
+
+    /// Use the native interface
+    #[arg(long, group = "interface")]
+    native: bool,
 }
 
 enum CliCommand {
@@ -85,14 +90,23 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
-    let default_elf_path = "../app/target/riscv32i-unknown-none-elf/release/vnd-test";
-    let elf_path_str = args.elf.unwrap_or(default_elf_path.to_string());
+    let default_app_path = if args.native {
+        "../app/target/x86_64-unknown-linux-gnu/release/vnd-test"
+    } else {
+        "../app/target/riscv32i-unknown-none-elf/release/vnd-test"
+    };
 
-    let transport_raw: Arc<dyn Transport<Error = Box<dyn std::error::Error>> + Send + Sync> =
-        if args.hid {
+    let app_path_str = args.app.unwrap_or(default_app_path.to_string());
+
+    let mut test_client = if args.native {
+        TestClient::new(Box::new(NativeAppClient::new(&app_path_str).await?))
+    } else {
+        let transport_raw: Arc<
+            dyn Transport<Error = Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
+        > = if args.hid {
             Arc::new(TransportHID::new(
                 TransportNativeHID::new(
                     &HidApi::new().expect("Unable to get connect to the device"),
@@ -106,16 +120,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("Unable to get TCP transport. Is speculos running?"),
             )
         };
-    let transport = TransportWrapper::new(transport_raw.clone());
+        let transport = TransportWrapper::new(transport_raw.clone());
 
-    let mut test_client = TestClient::new(&elf_path_str)?;
-
-    println!("Registering V-App");
-    test_client.register_vapp(&transport).await?;
-
-    test_client.run_vapp(transport_raw)?;
-
-    println!("App is running");
+        TestClient::new(Box::new(
+            VanadiumAppClient::new(&app_path_str, Arc::new(transport)).await?,
+        ))
+    };
 
     loop {
         println!("Enter a command:");
