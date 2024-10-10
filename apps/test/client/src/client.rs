@@ -1,4 +1,5 @@
 use crate::commands::Command;
+use sdk::vanadium_client::VanadiumClientError;
 use sdk::{
     elf::ElfFile, manifest::Manifest, transport::Transport, vanadium_client::VanadiumClient,
 };
@@ -113,5 +114,17 @@ impl TestClient {
             return Err("Invalid response length");
         }
         Ok(u32::from_be_bytes(result_raw.try_into().unwrap()))
+    }
+
+    pub async fn exit(&mut self) -> Result<i32, &'static str> {
+        match self.client.send_message(Vec::new()).await {
+            Ok(_) => {
+                return Err("Exit message shouldn't return!");
+            }
+            Err(e) => match e {
+                VanadiumClientError::VAppExited(status) => Ok(status),
+                _ => Err("Unexpected error"),
+            },
+        }
     }
 }

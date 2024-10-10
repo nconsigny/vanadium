@@ -114,6 +114,7 @@ impl MemorySegment {
 enum VAppMessage {
     SendBuffer(Vec<u8>),
     SendPanicBuffer(String),
+    VAppExited { status: i32 },
 }
 
 enum ClientMessage {
@@ -415,7 +416,14 @@ impl<E: std::fmt::Debug + 'static> VAppEngine<E> {
 
         loop {
             if status == StatusWord::OK {
-                // TODO: how to send the status word back in response?
+                if result.len() != 4 {
+                    return Err("The V-App should return a 4-byte exit code");
+                }
+                let st = i32::from_be_bytes(result.try_into().unwrap());
+                self.engine_to_client_sender
+                    .send(VAppMessage::VAppExited { status: st })
+                    .await
+                    .map_err(|_| "Failed to send exit code")?;
                 return Ok(());
             }
 
@@ -458,6 +466,19 @@ pub struct VanadiumClient {
     client_to_engine_sender: Option<mpsc::Sender<ClientMessage>>,
     engine_to_client_receiver: Option<Mutex<mpsc::Receiver<VAppMessage>>>,
     vapp_engine_handle: Option<JoinHandle<Result<(), &'static str>>>,
+}
+
+#[derive(Debug)]
+pub enum VanadiumClientError {
+    VAppPanicked(String),
+    VAppExited(i32),
+    GenericError(String),
+}
+
+impl From<&str> for VanadiumClientError {
+    fn from(s: &str) -> Self {
+        VanadiumClientError::GenericError(s.to_string())
+    }
 }
 
 impl VanadiumClient {
@@ -544,7 +565,7 @@ impl VanadiumClient {
         Ok(())
     }
 
-    pub async fn send_message(&mut self, message: Vec<u8>) -> Result<Vec<u8>, String> {
+    pub async fn send_message(&mut self, message: Vec<u8>) -> Result<Vec<u8>, VanadiumClientError> {
         // Send the message to VAppEngine when receive_buffer is called
         self.client_to_engine_sender
             .as_ref()
@@ -559,11 +580,16 @@ impl VanadiumClient {
                 let mut receiver = engine_to_client_receiver.lock().await;
                 match receiver.recv().await {
                     Some(VAppMessage::SendBuffer(buf)) => Ok(buf),
-                    Some(VAppMessage::SendPanicBuffer(panic_msg)) => Err(panic_msg),
-                    None => Err("VAppEngine stopped".to_string()),
+                    Some(VAppMessage::SendPanicBuffer(panic_msg)) => {
+                        Err(VanadiumClientError::VAppPanicked(panic_msg))
+                    }
+                    Some(VAppMessage::VAppExited { status }) => {
+                        Err(VanadiumClientError::VAppExited(status))
+                    }
+                    None => Err("VAppEngine stopped".into()),
                 }
             }
-            None => Err("VAppEngine not running".to_string()),
+            None => Err("VAppEngine not running".into()),
         }
     }
 }

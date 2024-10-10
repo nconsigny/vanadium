@@ -126,10 +126,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .read_line(&mut line)
             .expect("Failed to read line");
 
-        if line.trim().is_empty() {
-            break;
-        }
-
         match parse_command(&line) {
             Ok(cmd) => match cmd {
                 CliCommand::Reverse(arg) => {
@@ -148,6 +144,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("{}", test_client.nprimes(n).await?);
                 }
                 CliCommand::Exit => {
+                    let status = test_client.exit().await?;
+                    if status != 0 {
+                        std::process::exit(status);
+                    }
                     break;
                 }
             },
@@ -156,8 +156,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
-    // TODO: how to cleanly close the app? It doesn't make sense to keep running if the host exits.
 
     Ok(())
 }
