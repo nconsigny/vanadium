@@ -98,7 +98,7 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
