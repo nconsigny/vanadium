@@ -34,6 +34,7 @@ enum CliCommand {
     Sha256(Vec<u8>),
     B58Enc(Vec<u8>),
     NPrimes(u32),
+    Panic(String),
     Exit,
 }
 
@@ -82,6 +83,14 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
                     _ => unreachable!(),
                 }
             }
+            "panic" => {
+                // find where the word "panic" ends and the message starts
+                let msg = line
+                    .find("panic")
+                    .map(|i| line[i + 5..].trim())
+                    .unwrap_or("");
+                Ok(CliCommand::Panic(msg.to_string()))
+            }
             _ => Err(format!("Unknown command: '{}'", command)),
         }
     } else {
@@ -90,7 +99,7 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let default_app_path = if args.native {
@@ -102,7 +111,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app_path_str = args.app.unwrap_or(default_app_path.to_string());
 
     let mut test_client = if args.native {
-        TestClient::new(Box::new(NativeAppClient::new(&app_path_str).await?))
+        TestClient::new(Box::new(
+            NativeAppClient::new(&app_path_str)
+                .await
+                .map_err(|_| "Failed to create client")?,
+        ))
     } else {
         let transport_raw: Arc<
             dyn Transport<Error = Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
@@ -123,7 +136,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let transport = TransportWrapper::new(transport_raw.clone());
 
         TestClient::new(Box::new(
-            VanadiumAppClient::new(&app_path_str, Arc::new(transport)).await?,
+            VanadiumAppClient::new(&app_path_str, Arc::new(transport))
+                .await
+                .map_err(|_| "Failed to create client")?,
         ))
     };
 
@@ -152,6 +167,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 CliCommand::NPrimes(n) => {
                     println!("{}", test_client.nprimes(n).await?);
+                }
+                CliCommand::Panic(msg) => {
+                    test_client.panic(&msg).await?;
                 }
                 CliCommand::Exit => {
                     let status = test_client.exit().await?;

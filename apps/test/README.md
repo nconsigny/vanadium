@@ -55,4 +55,5 @@ Once the client is running, these are the available commands:
 - `b58enc <hex_buffer>` - Computes the base58 encoding of the given buffer (the output is in hex as well).
 - `addnumbers <n>` - Computes the sum of the numbers between `1` and `n`.
 - `nprimes <n>` - Counts the number of primes up to `n` using the Sieve of Erathostenes.
+- `panic <panic message>` - Cause the V-App to panic. Everything written after 'panic' is the panic message.
 - An empty command will exit the V-App.

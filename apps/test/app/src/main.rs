@@ -93,6 +93,10 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
             Command::Base58Encode => handle_base58_encode(&msg[1..]),
             Command::Sha256 => handle_sha256(&msg[1..]),
             Command::CountPrimes => handle_count_primes(&msg[1..]),
+            Command::Panic => {
+                let panic_msg = core::str::from_utf8(&msg[1..]).unwrap();
+                panic!("{}", panic_msg);
+            }
         };
 
         sdk::xsend(&response);
