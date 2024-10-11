@@ -1,6 +1,8 @@
 #![feature(start)]
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
+use core::ptr::addr_of;
+
 #[cfg(target_arch = "riscv32")]
 use sdk::fatal;
 
@@ -47,7 +49,7 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
 
     // TODO: remove
     unsafe {
-        core::ptr::read_volatile(&APP_NAME);
+        core::ptr::read_volatile(addr_of!(APP_NAME));
     }
 
     // TODO: remove
@@ -64,7 +66,7 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
 
         // sdk::ux::app_loading_start("Handling request...\x00");
 
-        if msg.len() == 0 {
+        if msg.is_empty() {
             sdk::exit(0);
         }
 
