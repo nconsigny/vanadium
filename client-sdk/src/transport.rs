@@ -16,14 +16,12 @@ use tokio::{
 
 use crate::apdu::{APDUCommand, StatusWord};
 
-
 /// Communication layer between the bitcoin client and the Ledger device.
 #[async_trait]
-pub trait Transport {
-    type Error: Debug;
+pub trait Transport: Send + Sync {
+    type Error: Debug + Send + Sync;
     async fn exchange(&self, command: &APDUCommand) -> Result<(StatusWord, Vec<u8>), Self::Error>;
 }
-
 
 /// Transport with the Ledger device.
 pub struct TransportHID(TransportNativeHID);
@@ -36,7 +34,7 @@ impl TransportHID {
 
 #[async_trait]
 impl Transport for TransportHID {
-    type Error = Box<dyn Error>;
+    type Error = Box<dyn Error + Send + Sync>;
     async fn exchange(&self, cmd: &APDUCommand) -> Result<(StatusWord, Vec<u8>), Self::Error> {
         self.0
             .exchange(&ledger_apdu::APDUCommand {
@@ -73,7 +71,7 @@ impl TransportTcp {
 
 #[async_trait]
 impl Transport for TransportTcp {
-    type Error = Box<dyn Error>;
+    type Error = Box<dyn Error + Send + Sync>;
     async fn exchange(&self, command: &APDUCommand) -> Result<(StatusWord, Vec<u8>), Self::Error> {
         let mut stream = self.connection.lock().await;
         let command_bytes = command.encode();
@@ -100,17 +98,17 @@ impl Transport for TransportTcp {
 }
 
 /// Wrapper to handle both hid and tcp transport.
-pub struct TransportWrapper(Arc<dyn Transport<Error = Box<dyn Error>> + Sync + Send>);
+pub struct TransportWrapper(Arc<dyn Transport<Error = Box<dyn Error + Send + Sync>> + Sync + Send>);
 
 impl TransportWrapper {
-    pub fn new(t: Arc<dyn Transport<Error = Box<dyn Error>> + Sync + Send>) -> Self {
+    pub fn new(t: Arc<dyn Transport<Error = Box<dyn Error + Send + Sync>> + Sync + Send>) -> Self {
         Self(t)
     }
 }
 
 #[async_trait]
 impl Transport for TransportWrapper {
-    type Error = Box<dyn Error>;
+    type Error = Box<dyn Error + Send + Sync>;
     async fn exchange(&self, command: &APDUCommand) -> Result<(StatusWord, Vec<u8>), Self::Error> {
         self.0.exchange(command).await
     }
