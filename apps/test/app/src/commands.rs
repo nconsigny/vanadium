@@ -8,6 +8,7 @@ pub enum Command {
     Base58Encode,
     Sha256,
     CountPrimes,
+    Panic = 0xff,
 }
 
 impl TryFrom<u8> for Command {
@@ -20,6 +21,7 @@ impl TryFrom<u8> for Command {
             0x02 => Ok(Command::Base58Encode),
             0x03 => Ok(Command::Sha256),
             0x04 => Ok(Command::CountPrimes),
+            0xff => Ok(Command::Panic),
             _ => Err(()),
         }
     }
