@@ -59,10 +59,10 @@ fn parse_u32(s: &str) -> Result<u32, String> {
 }
 
 fn parse_command(line: &str) -> Result<CliCommand, String> {
-    let mut tokens = line.trim().split_whitespace();
+    let mut tokens = line.split_whitespace();
     if let Some(command) = tokens.next() {
         match command {
-            "reverse" | "sha256" | "b58enc" | "b58encode" => {
+            "reverse" | "sha256" | "b58enc" => {
                 let arg = tokens.next().unwrap_or("");
                 let buffer = parse_hex_buffer(arg).map_err(|e| e.to_string())?;
                 match command {
@@ -94,7 +94,7 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
             _ => Err(format!("Unknown command: '{}'", command)),
         }
     } else {
-        return Ok(CliCommand::Exit);
+        Ok(CliCommand::Exit)
     }
 }
 
