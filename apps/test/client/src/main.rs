@@ -135,11 +135,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let transport = TransportWrapper::new(transport_raw.clone());
 
-        TestClient::new(Box::new(
-            VanadiumAppClient::new(&app_path_str, Arc::new(transport))
-                .await
-                .map_err(|_| "Failed to create client")?,
-        ))
+        let (client, _) = VanadiumAppClient::new(&app_path_str, Arc::new(transport), None)
+            .await
+            .map_err(|_| "Failed to create client")?;
+
+        TestClient::new(Box::new(client))
     };
 
     loop {

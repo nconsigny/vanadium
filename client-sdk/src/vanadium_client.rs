@@ -136,12 +136,10 @@ struct VAppEngine<E: std::fmt::Debug + Send + Sync + 'static> {
 }
 
 impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
-    pub async fn run(mut self) -> Result<(), &'static str> {
+    pub async fn run(mut self, app_hmac: [u8; 32]) -> Result<(), &'static str> {
         let mut data =
             postcard::to_allocvec(&self.manifest).map_err(|_| "manifest serialization failed")?;
 
-        // TODO: need to actually get the app_hmac somehow
-        let app_hmac = [0x42u8; 32];
         data.extend_from_slice(&app_hmac);
 
         let command = APDUCommand {
@@ -575,7 +573,8 @@ impl GenericVanadiumClient {
         };
 
         // Start the VAppEngine in a task
-        let vapp_engine_handle = tokio::spawn(async move { vapp_engine.run().await });
+        let app_hmac_clone = *app_hmac;
+        let vapp_engine_handle = tokio::spawn(async move { vapp_engine.run(app_hmac_clone).await });
 
         // Store the senders and receivers
         self.client_to_engine_sender = Some(client_to_engine_sender);
@@ -671,7 +670,8 @@ impl VanadiumAppClient {
     pub async fn new<E: std::fmt::Debug + Send + Sync + 'static>(
         elf_path: &str,
         transport: Arc<dyn Transport<Error = E>>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        app_hmac: Option<[u8; 32]>,
+    ) -> Result<(Self, [u8; 32]), Box<dyn std::error::Error + Send + Sync>> {
         // Create ELF file and manifest
         let elf_file = ElfFile::new(Path::new(&elf_path))?;
         let manifest = Manifest::new(
@@ -689,16 +689,18 @@ impl VanadiumAppClient {
             elf_file.data_segment.end,
             [0u8; 32],
             0,
-        )
-        .unwrap();
+        )?;
 
         let mut client = GenericVanadiumClient::new();
 
-        // Register and run the V-App
-        let app_hmac = client.register_vapp(transport.clone(), &manifest).await?;
-        client.run_vapp(transport.clone(), &manifest, &app_hmac, &elf_file)?;
+        // Register the V-App if the hmac was not given
+        let app_hmac =
+            app_hmac.unwrap_or(client.register_vapp(transport.clone(), &manifest).await?);
 
-        Ok(Self { client })
+        // run the V-App
+        client.run_vapp(transport, &manifest, &app_hmac, &elf_file)?;
+
+        Ok((Self { client }, app_hmac))
     }
 }
 
