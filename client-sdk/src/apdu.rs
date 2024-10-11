@@ -83,3 +83,35 @@ pub fn apdu_continue(data: Vec<u8>) -> APDUCommand {
         data,
     }
 }
+
+pub fn apdu_continue_with_p1(data: Vec<u8>, p1: u8) -> APDUCommand {
+    APDUCommand {
+        cla: 0xE0,
+        ins: 0xff,
+        p1,
+        p2: 0,
+        data,
+    }
+}
+
+pub fn apdu_register_vapp(serialized_manifest: Vec<u8>) -> APDUCommand {
+    APDUCommand {
+        cla: 0xE0,
+        ins: 2,
+        p1: 0,
+        p2: 0,
+        data: serialized_manifest,
+    }
+}
+
+pub fn apdu_run_vapp(serialized_manifest: Vec<u8>, app_hmac: [u8; 32]) -> APDUCommand {
+    let mut data = serialized_manifest;
+    data.extend_from_slice(&app_hmac);
+    APDUCommand {
+        cla: 0xE0,
+        ins: 3,
+        p1: 0,
+        p2: 0,
+        data,
+    }
+}

@@ -17,7 +17,10 @@ use common::constants::{page_start, PAGE_SIZE};
 use common::manifest::Manifest;
 use sha2::{Digest, Sha256};
 
-use crate::apdu::{apdu_continue, APDUCommand, StatusWord};
+use crate::apdu::{
+    apdu_continue, apdu_continue_with_p1, apdu_register_vapp, apdu_run_vapp, APDUCommand,
+    StatusWord,
+};
 use crate::elf::ElfFile;
 use crate::transport::Transport;
 
@@ -137,22 +140,12 @@ struct VAppEngine<E: std::fmt::Debug + Send + Sync + 'static> {
 
 impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
     pub async fn run(mut self, app_hmac: [u8; 32]) -> Result<(), &'static str> {
-        let mut data =
+        let serialized_manifest =
             postcard::to_allocvec(&self.manifest).map_err(|_| "manifest serialization failed")?;
-
-        data.extend_from_slice(&app_hmac);
-
-        let command = APDUCommand {
-            cla: 0xE0,
-            ins: 3,
-            p1: 0,
-            p2: 0,
-            data,
-        };
 
         let (status, result) = self
             .transport
-            .exchange(&command)
+            .exchange(&apdu_run_vapp(serialized_manifest, app_hmac))
             .await
             .map_err(|_| "exchange failed")?;
 
@@ -206,16 +199,10 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         let (mut data, _) = segment.get_page(page_index)?;
         let p1 = data.pop().unwrap();
 
-        // return the content of the page
+        // return the content of the page (the last byte is in p1)
         Ok(self
             .transport
-            .exchange(&APDUCommand {
-                cla: 0xE0,
-                ins: 0xff,
-                p1,
-                p2: 0,
-                data,
-            })
+            .exchange(&apdu_continue_with_p1(data, p1))
             .await
             .map_err(|_| "exchange failed")?)
     }
@@ -513,16 +500,11 @@ impl GenericVanadiumClient {
         transport: Arc<dyn Transport<Error = E>>,
         manifest: &Manifest,
     ) -> Result<[u8; 32], &'static str> {
-        let command = APDUCommand {
-            cla: 0xE0,
-            ins: 2,
-            p1: 0,
-            p2: 0,
-            data: postcard::to_allocvec(manifest).map_err(|_| "manifest serialization failed")?,
-        };
+        let serialized_manifest =
+            postcard::to_allocvec(manifest).map_err(|_| "manifest serialization failed")?;
 
         let (status, result) = transport
-            .exchange(&command)
+            .exchange(&apdu_register_vapp(serialized_manifest))
             .await
             .map_err(|_| "exchange failed")?;
 
