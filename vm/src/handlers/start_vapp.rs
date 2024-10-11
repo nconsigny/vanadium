@@ -35,21 +35,21 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
         manifest.code_end - manifest.code_start,
-        OutsourcedMemory::new(comm.clone(), 5, true, SectionKind::Code),
+        OutsourcedMemory::new(comm.clone(), 12, true, SectionKind::Code),
     )
     .unwrap();
 
     let data_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.data_start,
         manifest.data_end - manifest.data_start,
-        OutsourcedMemory::new(comm.clone(), 10, false, SectionKind::Data),
+        OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Data),
     )
     .unwrap();
 
     let stack_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.stack_start,
         manifest.stack_end - manifest.stack_start,
-        OutsourcedMemory::new(comm.clone(), 10, false, SectionKind::Stack),
+        OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Stack),
     )
     .unwrap();
 
@@ -63,6 +63,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let mut ecall_handler = CommEcallHandler::new(comm.clone());
 
+    let mut instr_count = 0;
     loop {
         // TODO: handle errors
         let instr = cpu
@@ -70,21 +71,24 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
             .expect("Failed to fetch instruction");
 
         // TODO: remove debug prints
-        println!("\x1b[93m{:?}\x1b[0m", cpu);
+        // println!("\x1b[93m{:?}\x1b[0m", cpu);
 
-        println!(
-            "\x1b[32m{:08x?}: {:08x?} -> {:?}\x1b[0m",
-            cpu.pc,
-            instr,
-            common::riscv::decode::decode(instr)
-        );
+        // println!(
+        //     "\x1b[32m{:08x?}: {:08x?} -> {:?}\x1b[0m",
+        //     cpu.pc,
+        //     instr,
+        //     common::riscv::decode::decode(instr)
+        // );
 
         let result = cpu.execute(instr, Some(&mut ecall_handler));
+
+        instr_count += 1;
 
         match result {
             Ok(_) => {}
             Err(common::vm::CpuExecutionError::EcallError(e)) => match e {
                 CommEcallError::Exit(status) => {
+                    println!("Vanadium ran {} instructions", instr_count);
                     println!("Exiting with status {}", status);
                     return Ok(status.to_be_bytes().to_vec());
                 }
