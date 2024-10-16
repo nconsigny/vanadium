@@ -1,8 +1,6 @@
 #![feature(start)]
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
-use core::ptr::addr_of;
-
 #[cfg(target_arch = "riscv32")]
 use sdk::fatal;
 
@@ -13,8 +11,6 @@ mod handlers;
 
 use commands::Command;
 use handlers::*;
-
-use alloc::vec;
 
 // Temporary to force the creation of a data section
 #[used]
@@ -47,24 +43,9 @@ pub fn _start(_argc: isize, _argv: *const *const u8) -> isize {
 pub fn main(_: isize, _: *const *const u8) -> isize {
     sdk::rust_init_heap();
 
-    // TODO: remove
-    unsafe {
-        core::ptr::read_volatile(addr_of!(APP_NAME));
-    }
-
-    // TODO: remove
-    // test code to make sure that vector allocations are emitted
-    let x = vec![1, 2, 3];
-    unsafe {
-        core::ptr::read_volatile(&x);
-    }
-
     sdk::ux::ux_idle();
     loop {
         let msg = sdk::xrecv(256);
-        // let buffer = comm::receive_message().unwrap(); // TODO: what to do on error?
-
-        // sdk::ux::app_loading_start("Handling request...\x00");
 
         if msg.is_empty() {
             sdk::exit(0);
