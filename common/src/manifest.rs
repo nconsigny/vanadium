@@ -74,4 +74,18 @@ impl Manifest {
             mt_size,
         })
     }
+
+    pub fn get_app_name(&self) -> &str {
+        core::str::from_utf8(
+            &self.app_name[..self.app_name.iter().position(|&c| c == 0).unwrap_or(32)],
+        )
+        .unwrap() // doesn't fail, as the new() function creates it from a valid string
+    }
+
+    pub fn get_app_version(&self) -> &str {
+        core::str::from_utf8(
+            &self.app_version[..self.app_version.iter().position(|&c| c == 0).unwrap_or(32)],
+        )
+        .unwrap() // doesn't fail, as the new() function creates it from a valid string
+    }
 }
