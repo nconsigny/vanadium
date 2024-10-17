@@ -1,13 +1,13 @@
 [package]
 name = "app-vanadium"
 version = "0.0.1"
-authors = []
+authors = ["Salvatore Ingala"]
 edition = "2021"
 
 [dependencies]
 common = { path = "../common", features=["device_sdk"] }
-ledger_device_sdk = { version="1.15.4" }
-include_gif = "1.1.0"
+ledger_device_sdk = { version="1.17.4" }
+include_gif = "1.2.0"
 serde = {version="1.0.192", default_features = false, features = ["derive"]}
 serde-json-core = { git = "https://github.com/rust-embedded-community/serde-json-core"}
 hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
@@ -29,15 +29,15 @@ path = ["44'/1'"]
 name = "Vanadium"
 
 [package.metadata.ledger.nanox]
-icon = "crab_14x14.gif"
+icon = "vanadium_14x14.gif"
 
 [package.metadata.ledger.nanosplus]
-icon = "crab_14x14.gif"
+icon = "vanadium_14x14.gif"
 
 [package.metadata.ledger.stax]
-icon = "crab_32x32.gif"
+icon = "vanadium_32x32.gif"
 
 [package.metadata.ledger.flex]
-icon = "crab_40x40.gif"
+icon = "vanadium_40x40.gif"
 
 [workspace]
