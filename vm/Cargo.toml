@@ -15,7 +15,7 @@ numtoa = "0.2.4"
 postcard = { version = "1.0.8", features = ["alloc"] }
 
 [profile.release]
-opt-level = 'z'
+opt-level = 3
 lto = true
 
 [features]
