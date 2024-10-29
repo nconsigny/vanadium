@@ -16,12 +16,15 @@
  *****************************************************************************/
 
 use include_gif::include_gif;
-use ledger_device_sdk::io::{Comm, Event};
+use ledger_device_sdk::io::Comm;
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-use ledger_device_sdk::ui::{
-    bitmaps::{Glyph, BACK, CERTIFICATE, DASHBOARD_X},
-    gadgets::{EventOrPageIndex, MultiPageMenu, Page},
+use ledger_device_sdk::{
+    io::Event,
+    ui::{
+        bitmaps::{Glyph, BACK, CERTIFICATE, DASHBOARD_X},
+        gadgets::{EventOrPageIndex, MultiPageMenu, Page},
+    },
 };
 
 #[cfg(any(target_os = "stax", target_os = "flex"))]
@@ -29,6 +32,7 @@ use crate::settings::Settings;
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::{NbglGlyph, NbglHomeAndSettings};
 
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use crate::Instruction;
 
 // use ledger_device_sdk::nvm::*;
@@ -50,7 +54,7 @@ fn ui_about_menu(comm: &mut Comm) -> Event<Instruction> {
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 pub fn ui_menu_main(comm: &mut Comm) -> Event<Instruction> {
-    const APP_ICON: Glyph = Glyph::from_include(include_gif!("crab.gif"));
+    const APP_ICON: Glyph = Glyph::from_include(include_gif!("vanadium.gif"));
     let pages = [
         // The from trait allows to create different styles of pages
         // without having to use the new() function.
@@ -70,20 +74,19 @@ pub fn ui_menu_main(comm: &mut Comm) -> Event<Instruction> {
 }
 
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-pub fn ui_menu_main(_: &mut Comm) -> Event<Instruction> {
+pub fn ui_menu_main(_: &mut Comm) -> NbglHomeAndSettings {
     // Load glyph from 64x64 4bpp gif file with include_gif macro. Creates an NBGL compatible glyph.
-    const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("crab_64x64.gif", NBGL));
+    const FERRIS: NbglGlyph = NbglGlyph::from_include(include_gif!("vanadium_64x64.gif", NBGL));
 
     let settings_strings = [["Display Memo", "Allow display of transaction memo."]];
     let mut settings: Settings = Default::default();
     // Display the home screen.
     NbglHomeAndSettings::new()
         .glyph(&FERRIS)
-        .settings(settings.get_mut_ref(), &settings_strings)
+        .settings(settings.get_mut(), &settings_strings)
         .infos(
             "Vanadium",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_AUTHORS"),
         )
-        .show()
 }

@@ -7,6 +7,7 @@ use common::{
         SendPanicBufferMessage,
     },
     ecall_constants::*,
+    manifest::Manifest,
     vm::{Cpu, EcallHandler},
 };
 
@@ -97,11 +98,15 @@ struct GuestPointer(pub u32);
 
 pub struct CommEcallHandler<'a> {
     comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm>>,
+    manifest: &'a Manifest,
 }
 
 impl<'a> CommEcallHandler<'a> {
-    pub fn new(comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm>>) -> Self {
-        Self { comm }
+    pub fn new(
+        comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm>>,
+        manifest: &'a Manifest,
+    ) -> Self {
+        Self { comm, manifest }
     }
 
     // TODO: can we refactor this and handle_xsend? They are almost identical
@@ -327,13 +332,34 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
             ECALL_UX_IDLE => {
                 crate::println!("Executing ux_idle()");
 
-                ledger_device_sdk::ui::gadgets::clear_screen();
-                // TODO: we would like to show the application name and icon, and allow for a more customizable menu
-                let page = ledger_device_sdk::ui::gadgets::Page::from((
-                    ["Application", "is ready"],
-                    false,
-                ));
-                page.place();
+                #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+                {
+                    ledger_device_sdk::ui::gadgets::clear_screen();
+                    let page = ledger_device_sdk::ui::gadgets::Page::from((
+                        [self.manifest.get_app_name(), "is ready"],
+                        false,
+                    ));
+                    page.place();
+                }
+
+                #[cfg(any(target_os = "stax", target_os = "flex"))]
+                {
+                    use include_gif::include_gif;
+                    const FERRIS: ledger_device_sdk::nbgl::NbglGlyph =
+                        ledger_device_sdk::nbgl::NbglGlyph::from_include(include_gif!(
+                            "crab_64x64.gif",
+                            NBGL
+                        ));
+
+                    ledger_device_sdk::nbgl::NbglHomeAndSettings::new()
+                        .glyph(&FERRIS)
+                        .infos(
+                            self.manifest.get_app_name(),
+                            self.manifest.get_app_version(),
+                            "", // TODO
+                        )
+                        .show_and_return();
+                }
             }
             _ => {
                 return Err(CommEcallError::UnhandledEcall);

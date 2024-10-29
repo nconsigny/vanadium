@@ -61,7 +61,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     assert!(cpu.pc % 4 == 0, "Unaligned entrypoint");
 
-    let mut ecall_handler = CommEcallHandler::new(comm.clone());
+    let mut ecall_handler = CommEcallHandler::new(comm.clone(), &manifest);
 
     let mut instr_count = 0;
     loop {
