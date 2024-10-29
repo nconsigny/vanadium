@@ -30,7 +30,7 @@ use handlers::{
     get_version::handler_get_version, register_vapp::handler_register_vapp,
     start_vapp::handler_start_vapp,
 };
-use ledger_device_sdk::io::{ApduHeader, Comm, Event, Reply, StatusWords};
+use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 #[cfg(feature = "pending_review_screen")]
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
@@ -38,8 +38,11 @@ use ledger_device_sdk::ui::gadgets::display_pending_review;
 // Required for using String, Vec, format!...
 extern crate alloc;
 
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::io::Event;
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::init_comm;
+use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings};
 
 // define print! and println! macros using debug_printf (only for running on Speculos)
 #[macro_export]
@@ -87,6 +90,7 @@ ledger_device_sdk::set_panic!(handle_panic);
 
 // Application status words.
 #[repr(u16)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppSW {
     Deny = 0x6985,
     IncorrectData = 0x6A80,
@@ -101,6 +105,8 @@ pub enum AppSW {
 
     VMRuntimeError = 0xB020,
     VAppPanic = 0xB021,
+
+    Ok = 0x9000,
 }
 
 impl From<AppSW> for Reply {
@@ -110,6 +116,7 @@ impl From<AppSW> for Reply {
 }
 
 /// Possible input commands received through APDUs.
+#[derive(Debug, Copy, Clone)]
 pub enum Instruction {
     GetVersion,
     GetAppName,
@@ -152,29 +159,44 @@ extern "C" fn sample_main() {
     // BadCla status word.
     let mut comm = Comm::new().set_expected_cla(0xe0);
 
-    // Initialize reference to Comm instance for NBGL
-    // API calls.
     #[cfg(any(target_os = "stax", target_os = "flex"))]
-    init_comm(&mut comm);
+    let mut home: NbglHomeAndSettings = {
+        // Initialize reference to Comm instance for NBGL
+        // API calls.
+        init_comm(&mut comm);
+        let mut home = ui_menu_main(&mut comm);
+        home.show_and_return();
+        home
+    };
 
-    // Developer mode / pending review popup
-    // must be cleared with user interaction
-    #[cfg(feature = "pending_review_screen")]
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+    #[cfg(feature = "pending_review_screen")]
     display_pending_review(&mut comm);
 
     loop {
-        // Wait for either a specific button push to exit the app
-        // or an APDU command
-        if let Event::Command(ins) = ui_menu_main(&mut comm) {
-            match handle_apdu(&mut comm, ins) {
-                Ok(data) => {
-                    comm.append(&data);
-                    comm.reply_ok();
-                }
-                Err(sw) => comm.reply(sw),
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        let ins: Instruction = comm.next_command();
+
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        let ins = if let Event::Command(ins) = ui_menu_main(&mut comm) {
+            ins
+        } else {
+            continue;
+        };
+
+        let _status = match handle_apdu(&mut comm, ins) {
+            Ok(data) => {
+                comm.append(&data);
+                comm.reply_ok();
+                AppSW::Ok
             }
-        }
+            Err(sw) => {
+                comm.reply(sw.clone());
+                sw
+            }
+        };
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        home.show_and_return();
     }
 }
 
