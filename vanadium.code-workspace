@@ -16,6 +16,18 @@
       "path": "docs",
     },
     {
+      "path": "apps/bitcoin/app",
+      "name": "vnd-bitcoin"
+    },
+    {
+      "path": "apps/bitcoin/common",
+      "name": "vnd-bitcoin-common"
+    },
+    {
+      "path": "apps/bitcoin/client",
+      "name": "vnd-bitcoin-client"
+    },
+    {
       "path": "apps/test/app",
       "name": "vnd-test"
     },
@@ -26,6 +38,13 @@
   ],
   "settings": {
     "[apps/test/app]": {
+      "rust-analyzer.cargo-watch.allTargets": false,
+      "rust-analyzer.cargo-watch.arguments": [
+        "--target",
+        "x86_64-unknown-linux-gnu"
+      ]
+    },
+    "[apps/bitcoin/app]": {
       "rust-analyzer.cargo-watch.allTargets": false,
       "rust-analyzer.cargo-watch.arguments": [
         "--target",
