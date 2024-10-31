@@ -311,7 +311,6 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
         }
 
         let ecall_code = reg!(T0);
-        crate::println!("ecall_code: {:?}", ecall_code);
         match ecall_code {
             ECALL_EXIT => return Err(CommEcallError::Exit(reg!(A0) as i32)),
             ECALL_FATAL => {
@@ -323,15 +322,12 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                 .handle_xsend(cpu, GPreg!(A0), reg!(A1) as usize)
                 .map_err(|_| CommEcallError::GenericError("xsend failed"))?,
             ECALL_XRECV => {
-                crate::println!("Executing xrecv()");
                 let ret = self
                     .handle_xrecv(cpu, GPreg!(A0), reg!(A1) as usize)
                     .map_err(|_| CommEcallError::GenericError("xrecv failed"))?;
                 reg!(A0) = ret as u32;
             }
             ECALL_UX_IDLE => {
-                crate::println!("Executing ux_idle()");
-
                 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
                 {
                     ledger_device_sdk::ui::gadgets::clear_screen();
@@ -366,7 +362,6 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
             }
         }
 
-        crate::println!("Done with: {:?}", ecall_code);
         Ok(())
     }
 }
