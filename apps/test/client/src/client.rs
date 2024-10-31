@@ -51,7 +51,7 @@ impl TestClient {
         msg.extend_from_slice(&[Command::Reverse as u8]);
         msg.extend_from_slice(data);
 
-        Ok(self.app_client.send_message(msg).await?)
+        Ok(self.app_client.send_message(&msg).await?)
     }
 
     pub async fn add_numbers(&mut self, n: u32) -> Result<u64, TestClientError> {
@@ -59,7 +59,7 @@ impl TestClient {
         msg.extend_from_slice(&[Command::AddNumbers as u8]);
         msg.extend_from_slice(&n.to_be_bytes());
 
-        let result_raw = self.app_client.send_message(msg).await?;
+        let result_raw = self.app_client.send_message(&msg).await?;
 
         if result_raw.len() != 8 {
             return Err("Invalid response length".into());
@@ -72,7 +72,7 @@ impl TestClient {
         msg.extend_from_slice(&[Command::Sha256 as u8]);
         msg.extend_from_slice(data);
 
-        Ok(self.app_client.send_message(msg).await?)
+        Ok(self.app_client.send_message(&msg).await?)
     }
 
     pub async fn b58enc(&mut self, data: &[u8]) -> Result<Vec<u8>, TestClientError> {
@@ -80,7 +80,7 @@ impl TestClient {
         msg.extend_from_slice(&[Command::Base58Encode as u8]);
         msg.extend_from_slice(data);
 
-        Ok(self.app_client.send_message(msg).await?)
+        Ok(self.app_client.send_message(&msg).await?)
     }
 
     pub async fn nprimes(&mut self, n: u32) -> Result<u32, TestClientError> {
@@ -88,7 +88,7 @@ impl TestClient {
         msg.extend_from_slice(&[Command::CountPrimes as u8]);
         msg.extend_from_slice(&n.to_be_bytes());
 
-        let result_raw = self.app_client.send_message(msg).await?;
+        let result_raw = self.app_client.send_message(&msg).await?;
 
         if result_raw.len() != 4 {
             return Err("Invalid response length".into());
@@ -101,13 +101,13 @@ impl TestClient {
         msg.extend_from_slice(&[Command::Panic as u8]);
         msg.extend_from_slice(panic_msg.as_bytes());
 
-        self.app_client.send_message(msg).await?;
+        self.app_client.send_message(&msg).await?;
 
         Err("The app should have panicked!".into())
     }
 
     pub async fn exit(&mut self) -> Result<i32, &'static str> {
-        match self.app_client.send_message(Vec::new()).await {
+        match self.app_client.send_message(&[]).await {
             Ok(_) => Err("Exit message shouldn't return!"),
             Err(e) => match e {
                 VAppExecutionError::AppExited(status) => Ok(status),
