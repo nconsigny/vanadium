@@ -83,7 +83,8 @@ fn handle_panic(info: &core::panic::PanicInfo) -> ! {
 
     let mut comm = ledger_device_sdk::io::Comm::new();
     comm.reply(ledger_device_sdk::io::StatusWords::Panic);
-    ledger_device_sdk::exit_app(0x01);
+
+    ledger_device_sdk::exit_app(0x01)
 }
 
 ledger_device_sdk::set_panic!(handle_panic);
