@@ -70,7 +70,7 @@ pub async fn send_message(
             return Err(SendMessageError::NotAckReceived);
         }
         resp = client
-            .send_message(chunk.to_vec())
+            .send_message(chunk)
             .await
             .map_err(SendMessageError::VAppExecutionError)?;
     }
@@ -89,7 +89,7 @@ pub async fn send_message(
     let mut response_data = resp[4..].to_vec();
     while response_data.len() < response_data_len {
         let resp = client
-            .send_message(ACK.to_vec())
+            .send_message(&ACK)
             .await
             .map_err(SendMessageError::VAppExecutionError)?;
         response_data.extend_from_slice(&resp);
