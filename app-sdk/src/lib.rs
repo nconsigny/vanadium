@@ -76,7 +76,14 @@ pub fn exit(status: i32) -> ! {
 }
 
 pub fn xrecv(size: usize) -> Vec<u8> {
-    let mut buffer = vec![0; size];
+    // We allocate a buffer with the requested size, but we don't initialize its content.
+    // xrecv guarantees that recv_size have been overwritten with the received data, and we
+    // do not access any further data.
+    let mut buffer = Vec::with_capacity(size);
+    unsafe {
+        buffer.set_len(size);
+    }
+
     let recv_size = Ecall::xrecv(buffer.as_mut_ptr(), buffer.len());
     buffer[0..recv_size].to_vec()
 }
