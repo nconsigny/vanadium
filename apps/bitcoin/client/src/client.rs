@@ -60,26 +60,44 @@ pub struct BitcoinClient {
     app_client: Box<dyn VAppClient + Send + Sync>,
 }
 
-impl BitcoinClient {
+impl<'a> BitcoinClient {
     pub fn new(app_client: Box<dyn VAppClient + Send + Sync>) -> Self {
         Self { app_client }
     }
 
-    pub async fn get_version(&mut self) -> Result<String, BitcoinClientError> {
-        let req = Request {
-            request: OneOfrequest::get_version(RequestGetVersion {}),
-        };
-
+    async fn create_request<T: MessageWrite>(
+        request: OneOfrequest<'_>,
+    ) -> Result<Vec<u8>, BitcoinClientError> {
+        let req = Request { request };
         let mut out = vec![0; req.get_size()];
         let mut writer = Writer::new(BytesWriter::new(&mut out));
-        req.write_message(&mut writer).unwrap();
+        req.write_message(&mut writer)
+            .map_err(|_| BitcoinClientError::GenericError("Failed to write message"))?;
+        Ok(out)
+    }
 
-        let response_raw = sdk::comm::send_message(&mut self.app_client, &out).await?;
+    async fn send_message(&mut self, out: Vec<u8>) -> Result<Vec<u8>, BitcoinClientError> {
+        sdk::comm::send_message(&mut self.app_client, &out)
+            .await
+            .map_err(BitcoinClientError::from)
+    }
 
+    async fn parse_response<T: MessageRead<'a>>(
+        response_raw: &'a [u8],
+    ) -> Result<T, BitcoinClientError> {
         let mut reader = BytesReader::from_bytes(&response_raw);
-        let response: Response = Response::from_reader(&mut reader, &response_raw)
-            .map_err(|_| "Failed to parse request")?; // TODO: proper error handling
+        T::from_reader(&mut reader, response_raw)
+            .map_err(|_| BitcoinClientError::GenericError("Failed to parse response"))
+    }
 
+    pub async fn get_version(&mut self) -> Result<String, BitcoinClientError> {
+        let out = Self::create_request::<RequestGetVersion>(OneOfrequest::get_version(
+            RequestGetVersion {},
+        ))
+        .await?;
+
+        let response_raw = self.send_message(out).await?;
+        let response: Response = Self::parse_response(&response_raw).await?;
         match response.response {
             OneOfresponse::get_version(resp) => Ok(String::from(resp.version)),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
@@ -87,20 +105,13 @@ impl BitcoinClient {
     }
 
     pub async fn exit(&mut self) -> Result<i32, BitcoinClientError> {
-        let req = Request {
-            request: OneOfrequest::exit(RequestExit {}),
-        };
-
-        let mut out = vec![0; req.get_size()];
-        let mut writer = Writer::new(BytesWriter::new(&mut out));
-        req.write_message(&mut writer).unwrap();
-
-        match sdk::comm::send_message(&mut self.app_client, &out).await {
+        let out = Self::create_request::<RequestExit>(OneOfrequest::exit(RequestExit {})).await?;
+        match self.send_message(out).await {
             Ok(_) => Err(BitcoinClientError::InvalidResponse(
                 "Exit message shouldn't return!",
             )),
             Err(e) => match e {
-                SendMessageError::VAppExecutionError(VAppExecutionError::AppExited(status)) => {
+                BitcoinClientError::VAppExecutionError(VAppExecutionError::AppExited(status)) => {
                     Ok(status)
                 }
                 _ => Err(BitcoinClientError::InvalidResponse(
@@ -111,20 +122,12 @@ impl BitcoinClient {
     }
 
     pub async fn get_master_fingerprint(&mut self) -> Result<u32, BitcoinClientError> {
-        let req = Request {
-            request: OneOfrequest::get_master_fingerprint(RequestGetMasterFingerprint {}),
-        };
-
-        let mut out = vec![0; req.get_size()];
-        let mut writer = Writer::new(BytesWriter::new(&mut out));
-        req.write_message(&mut writer).unwrap();
-
-        let response_raw = sdk::comm::send_message(&mut self.app_client, &out).await?;
-
-        let mut reader = BytesReader::from_bytes(&response_raw);
-        let response: Response = Response::from_reader(&mut reader, &response_raw)
-            .map_err(|_| "Failed to parse request")?; // TODO: proper error handling
-
+        let out = Self::create_request::<RequestGetMasterFingerprint>(
+            OneOfrequest::get_master_fingerprint(RequestGetMasterFingerprint {}),
+        )
+        .await?;
+        let response_raw = self.send_message(out).await?;
+        let response: Response = Self::parse_response(&response_raw).await?;
         match response.response {
             OneOfresponse::get_master_fingerprint(resp) => Ok(resp.fingerprint),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
