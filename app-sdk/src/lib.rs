@@ -88,6 +88,10 @@ pub fn xrecv(size: usize) -> Vec<u8> {
     buffer[0..recv_size].to_vec()
 }
 
+pub fn xrecv_to(buf: &mut [u8]) -> usize {
+    Ecall::xrecv(buf.as_mut_ptr(), buf.len())
+}
+
 pub fn xsend(buffer: &[u8]) {
     Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
 }
