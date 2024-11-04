@@ -17,7 +17,7 @@
 //! Note: This module is not thread-safe. It is designed for single-threaded execution due to the use of
 //! a static mutable buffer for chunk reuse.
 
-use crate::{xrecv, xsend};
+use crate::{xrecv_to, xsend};
 use alloc::vec::Vec;
 use core::cmp::min;
 use core::convert::TryInto;
@@ -50,6 +50,9 @@ impl core::fmt::Display for MessageError {
 
 impl core::error::Error for MessageError {}
 
+// Define a static mutable buffer for chunk reuse, in order to avoid unnecessary allocations.
+static mut CHUNK_BUFFER: [u8; CHUNK_LENGTH] = [0u8; CHUNK_LENGTH];
+
 /// Receives a message, handling chunked data reception and error management.
 ///
 /// The function starts by attempting to read a fixed-size chunk to extract the message length.
@@ -67,45 +70,47 @@ impl core::error::Error for MessageError {}
 /// # Returns
 ///
 /// - On success, returns `Ok(Vec<u8>)` with the received message data.
+///
+/// # Safety
+///
+/// This function is only safe in single-threaded execution due to the use of a static mutable buffer.
 pub fn receive_message() -> Result<Vec<u8>, MessageError> {
-    let first_chunk = xrecv(256);
+    let chunk = &raw mut CHUNK_BUFFER;
+
+    let first_chunk_len = xrecv_to(unsafe { &mut *chunk });
 
     // Ensure we have at least 4 bytes for the length.
-    if first_chunk.len() < 4 {
+    if first_chunk_len < 4 {
         return Err(MessageError::FailedToReadLength);
     }
 
     // Extract the message length.
-    let length = u32::from_be_bytes(first_chunk[0..4].try_into().unwrap()) as usize;
+    let length = u32::from_be_bytes(unsafe { &*chunk }[0..4].try_into().unwrap()) as usize;
 
     // Check for unexpected extra bytes.
-    if first_chunk.len() > 4 + length {
+    if first_chunk_len > 4 + length {
         return Err(MessageError::TooManyBytesReceived);
     }
 
     // Initialize the result with the data from the first chunk.
     let mut result = Vec::with_capacity(length);
-    result.extend_from_slice(&first_chunk[4..]);
+    result.extend_from_slice(&unsafe { &*chunk }[4..first_chunk_len]);
 
-    // Calculate the remaining bytes to read.
-    let mut remaining_bytes = length - result.len();
-
-    while remaining_bytes > 0 {
+    while result.len() < length {
         // Send ACK to maintain the alternating protocol.
         xsend(&ACK);
 
-        let chunk = xrecv(CHUNK_LENGTH);
+        let chunk_len = xrecv_to(unsafe { &mut *chunk });
 
-        if chunk.is_empty() {
+        if chunk_len == 0 {
             return Err(MessageError::FailedToReadMessage);
         }
 
-        if chunk.len() > remaining_bytes {
+        if chunk_len > length - result.len() {
             return Err(MessageError::TooManyBytesReceived);
         }
 
-        result.extend_from_slice(&chunk);
-        remaining_bytes -= chunk.len();
+        result.extend_from_slice(&unsafe { &*chunk }[0..chunk_len]);
     }
 
     Ok(result)
@@ -137,10 +142,14 @@ pub fn send_message(msg: &[u8]) {
 
     let mut total_bytes_sent = first_chunk_msg_bytes;
 
+    let mut acc_chunk = vec![0u8];
     // Send the remaining chunks.
     while total_bytes_sent < msg.len() {
         // Wait for ACK to maintain the alternating protocol.
-        let _ = xrecv(CHUNK_LENGTH);
+        let acc_len = xrecv_to(&mut acc_chunk);
+        if acc_len != 1 || acc_chunk != ACK {
+            panic!("Unexpected byte received: {}", acc_chunk[0]);
+        }
 
         let end_idx = min(total_bytes_sent + CHUNK_LENGTH, msg.len());
         let chunk = &msg[total_bytes_sent..end_idx];
