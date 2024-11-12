@@ -566,12 +566,12 @@ impl GenericVanadiumClient {
         Ok(())
     }
 
-    pub async fn send_message(&mut self, message: Vec<u8>) -> Result<Vec<u8>, VanadiumClientError> {
+    pub async fn send_message(&mut self, message: &[u8]) -> Result<Vec<u8>, VanadiumClientError> {
         // Send the message to VAppEngine when receive_buffer is called
         self.client_to_engine_sender
             .as_ref()
             .ok_or("VAppEngine not running")?
-            .send(ClientMessage::ReceiveBuffer(message))
+            .send(ClientMessage::ReceiveBuffer(message.to_vec()))
             .await
             .map_err(|_| "Failed to send message to VAppEngine")?;
 
@@ -633,14 +633,14 @@ pub trait VAppClient {
     ///
     /// # Parameters
     ///
-    /// - `msg`: A `Vec<u8>` containing the message to be sent.
+    /// - `msg`: A `&[u8]` containing the message to be sent.
     ///
     /// # Returns
     ///
     /// A `Result` containing the response message as a `Vec<u8>` if the operation is successful,
     /// or a `VAppExecutionError` if an error occurs.
 
-    async fn send_message(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, VAppExecutionError>;
+    async fn send_message(&mut self, msg: &[u8]) -> Result<Vec<u8>, VAppExecutionError>;
 }
 
 /// Implementation of a VAppClient using the Vanadium VM.
@@ -688,7 +688,7 @@ impl VanadiumAppClient {
 
 #[async_trait]
 impl VAppClient for VanadiumAppClient {
-    async fn send_message(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, VAppExecutionError> {
+    async fn send_message(&mut self, msg: &[u8]) -> Result<Vec<u8>, VAppExecutionError> {
         match self.client.send_message(msg).await {
             Ok(response) => Ok(response),
             Err(VanadiumClientError::VAppExited(status)) => {
@@ -728,7 +728,7 @@ impl NativeAppClient {
 
 #[async_trait]
 impl VAppClient for NativeAppClient {
-    async fn send_message(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, VAppExecutionError> {
+    async fn send_message(&mut self, msg: &[u8]) -> Result<Vec<u8>, VAppExecutionError> {
         // Check if the child process has exited
         if let Some(status) = self
             .child
@@ -739,7 +739,7 @@ impl VAppClient for NativeAppClient {
         }
 
         // Encode message as hex and append a newline
-        let hex_msg = hex::encode(&msg);
+        let hex_msg = hex::encode(msg);
         let hex_msg_newline = format!("{}\n", hex_msg);
 
         // Write hex-encoded message to stdin

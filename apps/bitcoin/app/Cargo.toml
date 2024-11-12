@@ -1,0 +1,11 @@
+[package]
+name = "vnd-bitcoin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { package = "vnd-bitcoin-common", path = "../common"}
+quick-protobuf = { version = "0.8.1", default-features = false }
+sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk"}
+
+[workspace]
