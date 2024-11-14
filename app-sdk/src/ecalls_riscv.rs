@@ -142,6 +142,62 @@ macro_rules! ecall3 {
     };
 }
 
+macro_rules! ecall5 {
+    // ECALL with 5 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty),
+     ($arg5:ident: $arg5_type:ty), $ret_type:ty) => {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4,            // Third argument in a3
+                    in("a4") $arg5,            // Third argument in a4
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
+
+macro_rules! ecall5 {
+    // ECALL with 6 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty),
+     ($arg5:ident: $arg5_type:ty),
+     ($arg6:ident: $arg6_type:ty), $ret_type:ty) => {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4,            // Third argument in a3
+                    in("a4") $arg5,            // Third argument in a4
+                    in("a6") $arg6,            // Third argument in a5
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
+
 pub struct Ecall;
 
 impl EcallsInterface for Ecall {
@@ -173,4 +229,10 @@ impl EcallsInterface for Ecall {
 
     ecall2v!(xsend, ECALL_XSEND, (buffer: *const u8), (size: usize));
     ecall2!(xrecv, ECALL_XRECV, (buffer: *mut u8), (size: usize), usize);
+
+    ecall5!(bn_modm, ECALL_MODM, (r: *mut u8), (n: *const u8), (len: usize), (m: *const u8), (len_m: usize), bool);
+    ecall5!(bn_addm, ECALL_ADDM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), bool);
+    ecall5!(bn_subm, ECALL_SUBM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), bool);
+    ecall5!(bn_multm, ECALL_MULTM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), bool);
+    ecall6!(bn_powm, ECALL_POWM, (r: *mut u8), (a: *const u8), (e: *const u8), (len_e: usize), (m: *const u8), (len: usize), bool);
 }
