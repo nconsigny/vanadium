@@ -7,6 +7,8 @@ use alloc::{vec, vec::Vec};
 
 pub mod ux;
 
+pub mod bignum;
+
 mod ecalls;
 
 #[cfg(target_arch = "riscv32")]

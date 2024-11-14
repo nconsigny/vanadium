@@ -10,6 +10,7 @@ use common::{
     manifest::Manifest,
     vm::{Cpu, EcallHandler},
 };
+use ledger_secure_sdk_sys::CX_OK;
 
 use crate::{AppSW, Instruction};
 
@@ -283,6 +284,213 @@ impl<'a> CommEcallHandler<'a> {
         }
         Ok(total_received)
     }
+
+    fn handle_bn_modm(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        r: GuestPointer,
+        n: GuestPointer,
+        len: usize,
+        m: GuestPointer,
+        m_len: usize,
+    ) -> Result<(), &'static str> {
+        if len > MAX_BIGNUMBER_SIZE || m_len > MAX_BIGNUMBER_SIZE {
+            return Err("len or m_len is too large");
+        }
+
+        // copy inputs to local memory
+        // we use r_local both for the input and for the result
+        let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(n.0)?.read_buffer(n.0, &mut r_local)?;
+        let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_math_modm_no_throw(
+                r_local.as_mut_ptr(),
+                len,
+                m_local.as_ptr(),
+                m_len,
+            );
+            if res != CX_OK {
+                return Err("modm failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local)?;
+        Ok(())
+    }
+
+    fn handle_bn_addm(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        r: GuestPointer,
+        a: GuestPointer,
+        b: GuestPointer,
+        m: GuestPointer,
+        len: usize,
+    ) -> Result<(), &'static str> {
+        if len > MAX_BIGNUMBER_SIZE {
+            return Err("len is too large");
+        }
+
+        // copy inputs to local memory
+        let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(b.0)?.read_buffer(b.0, &mut b_local)?;
+        let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+
+        let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_math_addm_no_throw(
+                r_local.as_mut_ptr(),
+                a_local.as_ptr(),
+                b_local.as_ptr(),
+                m_local.as_ptr(),
+                len,
+            );
+            if res != CX_OK {
+                return Err("addm failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local)?;
+        Ok(())
+    }
+
+    fn handle_bn_subm(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        r: GuestPointer,
+        a: GuestPointer,
+        b: GuestPointer,
+        m: GuestPointer,
+        len: usize,
+    ) -> Result<(), &'static str> {
+        if len > MAX_BIGNUMBER_SIZE {
+            return Err("len is too large");
+        }
+
+        // copy inputs to local memory
+        let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(b.0)?.read_buffer(b.0, &mut b_local)?;
+        let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+
+        let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_math_subm_no_throw(
+                r_local.as_mut_ptr(),
+                a_local.as_ptr(),
+                b_local.as_ptr(),
+                m_local.as_ptr(),
+                len,
+            );
+            if res != CX_OK {
+                return Err("addm failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local)?;
+        Ok(())
+    }
+
+    fn handle_bn_multm(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        r: GuestPointer,
+        a: GuestPointer,
+        b: GuestPointer,
+        m: GuestPointer,
+        len: usize,
+    ) -> Result<(), &'static str> {
+        if len > MAX_BIGNUMBER_SIZE {
+            return Err("len is too large");
+        }
+
+        // copy inputs to local memory
+        let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(b.0)?.read_buffer(b.0, &mut b_local)?;
+        let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+
+        let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_math_multm_no_throw(
+                r_local.as_mut_ptr(),
+                a_local.as_ptr(),
+                b_local.as_ptr(),
+                m_local.as_ptr(),
+                len,
+            );
+            if res != CX_OK {
+                return Err("addm failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local)?;
+        Ok(())
+    }
+
+    fn handle_bn_powm(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        r: GuestPointer,
+        a: GuestPointer,
+        e: GuestPointer,
+        len_e: usize,
+        m: GuestPointer,
+        len: usize,
+    ) -> Result<(), &'static str> {
+        if len_e > MAX_BIGNUMBER_SIZE {
+            return Err("len_e is too large");
+        }
+        if len > MAX_BIGNUMBER_SIZE {
+            return Err("len is too large");
+        }
+
+        // copy inputs to local memory
+        let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        let mut e_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(e.0)?.read_buffer(e.0, &mut e_local)?;
+        let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+
+        let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_math_powm_no_throw(
+                r_local.as_mut_ptr(),
+                a_local.as_ptr(),
+                e_local.as_ptr(),
+                len_e,
+                m_local.as_ptr(),
+                len,
+            );
+            if res != CX_OK {
+                return Err("addm failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local)?;
+        Ok(())
+    }
 }
 
 // make an error type for the CommEcallHandler<'a>
@@ -361,6 +569,57 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                         .show_and_return();
                 }
             }
+            ECALL_MODM => self
+                .handle_bn_modm(
+                    cpu,
+                    GPreg!(A0),
+                    GPreg!(A1),
+                    reg!(A2) as usize,
+                    GPreg!(A3),
+                    reg!(A4) as usize,
+                )
+                .map_err(|_| CommEcallError::GenericError("bn_modm failed"))?,
+            ECALL_ADDM => self
+                .handle_bn_addm(
+                    cpu,
+                    GPreg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    GPreg!(A3),
+                    reg!(A4) as usize,
+                )
+                .map_err(|_| CommEcallError::GenericError("bn_addm failed"))?,
+            ECALL_SUBM => self
+                .handle_bn_subm(
+                    cpu,
+                    GPreg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    GPreg!(A3),
+                    reg!(A4) as usize,
+                )
+                .map_err(|_| CommEcallError::GenericError("bn_subm failed"))?,
+            ECALL_MULTM => self
+                .handle_bn_multm(
+                    cpu,
+                    GPreg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    GPreg!(A3),
+                    reg!(A4) as usize,
+                )
+                .map_err(|_| CommEcallError::GenericError("bn_multm failed"))?,
+            ECALL_POWM => self
+                .handle_bn_powm(
+                    cpu,
+                    GPreg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    reg!(A3) as usize,
+                    GPreg!(A4),
+                    reg!(A5) as usize,
+                )
+                .map_err(|_| CommEcallError::GenericError("bn_powm failed"))?,
             _ => {
                 return Err(CommEcallError::UnhandledEcall);
             }
