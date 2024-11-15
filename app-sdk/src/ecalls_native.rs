@@ -103,6 +103,10 @@ impl EcallsInterface for Ecall {
         let b = unsafe { Self::to_bigint(b, len) };
         let m = unsafe { Self::to_bigint(m, len) };
 
+        if a >= m || b >= m {
+            return false;
+        }
+
         if m.is_zero() {
             return false;
         }
@@ -129,6 +133,10 @@ impl EcallsInterface for Ecall {
         let a = unsafe { Self::to_bigint(a, len) };
         let b = unsafe { Self::to_bigint(b, len) };
         let m = unsafe { Self::to_bigint(m, len) };
+
+        if a >= m || b >= m {
+            return false;
+        }
 
         if m.is_zero() {
             return false;
@@ -157,6 +165,10 @@ impl EcallsInterface for Ecall {
         let a = unsafe { Self::to_bigint(a, len) };
         let b = unsafe { Self::to_bigint(b, len) };
         let m = unsafe { Self::to_bigint(m, len) };
+
+        if a >= m || b >= m {
+            return false;
+        }
 
         if m.is_zero() {
             return false;
@@ -191,6 +203,10 @@ impl EcallsInterface for Ecall {
         let a = unsafe { Self::to_bigint(a, len) };
         let e = unsafe { Self::to_bigint(e, len_e) };
         let m = unsafe { Self::to_bigint(m, len) };
+
+        if a >= m {
+            return false;
+        }
 
         if m.is_zero() {
             return false;
