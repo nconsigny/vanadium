@@ -18,7 +18,7 @@
 //! a static mutable buffer for chunk reuse.
 
 use crate::{xrecv_to, xsend};
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::cmp::min;
 use core::convert::TryInto;
 
