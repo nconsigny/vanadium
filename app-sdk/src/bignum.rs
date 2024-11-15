@@ -27,6 +27,14 @@ pub struct BigNum<const N: usize> {
     buffer: [u8; N],
 }
 
+impl<const N: usize> PartialEq for BigNum<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer.ct_eq(&other.buffer).into()
+    }
+}
+
+impl<const N: usize> Eq for BigNum<N> {}
+
 impl<const N: usize> BigNum<N> {
     /// Creates a new `BigNum` from a big-endian byte array.
     ///
@@ -259,7 +267,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
 impl<'a, const N: usize> PartialEq for BigNumMod<'a, N> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        // typically, this would be called with number with the same modulus;
+        // typically, this would be called with number with the same modulus reference;
         // therefore, we just check the pointer first instead of checking the reference,
         // since the constant-time comparison is costlier.
         if !core::ptr::eq(self.modulus, other.modulus) {
@@ -474,6 +482,85 @@ mod tests {
     ));
 
     #[test]
+    fn test_big_num_addition() {
+        assert_eq!(
+            &BigNum::<4>::from_u32(0x77989873) + &BigNum::<4>::from_u32(0xa4589234),
+            BigNum::<4>::from_u32(0x1bf12aa7)
+        );
+        assert_eq!(
+            &BigNum::<4>::from_u32(0x47989873) + &BigNum::<4>::from_u32(0xa4589234),
+            BigNum::<4>::from_u32(0xebf12aa7)
+        );
+        assert_eq!(
+            &BigNum::<4>::from_u32(0xffffffff) + &BigNum::<4>::from_u32(1),
+            BigNum::<4>::from_u32(0)
+        );
+
+        let zero_large = BigNum::<MAX_BIGNUMBER_SIZE>::from_u32(0);
+        let minus_one_large = BigNum::from_be_bytes([0xff; MAX_BIGNUMBER_SIZE]);
+        let one_large = BigNum::<MAX_BIGNUMBER_SIZE>::from_u32(1);
+        assert_eq!(&minus_one_large + &one_large, zero_large);
+    }
+
+    #[test]
+    fn test_big_num_subtraction() {
+        assert_eq!(
+            &BigNum::<4>::from_u32(0xa4589234) - &BigNum::<4>::from_u32(0x77989873),
+            BigNum::<4>::from_u32(0x2cbff9c1)
+        );
+        assert_eq!(
+            &BigNum::<4>::from_u32(0x77989873) - &BigNum::<4>::from_u32(0xa4589234),
+            BigNum::<4>::from_u32(0xd340063f)
+        );
+        assert_eq!(
+            &BigNum::<4>::from_u32(0) - &BigNum::<4>::from_u32(1),
+            BigNum::<4>::from_u32(0xffffffff)
+        );
+
+        let minus_one_large = BigNum::from_be_bytes([0xff; MAX_BIGNUMBER_SIZE]);
+        let one_large = BigNum::<MAX_BIGNUMBER_SIZE>::from_u32(1);
+        let zero_large = BigNum::<MAX_BIGNUMBER_SIZE>::from_u32(0);
+        assert_eq!(&zero_large - &one_large, minus_one_large);
+    }
+
+    #[test]
+    fn test_modulus_equality() {
+        let m1 = Modulus::from_be_bytes([0x01; 32]);
+        let m2 = Modulus::from_be_bytes([0x01; 32]);
+        let m3 = Modulus::from_be_bytes([0x02; 32]);
+        assert_eq!(m1, m2);
+        assert_ne!(m1, m3);
+    }
+
+    #[test]
+    fn test_big_num_mod_equality() {
+        let modulus = Modulus::from_be_bytes([0x05; 32]);
+        let modulus2 = Modulus::from_be_bytes([0x06; 32]);
+
+        let a = BigNumMod::from_be_bytes([0x01; 32], &modulus);
+
+        // same modulus and buffer
+        let b = BigNumMod::from_be_bytes([0x01; 32], &modulus);
+
+        // different buffer
+        let c = BigNumMod::from_be_bytes([0x02; 32], &modulus);
+
+        // different modulus
+        let d = BigNumMod::from_be_bytes([0x01; 32], &modulus2);
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(a, d);
+    }
+
+    #[test]
+    #[should_panic(expected = "Modulus cannot be 0")]
+    fn test_zero_modulus() {
+        let zero_modulus = Modulus::from_be_bytes([0x00; 32]);
+        let _ = BigNumMod::from_be_bytes([0x01; 32], &zero_modulus);
+    }
+
+    #[test]
     fn test_big_num_mod_new() {
         let modulus = Modulus::from_be_bytes(hex!("12345678"));
         let a = BigNumMod::from_u32(2, &modulus);
@@ -664,6 +751,16 @@ mod tests {
             )))
             .buffer,
             hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+        );
+
+        assert_eq!(
+            a.pow(&BigNum::from_be_bytes(hex!("23"))).buffer,
+            hex!("1ed32565487715d9669418dbaa00db9e03f8271af2074857cc6178e6905b0501")
+        );
+
+        assert_eq!(
+            a.pow(&BigNum::from_be_bytes(hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"))).buffer,
+            hex!("1329e291eb25b61d17cff7cc9c00457532f917c23f44af7469ed55b6988f0dd1")
         );
     }
 }
