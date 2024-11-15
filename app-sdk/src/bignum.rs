@@ -1,3 +1,10 @@
+//! Module providing arbitrary-sized big number arithmetic and modular operations, built
+//! using the ECALLs provided in the Vanadium app sdk.
+//!
+//! This module defines the `BigNum`, `Modulus`, and `BigNumMod` structs, which allow for
+//! arithmetic operations on big numbers of a specified size, including modular addition,
+//! subtraction, multiplication, and exponentiation.
+
 use core::{
     ops::{Add, AddAssign, MulAssign, Sub, SubAssign},
     panic,
@@ -8,22 +15,36 @@ use crate::ecalls::{Ecall, EcallsInterface};
 use common::ecall_constants::MAX_BIGNUMBER_SIZE;
 use subtle::ConstantTimeEq;
 
+/// Represents an arbitrary-sized big number, up to the maximum supported size `MAX_BIGNUMBER_SIZE`.
+/// Numbers are contained in a byte array of size `N`.
+///
+/// The `BigNum<N>` struct holds a big number in a byte array of size `N`.
+///
+/// Additions and subtractions are implemented only for operators of the same size, and are wrapping
+/// in case of overflow or underflow.
 #[derive(Debug, Clone)]
 pub struct BigNum<const N: usize> {
     buffer: [u8; N],
 }
 
 impl<const N: usize> BigNum<N> {
-    pub fn new(buffer: [u8; N]) -> Self {
+    /// Creates a new `BigNum` from a big-endian byte array.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the size `N` is larger than `MAX_BIGNUMBER_SIZE`.
+    pub fn from_be_bytes(bytes: [u8; N]) -> Self {
         if N > MAX_BIGNUMBER_SIZE {
             panic!("Buffer too large");
         }
-        Self { buffer }
-    }
-    pub fn from_bytes_be(bytes: [u8; N]) -> Self {
         Self { buffer: bytes }
     }
 
+    /// Creates a `BigNum` from a `u32` value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the buffer size `N` is smaller than 4 bytes.
     pub fn from_u32(value: u32) -> Self {
         if N < 4 {
             panic!("Buffer too small to hold u32");
@@ -33,10 +54,13 @@ impl<const N: usize> BigNum<N> {
         Self { buffer }
     }
 
-    pub fn to_bytes_be(&self) -> [u8; N] {
+    /// Returns the big number as a big-endian byte array.
+    pub fn to_be_bytes(&self) -> [u8; N] {
         self.buffer
     }
 }
+
+// Implementations for addition and subtraction on `BigNum`
 
 impl<const N: usize> Add for &BigNum<N> {
     type Output = BigNum<N>;
@@ -106,18 +130,24 @@ impl<const N: usize> SubAssign<&Self> for BigNum<N> {
     }
 }
 
+/// Represents a modulus for modular arithmetic operations.
+///
+/// The `Modulus<N>` struct holds a modulus value in a byte array of size `N`.
+/// It is used with `BigNumMod` to perform modular arithmetic operations.
 #[derive(Debug, Clone, Copy)]
 pub struct Modulus<const N: usize> {
     m: [u8; N],
 }
 
 impl<const N: usize> Modulus<N> {
-    pub const fn new(m: [u8; N]) -> Self {
+    /// Creates a new `Modulus` from a big-endian byte array.
+    pub const fn from_be_bytes(m: [u8; N]) -> Self {
         Self { m }
     }
 
+    /// Creates a new `BigNumMod` with this modulus.
     pub fn new_big_num_mod(&self, buffer: [u8; N]) -> BigNumMod<N> {
-        BigNumMod::new(buffer, self)
+        BigNumMod::from_be_bytes(buffer, self)
     }
 }
 
@@ -129,77 +159,10 @@ impl<const N: usize> PartialEq for Modulus<N> {
 
 impl<const N: usize> Eq for Modulus<N> {}
 
-/// A structure representing a big number with a modulus.
+/// Represents a big number under a given modulus.
 ///
-/// This structure provides arithmetic operations for big numbers under a given modulus.
-/// Operations will panic if attempted on two numbers with a different modulus.
-///
-/// # Fields
-///
-/// * `buffer` - The byte array representing the big number.
-/// * `modulus` - A reference to the modulus under which the arithmetic operations are performed.
-///
-/// # Methods
-///
-/// * `new(buffer: [u8; N], modulus: &'a Modulus<N>) -> Self`
-///     - Creates a new `BigNumMod` instance and reduces the buffer by the modulus.
-///
-/// * `from_u32(value: u32, modulus: &'a Modulus<N>) -> Self`
-///     - Creates a new `BigNumMod` instance from a `u32` value and reduces it by the modulus.
-///
-/// * `to_bytes_be(&self) -> [u8; N]`
-///     - Returns the byte array representing the big number.
-///
-/// * `pow(&self, exponent: &BigNumMod<N>) -> Self`
-///     - Computes the power of the big number to the given exponent under the modulus.
-///
-/// # Traits Implementations
-///
-/// * `PartialEq`
-///     - Checks if two `BigNumMod` instances are equal. Two instances are equal if their buffers and moduli are equal.
-///
-/// * `Eq`
-///     - Provides equality comparison for `BigNumMod`.
-///
-/// * `Add`
-///     - Adds two `BigNumMod` instances under the same modulus.
-///
-/// * `AddAssign`
-///     - Adds another `BigNumMod` instance to the current instance under the same modulus.
-///
-/// * `Add<u32>`
-///     - Adds a `u32` value to the `BigNumMod` instance under the same modulus.
-///
-/// * `AddAssign<u32>`
-///     - Adds a `u32` value to the current `BigNumMod` instance under the same modulus.
-///
-/// * `Sub`
-///     - Subtracts one `BigNumMod` instance from another under the same modulus.
-///
-/// * `SubAssign`
-///     - Subtracts another `BigNumMod` instance from the current instance under the same modulus.
-///
-/// * `Sub<u32>`
-///     - Subtracts a `u32` value from the `BigNumMod` instance under the same modulus.
-///
-/// * `SubAssign<u32>`
-///     - Subtracts a `u32` value from the current `BigNumMod` instance under the same modulus.
-///
-/// * `Mul`
-///     - Multiplies two `BigNumMod` instances under the same modulus.
-///
-/// * `MulAssign`
-///     - Multiplies another `BigNumMod` instance with the current instance under the same modulus.
-///
-/// * `Mul<u32>`
-///     - Multiplies a `u32` value with the `BigNumMod` instance under the same modulus.
-///
-/// * `MulAssign<u32>`
-///     - Multiplies a `u32` value with the current `BigNumMod` instance under the same modulus.
-///
-/// # Panics
-///
-/// The methods will panic if the moduli of the two `BigNumMod` instances do not match.
+/// The `BigNumMod` struct provides arithmetic operations for big numbers under a specified modulus.
+/// Operations between `BigNumMod` instances will panic if their moduli differ.
 #[derive(Debug, Clone, Copy)]
 pub struct BigNumMod<'a, const N: usize> {
     buffer: [u8; N],
@@ -207,7 +170,15 @@ pub struct BigNumMod<'a, const N: usize> {
 }
 
 impl<'a, const N: usize> BigNumMod<'a, N> {
-    pub fn new(buffer: [u8; N], modulus: &'a Modulus<N>) -> Self {
+    /// Creates a new `BigNumMod` from a big-endian byte array and a modulus.
+    ///
+    /// The value is reduced modulo the modulus during creation, therefore the
+    /// value in the buffer is guaranteed to be strictly smaller than the modulus.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the modulus is zero.
+    pub fn from_be_bytes(buffer: [u8; N], modulus: &'a Modulus<N>) -> Self {
         if modulus.m.ct_eq(&[0u8; N]).into() {
             panic!("Modulus cannot be 0");
         }
@@ -226,7 +197,18 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         Self { buffer, modulus }
     }
 
+    /// Creates a `BigNumMod` from a `u32` value and a modulus.
+    ///
+    /// The value is reduced modulo the modulus during creation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the modulus is zero.
     pub fn from_u32(value: u32, modulus: &'a Modulus<N>) -> Self {
+        if modulus.m.ct_eq(&[0u8; N]).into() {
+            panic!("Modulus cannot be 0");
+        }
+
         let mut buffer = [0u8; N];
         buffer[N - 4..N].copy_from_slice(&value.to_be_bytes());
 
@@ -243,10 +225,14 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         Self { buffer, modulus }
     }
 
-    pub fn to_bytes_be(&self) -> [u8; N] {
+    /// Returns the value as a big-endian byte array.
+    pub fn to_be_bytes(&self) -> [u8; N] {
         self.buffer
     }
 
+    /// Computes the modular exponentiation of the value raised to the given exponent.
+    ///
+    /// Returns a new `BigNumMod` representing `(self ^ exponent) mod modulus`.
     pub fn pow<const N_EXP: usize>(&self, exponent: &BigNum<N_EXP>) -> Self {
         let mut result = [0u8; N];
         let res = Ecall::bn_powm(
@@ -260,7 +246,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         if !res {
             panic!("Exponentiation failed");
         }
-        Self::new(result, self.modulus)
+        Self::from_be_bytes(result, self.modulus)
     }
 }
 
@@ -307,7 +293,7 @@ impl<'a, const N: usize> Add for &BigNumMod<'a, N> {
         if !res {
             panic!("Addition failed");
         }
-        BigNumMod::new(result, self.modulus)
+        BigNumMod::from_be_bytes(result, self.modulus)
     }
 }
 
@@ -371,7 +357,7 @@ impl<'a, const N: usize> Sub for BigNumMod<'a, N> {
         if !res {
             panic!("Subtraction failed");
         }
-        Self::new(result, self.modulus)
+        Self::from_be_bytes(result, self.modulus)
     }
 }
 
@@ -427,7 +413,7 @@ impl<'a, const N: usize> core::ops::Mul for BigNumMod<'a, N> {
         if !res {
             panic!("Multiplication failed");
         }
-        Self::new(result, self.modulus)
+        Self::from_be_bytes(result, self.modulus)
     }
 }
 
@@ -480,16 +466,16 @@ mod tests {
     use super::*;
     use hex_literal::hex;
 
-    const M: Modulus<32> = Modulus::new(hex!(
+    const M: Modulus<32> = Modulus::from_be_bytes(hex!(
         "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
     ));
-    const M2: Modulus<32> = Modulus::new(hex!(
+    const M2: Modulus<32> = Modulus::from_be_bytes(hex!(
         "3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e"
     ));
 
     #[test]
     fn test_big_num_mod_new() {
-        let modulus = Modulus::new(hex!("12345678"));
+        let modulus = Modulus::from_be_bytes(hex!("12345678"));
         let a = BigNumMod::from_u32(2, &modulus);
         assert_eq!(a.buffer, hex!("00000002"));
         // make sure that the buffer is reduced by the modulus on creation
@@ -601,7 +587,7 @@ mod tests {
 
     #[test]
     fn test_mul() {
-        let m = Modulus::new(hex!(
+        let m = Modulus::from_be_bytes(hex!(
             "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
         ));
 
@@ -657,23 +643,23 @@ mod tests {
 
         // 0 always returns 1
         assert_eq!(
-            a.pow(&BigNum::new(hex!("00"))).buffer,
+            a.pow(&BigNum::from_be_bytes(hex!("00"))).buffer,
             hex!("0000000000000000000000000000000000000000000000000000000000000001")
         );
 
         // 1 is the identity
-        assert_eq!(a.pow(&BigNum::new(hex!("01"))), a);
+        assert_eq!(a.pow(&BigNum::from_be_bytes(hex!("01"))), a);
 
         assert_eq!(
-            a.pow(&BigNum::new(hex!("02"))).buffer,
+            a.pow(&BigNum::from_be_bytes(hex!("02"))).buffer,
             hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
         );
         assert_eq!(
-            a.pow(&BigNum::new(hex!("00000002"))).buffer,
+            a.pow(&BigNum::from_be_bytes(hex!("00000002"))).buffer,
             hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
         );
         assert_eq!(
-            a.pow(&BigNum::new(hex!(
+            a.pow(&BigNum::from_be_bytes(hex!(
                 "0000000000000000000000000000000000000000000000000000000000000002"
             )))
             .buffer,
