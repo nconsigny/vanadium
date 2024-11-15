@@ -14,6 +14,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # native tests
+
   test_app_sdk:
     name: Run V-App SDK tests
     runs-on: ubuntu-latest
@@ -109,3 +111,12 @@ jobs:
         working-directory: apps/test/client
         run: |
           cargo +nightly test --target x86_64-unknown-linux-gnu
+
+# build Vanadium VM app
+
+  build_application:
+    name: Build application using the reusable workflow
+    uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_build.yml@v1
+    with:
+      upload_app_binaries_artifact: "compiled_app_binaries"
+      builder: ledger-app-builder
