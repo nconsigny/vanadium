@@ -346,10 +346,10 @@ impl<'a, const N: usize> AddAssign<u32> for BigNumMod<'a, N> {
     }
 }
 
-impl<'a, const N: usize> Sub for BigNumMod<'a, N> {
-    type Output = Self;
+impl<'a, const N: usize> Sub for &BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
 
-    fn sub(self, other: Self) -> Self {
+    fn sub(self, other: Self) -> BigNumMod<'a, N> {
         if self.modulus != other.modulus {
             panic!("Moduli do not match");
         }
@@ -365,7 +365,7 @@ impl<'a, const N: usize> Sub for BigNumMod<'a, N> {
         if !res {
             panic!("Subtraction failed");
         }
-        Self::from_be_bytes(result, self.modulus)
+        BigNumMod::from_be_bytes(result, self.modulus)
     }
 }
 
@@ -392,7 +392,7 @@ impl<'a, const N: usize> core::ops::Sub<u32> for BigNumMod<'a, N> {
     type Output = Self;
 
     fn sub(self, other: u32) -> Self {
-        self - Self::from_u32(other, self.modulus)
+        &self - &Self::from_u32(other, self.modulus)
     }
 }
 
@@ -402,10 +402,10 @@ impl<'a, const N: usize> SubAssign<u32> for BigNumMod<'a, N> {
     }
 }
 
-impl<'a, const N: usize> core::ops::Mul for BigNumMod<'a, N> {
-    type Output = Self;
+impl<'a, const N: usize> core::ops::Mul for &BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
 
-    fn mul(self, other: Self) -> Self {
+    fn mul(self, other: Self) -> BigNumMod<'a, N> {
         if self.modulus != other.modulus {
             panic!("Moduli do not match");
         }
@@ -421,7 +421,7 @@ impl<'a, const N: usize> core::ops::Mul for BigNumMod<'a, N> {
         if !res {
             panic!("Multiplication failed");
         }
-        Self::from_be_bytes(result, self.modulus)
+        BigNumMod::from_be_bytes(result, self.modulus)
     }
 }
 
@@ -448,7 +448,7 @@ impl<'a, const N: usize> core::ops::Mul<u32> for BigNumMod<'a, N> {
     type Output = Self;
 
     fn mul(self, other: u32) -> Self {
-        self * BigNumMod::from_u32(other, self.modulus)
+        &self * &BigNumMod::from_u32(other, self.modulus)
     }
 }
 
@@ -458,11 +458,11 @@ impl<'a, const N: usize> core::ops::MulAssign<u32> for BigNumMod<'a, N> {
     }
 }
 
-impl<'a, const N: usize> core::ops::Mul<BigNumMod<'a, N>> for u32 {
+impl<'a, const N: usize> core::ops::Mul<&BigNumMod<'a, N>> for u32 {
     type Output = BigNumMod<'a, N>;
 
-    fn mul(self, other: BigNumMod<'a, N>) -> BigNumMod<'a, N> {
-        BigNumMod::from_u32(self, other.modulus) * other
+    fn mul(self, other: &BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        &BigNumMod::from_u32(self, other.modulus) * other
     }
 }
 
@@ -629,7 +629,7 @@ mod tests {
     fn test_sub() {
         let a = BigNumMod::from_u32(5, &M);
         let b = BigNumMod::from_u32(3, &M);
-        assert_eq!(a - b, BigNumMod::from_u32(2, &M));
+        assert_eq!(&a - &b, BigNumMod::from_u32(2, &M));
 
         let a = M.new_big_num_mod(hex!(
             "a247598432980432940980983408039480095809832048509809580984320985"
@@ -638,13 +638,13 @@ mod tests {
             "7390984098209380980948098230840982340294098092384092834923840923"
         ));
         assert_eq!(
-            a - b,
+            &a - &b,
             M.new_big_num_mod(hex!(
                 "2eb6c1439a7770b1fc00388eb1d77f8afdd55575799fb6185776d4c060ae0062"
             ))
         );
         assert_eq!(
-            b - a,
+            &b - &a,
             M.new_big_num_mod(hex!(
                 "d1493ebc65888f4e03ffc7714e288075022aaa8a866049e7a8892b3e9f51fbcd"
             ))
@@ -659,7 +659,7 @@ mod tests {
         // tests with SubAssign
         let mut a_copy = a;
         a_copy -= b;
-        assert_eq!(a_copy, a - b);
+        assert_eq!(a_copy, &a - &b);
         let mut a = BigNumMod::from_u32(13, &M);
         a -= 7u32;
         assert_eq!(a, BigNumMod::from_u32(6, &M));
@@ -669,7 +669,7 @@ mod tests {
     #[should_panic(expected = "Moduli do not match")]
     fn test_sub_different_modulus() {
         // this should panic
-        let _ = BigNumMod::from_u32(5, &M) - BigNumMod::from_u32(3, &M2);
+        let _ = &BigNumMod::from_u32(5, &M) - &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
@@ -680,7 +680,7 @@ mod tests {
 
         let a = BigNumMod::from_u32(2, &M);
         let b = BigNumMod::from_u32(3, &M);
-        assert_eq!(a * b, BigNumMod::from_u32(6, &m));
+        assert_eq!(&a * &b, BigNumMod::from_u32(6, &m));
 
         let a = M.new_big_num_mod(hex!(
             "a247598432980432940980983408039480095809832048509809580984320985"
@@ -689,7 +689,7 @@ mod tests {
             "7390984098209380980948098230840982340294098092384092834923840923"
         ));
         assert_eq!(
-            a * b,
+            &a * &b,
             M.new_big_num_mod(hex!(
                 "2d5daeb3ed823bef5a4480a2c5aa0708e8e37ed7302d2b21c9b442b244d48ce6"
             ))
@@ -701,14 +701,14 @@ mod tests {
             BigNumMod::from_u32(6, &m)
         );
         assert_eq!(
-            3u32 * BigNumMod::from_u32(2, &m),
+            3u32 * &BigNumMod::from_u32(2, &m),
             BigNumMod::from_u32(6, &m)
         );
 
         // tests for MulAssign
         let mut a_copy = a;
         a_copy *= &b;
-        assert_eq!(a_copy, a * b);
+        assert_eq!(a_copy, &a * &b);
 
         let mut a = BigNumMod::from_u32(7, &M);
         a *= 13u32;
@@ -719,7 +719,7 @@ mod tests {
     #[should_panic(expected = "Moduli do not match")]
     fn test_mul_different_modulus() {
         // this should panic
-        let _ = BigNumMod::from_u32(2, &M) * BigNumMod::from_u32(3, &M2);
+        let _ = &BigNumMod::from_u32(2, &M) * &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
