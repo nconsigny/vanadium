@@ -1,4 +1,4 @@
-name: Build and run tests
+name: CI
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # native tests
+  # Native tests
 
   test_app_sdk:
     name: Run V-App SDK tests
@@ -112,7 +112,7 @@ jobs:
         run: |
           cargo +nightly test --target x86_64-unknown-linux-gnu
 
-# build Vanadium VM app
+  # build Vanadium VM app
 
   build_application:
     name: Build application using the reusable workflow
@@ -121,7 +121,9 @@ jobs:
       upload_app_binaries_artifact: "vanadium_binaries"
       builder: ledger-app-builder
 
-# build test V-App
+  ### Risc-V tests
+
+  # build test V-App
   build_vapp_test:
     name: Build vnd-test on Risc-V target
     runs-on: ubuntu-latest
