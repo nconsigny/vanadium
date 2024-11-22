@@ -64,39 +64,39 @@ impl EcallsInterface for Ecall {
         return n_bytes_to_copy;
     }
 
-    fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> bool {
+    fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> u32 {
         if len > MAX_BIGNUMBER_SIZE || len_m > MAX_BIGNUMBER_SIZE {
-            return false;
+            return 0;
         }
 
         if len_m > len_m {
-            return false;
+            return 0;
         }
 
         let n = unsafe { Self::to_bigint(n, len) };
         let m = unsafe { Self::to_bigint(m, len_m) };
 
         if m.is_zero() {
-            return false;
+            return 0;
         }
 
         let result = n % &m;
         let result_bytes = result.to_bytes_be();
 
         if result_bytes.len() > len {
-            return false;
+            return 0;
         }
 
         unsafe {
             Self::copy_result(r, &result_bytes, len);
         }
 
-        true
+        1
     }
 
-    fn bn_addm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> bool {
+    fn bn_addm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32 {
         if len > MAX_BIGNUMBER_SIZE {
-            return false;
+            return 0;
         }
 
         let a = unsafe { Self::to_bigint(a, len) };
@@ -104,30 +104,30 @@ impl EcallsInterface for Ecall {
         let m = unsafe { Self::to_bigint(m, len) };
 
         if a >= m || b >= m {
-            return false;
+            return 0;
         }
 
         if m.is_zero() {
-            return false;
+            return 0;
         }
 
         let result = (a + b) % &m;
         let result_bytes = result.to_bytes_be();
 
         if result_bytes.len() > len {
-            return false;
+            return 0;
         }
 
         unsafe {
             Self::copy_result(r, &result_bytes, len);
         }
 
-        true
+        1
     }
 
-    fn bn_subm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> bool {
+    fn bn_subm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32 {
         if len > MAX_BIGNUMBER_SIZE {
-            return false;
+            return 0;
         }
 
         let a = unsafe { Self::to_bigint(a, len) };
@@ -135,11 +135,11 @@ impl EcallsInterface for Ecall {
         let m = unsafe { Self::to_bigint(m, len) };
 
         if a >= m || b >= m {
-            return false;
+            return 0;
         }
 
         if m.is_zero() {
-            return false;
+            return 0;
         }
 
         // the `+ &m` is to avoid negative numbers, since BigUints must be non-negative
@@ -147,19 +147,19 @@ impl EcallsInterface for Ecall {
         let result_bytes = result.to_bytes_be();
 
         if result_bytes.len() > len {
-            return false;
+            return 0;
         }
 
         unsafe {
             Self::copy_result(r, &result_bytes, len);
         }
 
-        true
+        1
     }
 
-    fn bn_multm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> bool {
+    fn bn_multm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32 {
         if len > MAX_BIGNUMBER_SIZE {
-            return false;
+            return 0;
         }
 
         let a = unsafe { Self::to_bigint(a, len) };
@@ -167,25 +167,25 @@ impl EcallsInterface for Ecall {
         let m = unsafe { Self::to_bigint(m, len) };
 
         if a >= m || b >= m {
-            return false;
+            return 0;
         }
 
         if m.is_zero() {
-            return false;
+            return 0;
         }
 
         let result = (a * b) % &m;
         let result_bytes = result.to_bytes_be();
 
         if result_bytes.len() > len {
-            return false;
+            return 0;
         }
 
         unsafe {
             Self::copy_result(r, &result_bytes, len);
         }
 
-        true
+        1
     }
 
     fn bn_powm(
@@ -195,9 +195,9 @@ impl EcallsInterface for Ecall {
         len_e: usize,
         m: *const u8,
         len: usize,
-    ) -> bool {
+    ) -> u32 {
         if len > MAX_BIGNUMBER_SIZE || len_e > MAX_BIGNUMBER_SIZE {
-            return false;
+            return 0;
         }
 
         let a = unsafe { Self::to_bigint(a, len) };
@@ -205,25 +205,25 @@ impl EcallsInterface for Ecall {
         let m = unsafe { Self::to_bigint(m, len) };
 
         if a >= m {
-            return false;
+            return 0;
         }
 
         if m.is_zero() {
-            return false;
+            return 0;
         }
 
         let result = a.modpow(&e, &m);
         let result_bytes = result.to_bytes_be();
 
         if result_bytes.len() > len {
-            return false;
+            return 0;
         }
 
         unsafe {
             Self::copy_result(r, &result_bytes, len);
         }
 
-        true
+        1
     }
 }
 
