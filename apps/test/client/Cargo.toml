@@ -3,6 +3,9 @@ name = "vnd-test-client"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+speculos-tests = []
+
 [dependencies]
 clap = { version = "4.5.17", features = ["derive"] }
 hex = "0.4.3"

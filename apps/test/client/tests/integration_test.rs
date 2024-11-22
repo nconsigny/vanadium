@@ -1,3 +1,5 @@
+#![cfg(feature = "speculos-tests")]
+
 mod common;
 
 #[tokio::test]
