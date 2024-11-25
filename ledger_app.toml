@@ -1,0 +1,4 @@
+[app]
+build_directory = "./vm/"
+sdk = "Rust"
+devices = ["nanos+", "stax", "flex"]

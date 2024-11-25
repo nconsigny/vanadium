@@ -192,7 +192,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         }
         // reduce the buffer my the modulus
         let mut buffer = buffer;
-        if !Ecall::bn_modm(
+        if 1 != Ecall::bn_modm(
             buffer.as_mut_ptr(),
             buffer.as_ptr(),
             N,
@@ -220,7 +220,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         let mut buffer = [0u8; N];
         buffer[N - 4..N].copy_from_slice(&value.to_be_bytes());
 
-        if !Ecall::bn_modm(
+        if 1 != Ecall::bn_modm(
             buffer.as_mut_ptr(),
             buffer.as_ptr(),
             N,
@@ -251,7 +251,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Exponentiation failed");
         }
         Self::from_be_bytes(result, self.modulus)
@@ -298,7 +298,7 @@ impl<'a, const N: usize> Add for &BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Addition failed");
         }
         BigNumMod::from_be_bytes(result, self.modulus)
@@ -318,7 +318,7 @@ impl<'a, const N: usize> AddAssign for BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Addition failed");
         }
     }
@@ -362,7 +362,7 @@ impl<'a, const N: usize> Sub for &BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Subtraction failed");
         }
         BigNumMod::from_be_bytes(result, self.modulus)
@@ -382,7 +382,7 @@ impl<'a, const N: usize> SubAssign for BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Subtraction failed");
         }
     }
@@ -418,7 +418,7 @@ impl<'a, const N: usize> core::ops::Mul for &BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Multiplication failed");
         }
         BigNumMod::from_be_bytes(result, self.modulus)
@@ -438,7 +438,7 @@ impl<'a, const N: usize> MulAssign<&Self> for BigNumMod<'a, N> {
             self.modulus.m.as_ptr(),
             N,
         );
-        if !res {
+        if res != 1 {
             panic!("Multiplication failed");
         }
     }

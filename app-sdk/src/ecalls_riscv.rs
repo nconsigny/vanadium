@@ -169,7 +169,7 @@ macro_rules! ecall5 {
     };
 }
 
-macro_rules! ecall5 {
+macro_rules! ecall6 {
     // ECALL with 6 arguments and returning a value
     ($fn_name:ident, $syscall_number:expr,
      ($arg1:ident: $arg1_type:ty),
@@ -230,9 +230,9 @@ impl EcallsInterface for Ecall {
     ecall2v!(xsend, ECALL_XSEND, (buffer: *const u8), (size: usize));
     ecall2!(xrecv, ECALL_XRECV, (buffer: *mut u8), (size: usize), usize);
 
-    ecall5!(bn_modm, ECALL_MODM, (r: *mut u8), (n: *const u8), (len: usize), (m: *const u8), (len_m: usize), bool);
-    ecall5!(bn_addm, ECALL_ADDM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), bool);
-    ecall5!(bn_subm, ECALL_SUBM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), bool);
-    ecall5!(bn_multm, ECALL_MULTM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), bool);
-    ecall6!(bn_powm, ECALL_POWM, (r: *mut u8), (a: *const u8), (e: *const u8), (len_e: usize), (m: *const u8), (len: usize), bool);
+    ecall5!(bn_modm, ECALL_MODM, (r: *mut u8), (n: *const u8), (len: usize), (m: *const u8), (len_m: usize), u32);
+    ecall5!(bn_addm, ECALL_ADDM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), u32);
+    ecall5!(bn_subm, ECALL_SUBM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), u32);
+    ecall5!(bn_multm, ECALL_MULTM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), u32);
+    ecall6!(bn_powm, ECALL_POWM, (r: *mut u8), (a: *const u8), (e: *const u8), (len_e: usize), (m: *const u8), (len: usize), u32);
 }
