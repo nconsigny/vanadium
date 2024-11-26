@@ -3,12 +3,12 @@
 
 extern crate alloc;
 
-use alloc::{vec, vec::Vec};
-
-pub mod comm;
-pub mod ux;
+use alloc::vec::Vec;
 
 pub mod bignum;
+pub mod comm;
+pub mod hash;
+pub mod ux;
 
 mod ecalls;
 
