@@ -1,0 +1,12 @@
+[package]
+name = "vnd-sadik"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { package = "vnd-sadik-common", path = "../common"}
+postcard = { version = "1.0.8", features = ["alloc"] }
+sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk"}
+serde = { version = "1.0.215", default-features = false, features = ["alloc"] }
+
+[workspace]
