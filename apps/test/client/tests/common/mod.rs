@@ -53,6 +53,9 @@ impl TestSetup {
 impl Drop for TestSetup {
     fn drop(&mut self) {
         self.child.kill().expect("Failed to kill speculos process");
+        self.child
+            .wait()
+            .expect("Failed to wait on speculos process");
     }
 }
 
