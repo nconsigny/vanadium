@@ -1,4 +1,4 @@
-use common::{Command, HashId};
+use common::{BigIntOperator, Command, HashId};
 use sdk::{
     comm::{send_message, SendMessageError},
     vanadium_client::{VAppClient, VAppExecutionError},
@@ -57,6 +57,26 @@ impl SadikClient {
         let cmd = Command::Hash {
             hash_id: hash_id.into(),
             msg: data.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn bignum_operation(
+        &mut self,
+        operator: BigIntOperator,
+        a: &[u8],
+        b: &[u8],
+        modulus: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::BigIntOperation {
+            operator,
+            a: a.to_vec(),
+            b: b.to_vec(),
+            modulus: modulus.to_vec(),
         };
 
         let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");

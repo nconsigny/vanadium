@@ -7,8 +7,25 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum BigIntOperator {
+    Add,
+    Sub,
+    Mul,
+    Pow,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Command {
-    Hash { hash_id: u32, msg: Vec<u8> },
+    BigIntOperation {
+        operator: BigIntOperator,
+        a: Vec<u8>,
+        b: Vec<u8>,
+        modulus: Vec<u8>, // if 0, not modular
+    },
+    Hash {
+        hash_id: u32,
+        msg: Vec<u8>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
