@@ -4,7 +4,10 @@
 #[cfg(target_arch = "riscv32")]
 use sdk::fatal;
 
-use sdk::hash::Hasher;
+use sdk::{
+    bignum::{BigNum, BigNumMod, Modulus},
+    hash::Hasher,
+};
 
 extern crate alloc;
 
@@ -79,6 +82,74 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                         let mut digest = [0u8; 64];
                         hasher.digest(&mut digest);
                         digest.to_vec()
+                    }
+                }
+            }
+            Command::BigIntOperation {
+                operator,
+                a,
+                b,
+                modulus,
+            } => {
+                if a.len() != b.len() {
+                    panic!("Big numbers must have the same length");
+                }
+
+                if modulus.len() == 0 {
+                    macro_rules! impl_bignum_processing {
+                        ($len:expr, $a:expr, $b:expr, $operator:expr) => {{
+                            let a: BigNum<$len> =
+                                BigNum::from_be_bytes($a.as_slice().try_into().unwrap());
+                            let b: BigNum<$len> =
+                                BigNum::from_be_bytes($b.as_slice().try_into().unwrap());
+
+                            match $operator {
+                                common::BigIntOperator::Add => (&a + &b).to_be_bytes().to_vec(),
+                                common::BigIntOperator::Sub => (&a - &b).to_be_bytes().to_vec(),
+                                common::BigIntOperator::Mul => {
+                                    panic!(
+                                        "Multiplication is only supported for modular big numbers"
+                                    )
+                                }
+                                common::BigIntOperator::Pow => {
+                                    panic!(
+                                        "Exponentiation is only supported for modular big numbers"
+                                    )
+                                }
+                            }
+                        }};
+                    }
+
+                    match a.len() {
+                        4 => impl_bignum_processing!(4, a, b, operator),
+                        32 => impl_bignum_processing!(32, a, b, operator),
+                        64 => impl_bignum_processing!(64, a, b, operator),
+                        _ => panic!("Unsupported big number length in sadik"),
+                    }
+                } else {
+                    // modular
+                    if modulus.len() != 32 {
+                        panic!("Only modulus length of 32 is supported in sadik");
+                    }
+
+                    let modulus = Modulus::from_be_bytes(modulus.as_slice().try_into().unwrap());
+
+                    if a.len() != 32 || b.len() != 32 {
+                        panic!("Only big numbers of length 32 are supported in sadik");
+                    }
+
+                    let b_bignum = BigNum::<32>::from_be_bytes(b.as_slice().try_into().unwrap());
+
+                    let a: BigNumMod<32> =
+                        BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap(), &modulus);
+                    let b: BigNumMod<32> =
+                        BigNumMod::from_be_bytes(b.as_slice().try_into().unwrap(), &modulus);
+
+                    match operator {
+                        common::BigIntOperator::Add => (&a + &b).to_be_bytes().to_vec(),
+                        common::BigIntOperator::Sub => (&a - &b).to_be_bytes().to_vec(),
+                        common::BigIntOperator::Mul => (&a * &b).to_be_bytes().to_vec(),
+                        common::BigIntOperator::Pow => a.pow(&b_bignum).to_be_bytes().to_vec(),
                     }
                 }
             }
