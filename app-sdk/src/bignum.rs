@@ -478,7 +478,7 @@ mod tests {
         "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
     ));
     const M2: Modulus<32> = Modulus::from_be_bytes(hex!(
-        "3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e"
+        "3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9d"
     ));
 
     #[test]
@@ -739,28 +739,28 @@ mod tests {
 
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("02"))).buffer,
-            hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+            hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
         );
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("00000002"))).buffer,
-            hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+            hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
         );
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!(
                 "0000000000000000000000000000000000000000000000000000000000000002"
             )))
             .buffer,
-            hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+            hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
         );
 
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("23"))).buffer,
-            hex!("1ed32565487715d9669418dbaa00db9e03f8271af2074857cc6178e6905b0501")
+            hex!("2c341d219fc6fc7895e4de6a93d48ab77acfc2564beebb7c14a6aa57d3fd575a")
         );
 
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"))).buffer,
-            hex!("1329e291eb25b61d17cff7cc9c00457532f917c23f44af7469ed55b6988f0dd1")
+            hex!("3c0baee8c4e2f7220615013d7402fa5e69e43bc10e55500a5af4f8b966658846")
         );
     }
 }
