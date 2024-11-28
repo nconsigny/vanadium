@@ -298,7 +298,7 @@ macro_rules! ecall6 {
                     in("a2") $arg3,            // Third argument in a2
                     in("a3") $arg4,            // Third argument in a3
                     in("a4") $arg5,            // Third argument in a4
-                    in("a6") $arg6,            // Third argument in a5
+                    in("a5") $arg6,            // Third argument in a5
                     lateout("a0") ret          // Return value in a0
                 );
             }
