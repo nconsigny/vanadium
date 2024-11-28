@@ -349,9 +349,11 @@ impl<'a> CommEcallHandler<'a> {
         // copy inputs to local memory
         // we use r_local both for the input and for the result
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(n.0)?.read_buffer(n.0, &mut r_local)?;
+        cpu.get_segment(n.0)?
+            .read_buffer(n.0, &mut r_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+        cpu.get_segment(m.0)?
+            .read_buffer(m.0, &mut m_local[0..m_len])?;
 
         unsafe {
             let res = ledger_secure_sdk_sys::cx_math_modm_no_throw(
@@ -367,7 +369,7 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy r_local to r
         let segment = cpu.get_segment(r.0)?;
-        segment.write_buffer(r.0, &r_local)?;
+        segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
@@ -386,11 +388,14 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        cpu.get_segment(a.0)?
+            .read_buffer(a.0, &mut a_local[0..len])?;
         let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(b.0)?.read_buffer(b.0, &mut b_local)?;
+        cpu.get_segment(b.0)?
+            .read_buffer(b.0, &mut b_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+        cpu.get_segment(m.0)?
+            .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
         unsafe {
@@ -408,7 +413,7 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy r_local to r
         let segment = cpu.get_segment(r.0)?;
-        segment.write_buffer(r.0, &r_local)?;
+        segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
@@ -427,11 +432,14 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        cpu.get_segment(a.0)?
+            .read_buffer(a.0, &mut a_local[0..len])?;
         let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(b.0)?.read_buffer(b.0, &mut b_local)?;
+        cpu.get_segment(b.0)?
+            .read_buffer(b.0, &mut b_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+        cpu.get_segment(m.0)?
+            .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
         unsafe {
@@ -449,7 +457,7 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy r_local to r
         let segment = cpu.get_segment(r.0)?;
-        segment.write_buffer(r.0, &r_local)?;
+        segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
@@ -468,11 +476,14 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        cpu.get_segment(a.0)?
+            .read_buffer(a.0, &mut a_local[0..len])?;
         let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(b.0)?.read_buffer(b.0, &mut b_local)?;
+        cpu.get_segment(b.0)?
+            .read_buffer(b.0, &mut b_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+        cpu.get_segment(m.0)?
+            .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
         unsafe {
@@ -490,7 +501,7 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy r_local to r
         let segment = cpu.get_segment(r.0)?;
-        segment.write_buffer(r.0, &r_local)?;
+        segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
@@ -513,11 +524,14 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?.read_buffer(a.0, &mut a_local)?;
+        cpu.get_segment(a.0)?
+            .read_buffer(a.0, &mut a_local[0..len])?;
         let mut e_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(e.0)?.read_buffer(e.0, &mut e_local)?;
+        cpu.get_segment(e.0)?
+            .read_buffer(e.0, &mut e_local[0..len_e])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?.read_buffer(m.0, &mut m_local)?;
+        cpu.get_segment(m.0)?
+            .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
         unsafe {
@@ -536,7 +550,7 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy r_local to r
         let segment = cpu.get_segment(r.0)?;
-        segment.write_buffer(r.0, &r_local)?;
+        segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
@@ -729,8 +743,8 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                         .show_and_return();
                 }
             }
-            ECALL_MODM => self
-                .handle_bn_modm(
+            ECALL_MODM => {
+                self.handle_bn_modm(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -738,9 +752,12 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     GPreg!(A3),
                     reg!(A4) as usize,
                 )
-                .map_err(|_| CommEcallError::GenericError("bn_modm failed"))?,
-            ECALL_ADDM => self
-                .handle_bn_addm(
+                .map_err(|_| CommEcallError::GenericError("bn_modm failed"))?;
+
+                reg!(A0) = 1;
+            }
+            ECALL_ADDM => {
+                self.handle_bn_addm(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -748,9 +765,12 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     GPreg!(A3),
                     reg!(A4) as usize,
                 )
-                .map_err(|_| CommEcallError::GenericError("bn_addm failed"))?,
-            ECALL_SUBM => self
-                .handle_bn_subm(
+                .map_err(|_| CommEcallError::GenericError("bn_addm failed"))?;
+
+                reg!(A0) = 1;
+            }
+            ECALL_SUBM => {
+                self.handle_bn_subm(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -758,9 +778,12 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     GPreg!(A3),
                     reg!(A4) as usize,
                 )
-                .map_err(|_| CommEcallError::GenericError("bn_subm failed"))?,
-            ECALL_MULTM => self
-                .handle_bn_multm(
+                .map_err(|_| CommEcallError::GenericError("bn_subm failed"))?;
+
+                reg!(A0) = 1;
+            }
+            ECALL_MULTM => {
+                self.handle_bn_multm(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -768,9 +791,12 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     GPreg!(A3),
                     reg!(A4) as usize,
                 )
-                .map_err(|_| CommEcallError::GenericError("bn_multm failed"))?,
-            ECALL_POWM => self
-                .handle_bn_powm(
+                .map_err(|_| CommEcallError::GenericError("bn_multm failed"))?;
+
+                reg!(A0) = 1;
+            }
+            ECALL_POWM => {
+                self.handle_bn_powm(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -779,7 +805,10 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     GPreg!(A4),
                     reg!(A5) as usize,
                 )
-                .map_err(|_| CommEcallError::GenericError("bn_powm failed"))?,
+                .map_err(|_| CommEcallError::GenericError("bn_powm failed"))?;
+
+                reg!(A0) = 1;
+            }
             ECALL_HASH_INIT => self
                 .handle_hash_init(cpu, reg!(A0), GPreg!(A1))
                 .map_err(|_| CommEcallError::GenericError("hash_init failed"))?,
