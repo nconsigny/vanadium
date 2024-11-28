@@ -190,7 +190,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         if modulus.m.ct_eq(&[0u8; N]).into() {
             panic!("Modulus cannot be 0");
         }
-        // reduce the buffer my the modulus
+        // reduce the buffer by the modulus
         let mut buffer = buffer;
         if 1 != Ecall::bn_modm(
             buffer.as_mut_ptr(),
@@ -571,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_u32() {
+    fn test_big_num_mod_from_u32() {
         let a = BigNumMod::from_u32(2, &M);
         assert_eq!(
             a.buffer,
@@ -580,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add() {
+    fn test_big_num_mod_add() {
         let a = BigNumMod::from_u32(2, &M);
         let b = BigNumMod::from_u32(3, &M);
         assert_eq!(&a + &b, BigNumMod::from_u32(5, &M));
@@ -620,13 +620,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Moduli do not match")]
-    fn test_add_different_modulus() {
+    fn test_big_num_mod_add_different_modulus() {
         // this should panic
         let _ = &BigNumMod::from_u32(2, &M) + &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
-    fn test_sub() {
+    fn test_big_num_mod_sub() {
         let a = BigNumMod::from_u32(5, &M);
         let b = BigNumMod::from_u32(3, &M);
         assert_eq!(&a - &b, BigNumMod::from_u32(2, &M));
@@ -667,13 +667,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Moduli do not match")]
-    fn test_sub_different_modulus() {
+    fn test_big_num_mod_sub_different_modulus() {
         // this should panic
         let _ = &BigNumMod::from_u32(5, &M) - &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
-    fn test_mul() {
+    fn test_big_num_mod_mul() {
         let m = Modulus::from_be_bytes(hex!(
             "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
         ));
@@ -717,13 +717,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Moduli do not match")]
-    fn test_mul_different_modulus() {
+    fn test_big_num_mod_mul_different_modulus() {
         // this should panic
         let _ = &BigNumMod::from_u32(2, &M) * &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
-    fn test_pow() {
+    fn test_big_num_mod_pow() {
         let a = M2.new_big_num_mod(hex!(
             "a247598432980432940980983408039480095809832048509809580984320985"
         ));
