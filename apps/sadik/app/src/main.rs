@@ -91,10 +91,6 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                 b,
                 modulus,
             } => {
-                if a.len() != b.len() {
-                    panic!("Big numbers must have the same length");
-                }
-
                 if modulus.len() == 0 {
                     macro_rules! impl_bignum_processing {
                         ($len:expr, $a:expr, $b:expr, $operator:expr) => {{
@@ -120,6 +116,10 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                         }};
                     }
 
+                    if a.len() != b.len() {
+                        panic!("Big numbers must have the same length");
+                    }
+
                     match a.len() {
                         4 => impl_bignum_processing!(4, a, b, operator),
                         32 => impl_bignum_processing!(32, a, b, operator),
@@ -134,22 +134,47 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
 
                     let modulus = Modulus::from_be_bytes(modulus.as_slice().try_into().unwrap());
 
-                    if a.len() != 32 || b.len() != 32 {
-                        panic!("Only big numbers of length 32 are supported in sadik");
-                    }
+                    if let common::BigIntOperator::Pow = operator {
+                        if a.len() != 32 {
+                            panic!("Only modular big numbers of length 32 are supported in sadik");
+                        }
+                        let a: BigNumMod<32> =
+                            BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap(), &modulus);
 
-                    let b_bignum = BigNum::<32>::from_be_bytes(b.as_slice().try_into().unwrap());
+                        macro_rules! impl_modular_pow {
+                            ($len:expr, $b:expr, $a:expr) => {{
+                                let b = BigNum::<$len>::from_be_bytes(
+                                    $b.as_slice().try_into().unwrap(),
+                                );
+                                $a.pow(&b).to_be_bytes().to_vec()
+                            }};
+                        }
 
-                    let a: BigNumMod<32> =
-                        BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap(), &modulus);
-                    let b: BigNumMod<32> =
-                        BigNumMod::from_be_bytes(b.as_slice().try_into().unwrap(), &modulus);
+                        match b.len() {
+                            1 => impl_modular_pow!(1, b, a),
+                            4 => impl_modular_pow!(4, b, a),
+                            32 => impl_modular_pow!(32, b, a),
+                            64 => impl_modular_pow!(64, b, a),
+                            _ => {
+                                panic!("Unsupported length for the exponent in sadik");
+                            }
+                        }
+                    } else {
+                        if a.len() != 32 || b.len() != 32 {
+                            panic!("Only modular big numbers of length 32 are supported in sadik");
+                        }
 
-                    match operator {
-                        common::BigIntOperator::Add => (&a + &b).to_be_bytes().to_vec(),
-                        common::BigIntOperator::Sub => (&a - &b).to_be_bytes().to_vec(),
-                        common::BigIntOperator::Mul => (&a * &b).to_be_bytes().to_vec(),
-                        common::BigIntOperator::Pow => a.pow(&b_bignum).to_be_bytes().to_vec(),
+                        let a: BigNumMod<32> =
+                            BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap(), &modulus);
+                        let b: BigNumMod<32> =
+                            BigNumMod::from_be_bytes(b.as_slice().try_into().unwrap(), &modulus);
+
+                        match operator {
+                            common::BigIntOperator::Add => (&a + &b).to_be_bytes().to_vec(),
+                            common::BigIntOperator::Sub => (&a - &b).to_be_bytes().to_vec(),
+                            common::BigIntOperator::Mul => (&a * &b).to_be_bytes().to_vec(),
+                            common::BigIntOperator::Pow => panic!("Unreachable code"),
+                        }
                     }
                 }
             }

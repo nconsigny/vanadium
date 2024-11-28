@@ -63,7 +63,7 @@ async fn test_big_num_mod() {
     let mut setup = test_common::setup().await;
 
     let M: Vec<u8> = hex!("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f").to_vec();
-    let M2: Vec<u8> = hex!("3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e").to_vec();
+    let M2: Vec<u8> = hex!("3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9d").to_vec();
 
     let zero: Vec<u8> = hex!("0000000000000000000000000000000000000000000000000000000000000000").to_vec();
     let one: Vec<u8> = hex!("0000000000000000000000000000000000000000000000000000000000000001").to_vec();
@@ -96,6 +96,47 @@ async fn test_big_num_mod() {
     assert_eq!(
         setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), &M).await.unwrap(),
         hex!("2d5daeb3ed823bef5a4480a2c5aa0708e8e37ed7302d2b21c9b442b244d48ce6")
+    );
+
+    // TODO: disabled until speculos is fixed as per https://github.com/LedgerHQ/speculos/pull/52
+    // powers: 0
+    // assert_eq!(
+    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00"), &M2).await.unwrap(),
+    //     one
+    // );
+    // assert_eq!(
+    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, &M2).await.unwrap(),
+    //     one
+    // );
+
+    // powers: 1
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &one, &M).await.unwrap(),
+        hex!("a247598432980432940980983408039480095809832048509809580984320985")
+    );
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("01"), &M).await.unwrap(),
+        hex!("a247598432980432940980983408039480095809832048509809580984320985")
+    );
+
+    // powers: 2
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("02"), &M2).await.unwrap(),
+        hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
+    );
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00000002"), &M2).await.unwrap(),
+        hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
+    );
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("0000000000000000000000000000000000000000000000000000000000000002"), &M2).await.unwrap(),
+        hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
+    );
+
+    // powers: large
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"), &M2).await.unwrap(),
+        hex!("3c0baee8c4e2f7220615013d7402fa5e69e43bc10e55500a5af4f8b966658846")
     );
 }
 
