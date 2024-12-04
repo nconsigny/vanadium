@@ -1,0 +1,12 @@
+[package]
+name = "vnd-sadik-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0.215", default-features = false, features = ["alloc", "derive"] }
+
+[dev-dependencies]
+postcard = { version = "1.0.8", features = ["alloc"] }
+
+[workspace]

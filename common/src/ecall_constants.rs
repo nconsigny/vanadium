@@ -12,3 +12,8 @@ pub const ECALL_MULTM: u32 = 113;
 pub const ECALL_POWM: u32 = 114;
 
 pub const MAX_BIGNUMBER_SIZE: usize = 64;
+
+// Hash functions
+pub const ECALL_HASH_INIT: u32 = 150;
+pub const ECALL_HASH_UPDATE: u32 = 151;
+pub const ECALL_HASH_DIGEST: u32 = 152;
