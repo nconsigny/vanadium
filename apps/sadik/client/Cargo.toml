@@ -1,0 +1,27 @@
+[package]
+name = "vnd-sadik-client"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+speculos-tests = []
+
+[dependencies]
+clap = { version = "4.5.17", features = ["derive"] }
+common = { package = "vnd-sadik-common", path = "../common"}
+hex = "0.4.3"
+hidapi = "2.6.3"
+ledger-transport-hid = "0.11.0"
+postcard = { version = "1.0.8", features = ["alloc"] }
+sdk = { package = "vanadium-client-sdk", path = "../../../client-sdk"}
+serde = "1.0.215"
+tokio = { version = "1.38.1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync"] }
+
+[dev-dependencies]
+hex-literal = "0.4.1"
+
+[lib]
+name = "vnd_sadik_client"
+path = "src/lib.rs"
+
+[workspace]

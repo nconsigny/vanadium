@@ -6,6 +6,22 @@ use common::ecall_constants::MAX_BIGNUMBER_SIZE;
 use num_bigint::BigUint;
 use num_traits::Zero;
 
+unsafe fn to_bigint(bytes: *const u8, len: usize) -> BigUint {
+    let bytes = std::slice::from_raw_parts(bytes, len);
+    BigUint::from_bytes_be(bytes)
+}
+
+unsafe fn copy_result(r: *mut u8, result_bytes: &[u8], len: usize) -> () {
+    if result_bytes.len() < len {
+        std::ptr::write_bytes(r, 0, len - result_bytes.len());
+    }
+    std::ptr::copy_nonoverlapping(
+        result_bytes.as_ptr(),
+        r.add(len - result_bytes.len()),
+        result_bytes.len(),
+    );
+}
+
 pub struct Ecall;
 
 impl EcallsInterface for Ecall {
@@ -73,8 +89,8 @@ impl EcallsInterface for Ecall {
             return 0;
         }
 
-        let n = unsafe { Self::to_bigint(n, len) };
-        let m = unsafe { Self::to_bigint(m, len_m) };
+        let n = unsafe { to_bigint(n, len) };
+        let m = unsafe { to_bigint(m, len_m) };
 
         if m.is_zero() {
             return 0;
@@ -88,7 +104,7 @@ impl EcallsInterface for Ecall {
         }
 
         unsafe {
-            Self::copy_result(r, &result_bytes, len);
+            copy_result(r, &result_bytes, len);
         }
 
         1
@@ -99,9 +115,9 @@ impl EcallsInterface for Ecall {
             return 0;
         }
 
-        let a = unsafe { Self::to_bigint(a, len) };
-        let b = unsafe { Self::to_bigint(b, len) };
-        let m = unsafe { Self::to_bigint(m, len) };
+        let a = unsafe { to_bigint(a, len) };
+        let b = unsafe { to_bigint(b, len) };
+        let m = unsafe { to_bigint(m, len) };
 
         if a >= m || b >= m {
             return 0;
@@ -119,7 +135,7 @@ impl EcallsInterface for Ecall {
         }
 
         unsafe {
-            Self::copy_result(r, &result_bytes, len);
+            copy_result(r, &result_bytes, len);
         }
 
         1
@@ -130,9 +146,9 @@ impl EcallsInterface for Ecall {
             return 0;
         }
 
-        let a = unsafe { Self::to_bigint(a, len) };
-        let b = unsafe { Self::to_bigint(b, len) };
-        let m = unsafe { Self::to_bigint(m, len) };
+        let a = unsafe { to_bigint(a, len) };
+        let b = unsafe { to_bigint(b, len) };
+        let m = unsafe { to_bigint(m, len) };
 
         if a >= m || b >= m {
             return 0;
@@ -151,7 +167,7 @@ impl EcallsInterface for Ecall {
         }
 
         unsafe {
-            Self::copy_result(r, &result_bytes, len);
+            copy_result(r, &result_bytes, len);
         }
 
         1
@@ -162,9 +178,9 @@ impl EcallsInterface for Ecall {
             return 0;
         }
 
-        let a = unsafe { Self::to_bigint(a, len) };
-        let b = unsafe { Self::to_bigint(b, len) };
-        let m = unsafe { Self::to_bigint(m, len) };
+        let a = unsafe { to_bigint(a, len) };
+        let b = unsafe { to_bigint(b, len) };
+        let m = unsafe { to_bigint(m, len) };
 
         if a >= m || b >= m {
             return 0;
@@ -182,7 +198,7 @@ impl EcallsInterface for Ecall {
         }
 
         unsafe {
-            Self::copy_result(r, &result_bytes, len);
+            copy_result(r, &result_bytes, len);
         }
 
         1
@@ -200,9 +216,9 @@ impl EcallsInterface for Ecall {
             return 0;
         }
 
-        let a = unsafe { Self::to_bigint(a, len) };
-        let e = unsafe { Self::to_bigint(e, len_e) };
-        let m = unsafe { Self::to_bigint(m, len) };
+        let a = unsafe { to_bigint(a, len) };
+        let e = unsafe { to_bigint(e, len_e) };
+        let m = unsafe { to_bigint(m, len) };
 
         if a >= m {
             return 0;
@@ -220,27 +236,9 @@ impl EcallsInterface for Ecall {
         }
 
         unsafe {
-            Self::copy_result(r, &result_bytes, len);
+            copy_result(r, &result_bytes, len);
         }
 
         1
-    }
-}
-
-impl Ecall {
-    unsafe fn to_bigint(bytes: *const u8, len: usize) -> BigUint {
-        let bytes = std::slice::from_raw_parts(bytes, len);
-        BigUint::from_bytes_be(bytes)
-    }
-
-    unsafe fn copy_result(r: *mut u8, result_bytes: &[u8], len: usize) -> () {
-        if result_bytes.len() < len {
-            std::ptr::write_bytes(r, 0, len - result_bytes.len());
-        }
-        std::ptr::copy_nonoverlapping(
-            result_bytes.as_ptr(),
-            r.add(len - result_bytes.len()),
-            result_bytes.len(),
-        );
     }
 }

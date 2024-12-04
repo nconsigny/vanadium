@@ -34,6 +34,18 @@
     {
       "path": "apps/test/client",
       "name": "vnd-test-client"
+    },
+    {
+      "path": "apps/sadik/app",
+      "name": "vnd-sadik"
+    },
+    {
+      "path": "apps/sadik/client",
+      "name": "vnd-sadik-client"
+    },
+    {
+      "path": "apps/sadik/common",
+      "name": "vnd-sadik-common"
     }
   ],
   "settings": {

@@ -2,7 +2,7 @@ use std::process::{Child, Command};
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
-use vnd_test_client::TestClient;
+use vnd_sadik_client::SadikClient;
 
 use sdk::{
     transport::{Transport, TransportTcp, TransportWrapper},
@@ -10,7 +10,7 @@ use sdk::{
 };
 
 pub struct TestSetup {
-    pub client: TestClient,
+    pub client: SadikClient,
     child: Child,
 }
 
@@ -19,7 +19,7 @@ impl TestSetup {
         let vanadium_binary = std::env::var("VANADIUM_BINARY")
             .unwrap_or_else(|_| "../../../vm/build/nanos2/bin/app.elf".to_string());
         let vapp_binary = std::env::var("VAPP_BINARY").unwrap_or_else(|_| {
-            "../app/target/riscv32i-unknown-none-elf/release/vnd-test".to_string()
+            "../app/target/riscv32i-unknown-none-elf/release/vnd-sadik".to_string()
         });
 
         let child = Command::new("speculos")
@@ -44,7 +44,7 @@ impl TestSetup {
             .await
             .expect("Failed to create client");
 
-        let client = TestClient::new(Box::new(vanadium_client));
+        let client = SadikClient::new(Box::new(vanadium_client));
 
         TestSetup { client, child }
     }

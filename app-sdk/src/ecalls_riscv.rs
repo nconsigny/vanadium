@@ -80,6 +80,23 @@ macro_rules! ecall2v {
         }
     };
 }
+macro_rules! ecall2v_pub {
+    // ECALL with 2 arguments and no return value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty)) => {
+        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) {
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2             // Second argument in a1
+                );
+            }
+        }
+    };
+}
 macro_rules! ecall2 {
     // ECALL with 2 arguments and returning a value
     ($fn_name:ident, $syscall_number:expr,
@@ -141,6 +158,98 @@ macro_rules! ecall3 {
         }
     };
 }
+macro_rules! ecall3_pub {
+    // ECALL with 3 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty), $ret_type:ty) => {
+        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
+
+macro_rules! ecall4v {
+    // ECALL with 4 arguments and no return value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty)) => {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) {
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4             // Fourth argument in a3
+                );
+            }
+        }
+    };
+}
+macro_rules! ecall4 {
+    // ECALL with 4 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty), $ret_type:ty) => {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4,            // Fourth argument in a3
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
+macro_rules! ecall4_pub {
+    // ECALL with 4 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty), $ret_type:ty) => {
+        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4,            // Fourth argument in a3
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
 
 macro_rules! ecall5 {
     // ECALL with 5 arguments and returning a value
@@ -189,7 +298,7 @@ macro_rules! ecall6 {
                     in("a2") $arg3,            // Third argument in a2
                     in("a3") $arg4,            // Third argument in a3
                     in("a4") $arg5,            // Third argument in a4
-                    in("a6") $arg6,            // Third argument in a5
+                    in("a5") $arg6,            // Third argument in a5
                     lateout("a0") ret          // Return value in a0
                 );
             }
@@ -235,4 +344,11 @@ impl EcallsInterface for Ecall {
     ecall5!(bn_subm, ECALL_SUBM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), u32);
     ecall5!(bn_multm, ECALL_MULTM, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize), u32);
     ecall6!(bn_powm, ECALL_POWM, (r: *mut u8), (a: *const u8), (e: *const u8), (len_e: usize), (m: *const u8), (len: usize), u32);
+}
+
+// The following ecalls are specific to this target
+impl Ecall {
+    ecall2v_pub!(hash_init, ECALL_HASH_INIT, (hash_id: u32), (ctx: *mut u8));
+    ecall4_pub!(hash_update, ECALL_HASH_UPDATE, (hash_id: u32), (ctx: *mut u8), (data: *const u8), (len: usize), u32);
+    ecall3_pub!(hash_final, ECALL_HASH_DIGEST, (hash_id: u32), (ctx: *mut u8), (digest: *const u8), u32);
 }

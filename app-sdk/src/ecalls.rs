@@ -68,7 +68,7 @@ pub(crate) trait EcallsInterface {
     /// - `len`: Length of `r`, `a`, `b`, and `m`.
     ///
     /// # Returns
-    /// `true` on success, `false` on error.
+    /// 1 on success, 0 on error.
     fn bn_addm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
 
     /// Subtracts two big numbers `a` and `b` modulo `m`, storing the result in `r`.
@@ -81,7 +81,7 @@ pub(crate) trait EcallsInterface {
     /// - `len`: Length of `r`, `a`, `b`, and `m`.
     ///
     /// # Returns
-    /// `true` on success, `false` on error.
+    /// 1 on success, 0 on error.
     fn bn_subm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
 
     /// Multiplies two big numbers `a` and `b` modulo `m`, storing the result in `r`.
@@ -94,7 +94,7 @@ pub(crate) trait EcallsInterface {
     /// - `len`: Length of `r`, `a`, `b`, and `m`.
     ///
     /// # Returns
-    /// `true` on success, `false` on error.
+    /// 1 on success, 0 on error.
     fn bn_multm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
 
     /// Computes `a` to the power of `e` modulo `m`, storing the result in `r`.
@@ -108,7 +108,7 @@ pub(crate) trait EcallsInterface {
     /// - `len`: Length of `r`, `a`, and `m`.
     ///
     /// # Returns
-    /// `true` on success, `false` on error.
+    /// 1 on success, 0 on error.
     fn bn_powm(
         r: *mut u8,
         a: *const u8,

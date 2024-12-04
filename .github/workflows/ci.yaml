@@ -114,7 +114,7 @@ jobs:
 
   # build Vanadium VM app
 
-  build_application:
+  build_vanadium_app:
     name: Build application using the reusable workflow
     uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_build.yml@v1
     with:
@@ -124,8 +124,8 @@ jobs:
   ### Risc-V tests
 
   # build test V-App
-  build_vapp_test:
-    name: Build vnd-test on Risc-V target
+  build_vnd_test:
+    name: vnd-test, Build on Risc-V target
     runs-on: ubuntu-latest
     steps:
       - name: Set up Rust toolchain
@@ -147,8 +147,8 @@ jobs:
           name: vnd_test_riscv_binary
           path: apps/test/app/target/riscv32i-unknown-none-elf/release/vnd-test
 
-  run_speculos_integration_tests:
-    name: Integration tests on Speculos
+  vnd_test_speculos_integration_tests:
+    name: vnd-test, Integration tests on Speculos
 
     strategy:
       matrix:
@@ -159,7 +159,7 @@ jobs:
           - model: stax
 
     runs-on: ubuntu-latest
-    needs: [build_application, build_vapp_test]
+    needs: [build_vanadium_app, build_vnd_test]
     steps:
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -195,5 +195,80 @@ jobs:
         env:
           VANADIUM_BINARY: ../../../vanadium_binaries/${{ matrix.model }}/release/app-vanadium
           VAPP_BINARY: ../../../vnd_test_riscv_binary/vnd-test
+        run: |
+          cargo test --features speculos-tests
+
+  # build sadik V-App
+  build_vnd_sadik:
+    name: vnd-sadik, Build on Risc-V target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: riscv32i-unknown-none-elf
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Build app
+        working-directory: apps/sadik/app
+        run: |
+          cargo +nightly build --release --target riscv32i-unknown-none-elf
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnd_sadik_riscv_binary
+          path: apps/sadik/app/target/riscv32i-unknown-none-elf/release/vnd-sadik
+
+  vnd_sadik_integration_tests:
+    name: vnd-sadik, Integration tests on Speculos
+
+    strategy:
+      matrix:
+        include:
+          # - model: nanox  # TODO: reenable once compilation is fixed
+          - model: nanosplus
+          - model: flex
+          - model: stax
+
+    runs-on: ubuntu-latest
+    needs: [build_vanadium_app, build_vnd_sadik]
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Install Speculos
+        run: |
+          pip install speculos
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && \
+          sudo apt-get install -y libudev-dev pkg-config && \
+          sudo apt-get install -y qemu-user-static libvncserver-dev
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Download Vanadium binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: vanadium_binaries
+          path: ./vanadium_binaries
+
+      - name: Download vnd_sadik_riscv_binary
+        uses: actions/download-artifact@v4
+        with:
+          name: vnd_sadik_riscv_binary
+          path: ./vnd_sadik_riscv_binary
+
+      - name: Run integration tests
+        working-directory: apps/sadik/client
+        env:
+          VANADIUM_BINARY: ../../../vanadium_binaries/${{ matrix.model }}/release/app-vanadium
+          VAPP_BINARY: ../../../vnd_sadik_riscv_binary/vnd-sadik
         run: |
           cargo test --features speculos-tests

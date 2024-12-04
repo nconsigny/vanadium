@@ -190,7 +190,7 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         if modulus.m.ct_eq(&[0u8; N]).into() {
             panic!("Modulus cannot be 0");
         }
-        // reduce the buffer my the modulus
+        // reduce the buffer by the modulus
         let mut buffer = buffer;
         if 1 != Ecall::bn_modm(
             buffer.as_mut_ptr(),
@@ -478,7 +478,7 @@ mod tests {
         "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
     ));
     const M2: Modulus<32> = Modulus::from_be_bytes(hex!(
-        "3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e"
+        "3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9d"
     ));
 
     #[test]
@@ -571,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_u32() {
+    fn test_big_num_mod_from_u32() {
         let a = BigNumMod::from_u32(2, &M);
         assert_eq!(
             a.buffer,
@@ -580,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add() {
+    fn test_big_num_mod_add() {
         let a = BigNumMod::from_u32(2, &M);
         let b = BigNumMod::from_u32(3, &M);
         assert_eq!(&a + &b, BigNumMod::from_u32(5, &M));
@@ -620,13 +620,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Moduli do not match")]
-    fn test_add_different_modulus() {
+    fn test_big_num_mod_add_different_modulus() {
         // this should panic
         let _ = &BigNumMod::from_u32(2, &M) + &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
-    fn test_sub() {
+    fn test_big_num_mod_sub() {
         let a = BigNumMod::from_u32(5, &M);
         let b = BigNumMod::from_u32(3, &M);
         assert_eq!(&a - &b, BigNumMod::from_u32(2, &M));
@@ -667,13 +667,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Moduli do not match")]
-    fn test_sub_different_modulus() {
+    fn test_big_num_mod_sub_different_modulus() {
         // this should panic
         let _ = &BigNumMod::from_u32(5, &M) - &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
-    fn test_mul() {
+    fn test_big_num_mod_mul() {
         let m = Modulus::from_be_bytes(hex!(
             "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
         ));
@@ -717,13 +717,13 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Moduli do not match")]
-    fn test_mul_different_modulus() {
+    fn test_big_num_mod_mul_different_modulus() {
         // this should panic
         let _ = &BigNumMod::from_u32(2, &M) * &BigNumMod::from_u32(3, &M2);
     }
 
     #[test]
-    fn test_pow() {
+    fn test_big_num_mod_pow() {
         let a = M2.new_big_num_mod(hex!(
             "a247598432980432940980983408039480095809832048509809580984320985"
         ));
@@ -739,28 +739,28 @@ mod tests {
 
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("02"))).buffer,
-            hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+            hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
         );
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("00000002"))).buffer,
-            hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+            hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
         );
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!(
                 "0000000000000000000000000000000000000000000000000000000000000002"
             )))
             .buffer,
-            hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7")
+            hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
         );
 
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("23"))).buffer,
-            hex!("1ed32565487715d9669418dbaa00db9e03f8271af2074857cc6178e6905b0501")
+            hex!("2c341d219fc6fc7895e4de6a93d48ab77acfc2564beebb7c14a6aa57d3fd575a")
         );
 
         assert_eq!(
             a.pow(&BigNum::from_be_bytes(hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"))).buffer,
-            hex!("1329e291eb25b61d17cff7cc9c00457532f917c23f44af7469ed55b6988f0dd1")
+            hex!("3c0baee8c4e2f7220615013d7402fa5e69e43bc10e55500a5af4f8b966658846")
         );
     }
 }
