@@ -117,6 +117,41 @@ pub(crate) trait EcallsInterface {
         m: *const u8,
         len: usize,
     ) -> u32;
+
+    /// Derives a hierarchical deterministic (HD) node, made of the private key and the corresponding chain code.
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `path`: Pointer to the derivation path array.
+    /// - `path_len`: Length of the derivation path array.
+    /// - `privkey`: Pointer to the buffer to store the derived private key.
+    /// - `chain_code`: Pointer to the buffer to store the derived chain code.
+    ///
+    /// # Returns
+    /// 1 on success, 0 on error.
+    ///
+    /// # Panics
+    /// This function panics if the curve is not supported.
+    fn derive_hd_node(
+        curve: u32,
+        path: *const u32,
+        path_len: usize,
+        privkey: *mut u8,
+        chain_code: *mut u8,
+    ) -> u32;
+
+    /// Retrieves the fingerprint for master public key for the specified curve.
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    ///
+    /// # Returns
+    /// The master fingerprint as a 32-bit unsigned integer, computed as the first 32 bits of `ripemd160(sha256(pk))`,
+    /// where `pk` is the public key in compressed form.
+    ///
+    /// # Panics
+    /// This function panics if the curve is not supported.
+    fn get_master_fingerprint(curve: u32) -> u32;
 }
 
 pub(crate) use ecalls_module::*;

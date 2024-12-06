@@ -2,7 +2,10 @@ use std::io;
 use std::io::Write;
 
 use crate::ecalls::EcallsInterface;
-use common::ecall_constants::MAX_BIGNUMBER_SIZE;
+use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
+
+use bip32::{ChildNumber, XPrv};
+use hex_literal::hex;
 use num_bigint::BigUint;
 use num_traits::Zero;
 
@@ -240,5 +243,61 @@ impl EcallsInterface for Ecall {
         }
 
         1
+    }
+
+    fn derive_hd_node(
+        curve: u32,
+        path: *const u32,
+        path_len: usize,
+        privkey: *mut u8,
+        chain_code: *mut u8,
+    ) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            // unsopported curve
+            panic!("Unsupported curve");
+        }
+        let mut key = Ecall::get_master_bip32_key();
+
+        let path_slice = unsafe { std::slice::from_raw_parts(path, path_len) };
+        for path_step in path_slice {
+            let child = ChildNumber::from(*path_step);
+            key = match key.derive_child(child) {
+                Ok(k) => k,
+                Err(_) => return 0,
+            };
+        }
+
+        // Copy the private key and chain code to the output buffers
+        let privkey_bytes = key.private_key().to_bytes();
+        let chain_code_bytes = key.attrs().chain_code;
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(privkey_bytes.as_ptr(), privkey, privkey_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                chain_code_bytes.as_ptr(),
+                chain_code,
+                chain_code_bytes.len(),
+            );
+        }
+
+        1
+    }
+
+    fn get_master_fingerprint(curve: u32) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            // unsopported curve
+            panic!("Unsupported curve");
+        }
+
+        u32::from_be_bytes(Ecall::get_master_bip32_key().public_key().fingerprint())
+    }
+}
+
+impl Ecall {
+    // default seed used in Speculos, corrseponding to the mnemonic "glory promote mansion idle axis finger extra february uncover one trip resource lawn turtle enact monster seven myth punch hobby comfort wild raise skin"
+    const DEFAULT_SEED: [u8; 64] = hex!("b11997faff420a331bb4a4ffdc8bdc8ba7c01732a99a30d83dbbebd469666c84b47d09d3f5f472b3b9384ac634beba2a440ba36ec7661144132f35e206873564");
+
+    fn get_master_bip32_key() -> XPrv {
+        XPrv::new(&Self::DEFAULT_SEED).expect("Failed to create master key from seed")
     }
 }
