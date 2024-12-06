@@ -1,4 +1,4 @@
-use common::{BigIntOperator, Command, HashId};
+use common::{BigIntOperator, Command, Curve, HashId};
 use sdk::{
     comm::{send_message, SendMessageError},
     vanadium_client::{VAppClient, VAppExecutionError},
@@ -78,6 +78,31 @@ impl SadikClient {
             b: b.to_vec(),
             modulus: modulus.to_vec(),
         };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn derive_hd_node(
+        &mut self,
+        curve: Curve,
+        path: Vec<u32>,
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::DeriveHdNode { curve, path };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn get_master_fingerprint(
+        &mut self,
+        curve: Curve,
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::GetMasterFingerprint { curve };
 
         let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
         Ok(send_message(&mut self.app_client, &msg)

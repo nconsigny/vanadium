@@ -6,6 +6,7 @@ use sdk::fatal;
 
 use sdk::{
     bignum::{BigNum, BigNumMod, Modulus},
+    curve::Curve as _,
     hash::Hasher,
 };
 
@@ -13,7 +14,7 @@ extern crate alloc;
 
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use common::{Command, HashId};
+use common::{Command, Curve, HashId};
 
 // Temporary to force the creation of a data section
 #[used]
@@ -178,6 +179,20 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                     }
                 }
             }
+            Command::GetMasterFingerprint { curve } => match curve {
+                Curve::Secp256k1 => sdk::curve::Secp256k1::get_master_fingerprint()
+                    .to_be_bytes()
+                    .to_vec(),
+            },
+            Command::DeriveHdNode { curve, path } => match curve {
+                // returns the concatenation of the chaincode and private key
+                Curve::Secp256k1 => {
+                    let node = sdk::curve::Secp256k1::derive_hd_node(&path).unwrap();
+                    let mut result = node.chaincode.to_vec();
+                    result.extend_from_slice(&node.privkey);
+                    result
+                }
+            },
         };
 
         sdk::comm::send_message(&response);
