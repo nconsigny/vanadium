@@ -1,8 +1,8 @@
+use zeroize::Zeroizing;
+
 use common::ecall_constants::CurveKind;
 
 use crate::ecalls::{Ecall, EcallsInterface};
-
-// TODO: make sure private data zeroed out on Drop.
 
 /// A struct representing a Hierarchical Deterministic (HD) node composed of a private key, and a 32-byte chaincode.
 ///
@@ -16,14 +16,14 @@ use crate::ecalls::{Ecall, EcallsInterface};
 /// * `privkey` - An array of bytes representing the private key, with a length defined by `SCALAR_LENGTH`.
 pub struct HDPrivNode<const SCALAR_LENGTH: usize> {
     pub chaincode: [u8; 32],
-    pub privkey: [u8; SCALAR_LENGTH],
+    pub privkey: Zeroizing<[u8; SCALAR_LENGTH]>,
 }
 
 impl<const SCALAR_LENGTH: usize> Default for HDPrivNode<SCALAR_LENGTH> {
     fn default() -> Self {
         Self {
             chaincode: [0u8; 32],
-            privkey: [0u8; SCALAR_LENGTH],
+            privkey: Zeroizing::new([0u8; SCALAR_LENGTH]),
         }
     }
 }
@@ -109,7 +109,7 @@ mod tests {
             hex!("eb473a0fa0af5031f14db9fe7c37bb8416a4ff01bb69dae9966dc83b5e5bf921")
         );
         assert_eq!(
-            node.privkey,
+            node.privkey[..],
             hex!("34ac5d784ebb4df4727bcddf6a6743f5d5d46d83dd74aa825866390c694f2938")
         );
 
@@ -120,7 +120,7 @@ mod tests {
             hex!("6da5f32f47232b3b9b2d6b59b802e2b313afa7cbda242f73da607139d8e04989")
         );
         assert_eq!(
-            node.privkey,
+            node.privkey[..],
             hex!("239841e64103fd024b01283e752a213fee1a8969f6825204ee3617a45c5e4a91")
         );
     }

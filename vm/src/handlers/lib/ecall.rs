@@ -19,6 +19,8 @@ use crate::{AppSW, Instruction};
 
 use super::outsourced_mem::OutsourcedMemory;
 
+use zeroize::Zeroizing;
+
 // BIP32 supports up to 255, but we don't want that many, and it would be very slow anyway
 const MAX_BIP32_PATH: usize = 16;
 
@@ -704,7 +706,7 @@ impl<'a> CommEcallHandler<'a> {
         };
 
         // derive the key
-        let mut private_key_local: [u8; 32] = [0; 32];
+        let mut private_key_local = Zeroizing::new([0u8; 32]);
         let mut chain_code_local: [u8; 32] = [0; 32];
         unsafe {
             ledger_secure_sdk_sys::os_perso_derive_node_bip32(
@@ -718,11 +720,9 @@ impl<'a> CommEcallHandler<'a> {
 
         // copy private_key and chain_code to V-App memory
         cpu.get_segment(private_key.0)?
-            .write_buffer(private_key.0, &private_key_local)?;
+            .write_buffer(private_key.0, &private_key_local[..])?;
         cpu.get_segment(chain_code.0)?
             .write_buffer(chain_code.0, &chain_code_local)?;
-
-        // TODO: we should to make sure the private key is zeroed before returning
 
         Ok(())
     }
@@ -737,7 +737,7 @@ impl<'a> CommEcallHandler<'a> {
         }
 
         // derive the key
-        let mut private_key_local: [u8; 32] = [0; 32];
+        let mut private_key_local = Zeroizing::new([0u8; 32]);
         let mut chain_code_local: [u8; 32] = [0; 32];
 
         let mut pubkey: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
@@ -770,8 +770,6 @@ impl<'a> CommEcallHandler<'a> {
             if ret1 != CX_OK || ret2 != CX_OK {
                 return Err("Failed to generate key pair");
             }
-
-            // TODO: make sure that the private key is deleted
         }
 
         let mut sha_hasher = ledger_device_sdk::hash::sha2::Sha2_256::new();

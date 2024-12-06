@@ -189,7 +189,7 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                 Curve::Secp256k1 => {
                     let node = sdk::curve::Secp256k1::derive_hd_node(&path).unwrap();
                     let mut result = node.chaincode.to_vec();
-                    result.extend_from_slice(&node.privkey);
+                    result.extend_from_slice(&node.privkey[..]);
                     result
                 }
             },
