@@ -193,3 +193,54 @@ async fn test_sha512() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_secp256k1_get_master_fingerprint() {
+    let mut setup = test_common::setup().await;
+
+    assert_eq!(
+        setup
+            .client
+            .get_master_fingerprint(common::Curve::Secp256k1)
+            .await
+            .unwrap(),
+        hex!("f5acc2fd").to_vec()
+    );
+}
+
+#[tokio::test]
+async fn test_secp256k1_derive_hd_node() {
+    let mut setup = test_common::setup().await;
+
+    let test_cases: Vec<(Vec<u32>, ([u8; 32], [u8; 32]))> = vec![
+        (
+            vec![],
+            (
+                hex!("eb473a0fa0af5031f14db9fe7c37bb8416a4ff01bb69dae9966dc83b5e5bf921"),
+                hex!("34ac5d784ebb4df4727bcddf6a6743f5d5d46d83dd74aa825866390c694f2938"),
+            ),
+        ),
+        (
+            vec![0x8000002c, 0x80000000, 0x80000001, 0, 3],
+            (
+                hex!("6da5f32f47232b3b9b2d6b59b802e2b313afa7cbda242f73da607139d8e04989"),
+                hex!("239841e64103fd024b01283e752a213fee1a8969f6825204ee3617a45c5e4a91"),
+            ),
+        ),
+    ];
+
+    for (path, (exp_chaincode, exp_privkey)) in test_cases {
+        let res = setup
+            .client
+            .derive_hd_node(common::Curve::Secp256k1, path)
+            .await
+            .unwrap();
+
+        assert_eq!(res.len(), exp_chaincode.len() + exp_privkey.len());
+        let chaincode = &res[0..exp_chaincode.len()];
+        let privkey = &res[exp_chaincode.len()..];
+
+        assert_eq!(exp_chaincode, chaincode);
+        assert_eq!(exp_privkey, privkey);
+    }
+}

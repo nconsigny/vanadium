@@ -15,6 +15,11 @@ pub enum BigIntOperator {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum Curve {
+    Secp256k1,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Command {
     BigIntOperation {
         operator: BigIntOperator,
@@ -25,6 +30,13 @@ pub enum Command {
     Hash {
         hash_id: u32,
         msg: Vec<u8>,
+    },
+    GetMasterFingerprint {
+        curve: Curve,
+    },
+    DeriveHdNode {
+        curve: Curve,
+        path: Vec<u32>,
     },
 }
 
