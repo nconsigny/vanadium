@@ -10,6 +10,7 @@ use common::{
     manifest::Manifest,
     vm::{Cpu, EcallHandler},
 };
+use ledger_device_sdk::hash::HashInit;
 use ledger_secure_sdk_sys::{
     cx_ripemd160_t, cx_sha256_t, cx_sha512_t, CX_OK, CX_RIPEMD160, CX_SHA256, CX_SHA512,
 };
@@ -17,6 +18,9 @@ use ledger_secure_sdk_sys::{
 use crate::{AppSW, Instruction};
 
 use super::outsourced_mem::OutsourcedMemory;
+
+// BIP32 supports up to 255, but we don't want that many, and it would be very slow anyway
+const MAX_BIP32_PATH: usize = 16;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
@@ -669,6 +673,118 @@ impl<'a> CommEcallHandler<'a> {
 
         Ok(())
     }
+
+    fn handle_derive_hd_node(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        path: GuestPointer,
+        path_len: usize,
+        private_key: GuestPointer,
+        chain_code: GuestPointer,
+    ) -> Result<(), &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+        if path_len > MAX_BIP32_PATH {
+            return Err("path_len is too large");
+        }
+
+        // copy path to local memory (if path_len == 0, the pointer is invalid,
+        // so we don't want to read from the segment)
+        let mut path_local_raw: [u8; MAX_BIP32_PATH * 4] = [0; MAX_BIP32_PATH * 4];
+        if path_len > 0 {
+            cpu.get_segment(path.0)?
+                .read_buffer(path.0, &mut path_local_raw[0..(path_len * 4)])?;
+        }
+
+        // convert to a slice of u32, by taking 4 bytes at the time as big-endian integers
+        let path_local = unsafe {
+            core::slice::from_raw_parts(path_local_raw.as_ptr() as *const u32, path_len as usize)
+        };
+
+        // derive the key
+        let mut private_key_local: [u8; 32] = [0; 32];
+        let mut chain_code_local: [u8; 32] = [0; 32];
+        unsafe {
+            ledger_secure_sdk_sys::os_perso_derive_node_bip32(
+                curve as u8,
+                path_local.as_ptr(),
+                path_len as u32,
+                private_key_local.as_mut_ptr(),
+                chain_code_local.as_mut_ptr(),
+            );
+        }
+
+        // copy private_key and chain_code to V-App memory
+        cpu.get_segment(private_key.0)?
+            .write_buffer(private_key.0, &private_key_local)?;
+        cpu.get_segment(chain_code.0)?
+            .write_buffer(chain_code.0, &chain_code_local)?;
+
+        // TODO: we should to make sure the private key is zeroed before returning
+
+        Ok(())
+    }
+
+    fn handle_get_master_fingerprint(
+        &self,
+        _cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+    ) -> Result<u32, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        // derive the key
+        let mut private_key_local: [u8; 32] = [0; 32];
+        let mut chain_code_local: [u8; 32] = [0; 32];
+
+        let mut pubkey: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        unsafe {
+            ledger_secure_sdk_sys::os_perso_derive_node_bip32(
+                CurveKind::Secp256k1 as u8,
+                [].as_ptr(),
+                0,
+                private_key_local.as_mut_ptr(),
+                chain_code_local.as_mut_ptr(),
+            );
+
+            // generate the corresponding public key
+            let mut privkey: ledger_secure_sdk_sys::cx_ecfp_private_key_t = Default::default();
+
+            let ret1 = ledger_secure_sdk_sys::cx_ecfp_init_private_key_no_throw(
+                curve as u8,
+                private_key_local.as_ptr(),
+                private_key_local.len(),
+                &mut privkey,
+            );
+
+            let ret2 = ledger_secure_sdk_sys::cx_ecfp_generate_pair_no_throw(
+                curve as u8,
+                &mut pubkey,
+                &mut privkey,
+                true,
+            );
+
+            if ret1 != CX_OK || ret2 != CX_OK {
+                return Err("Failed to generate key pair");
+            }
+
+            // TODO: make sure that the private key is deleted
+        }
+
+        let mut sha_hasher = ledger_device_sdk::hash::sha2::Sha2_256::new();
+        sha_hasher.update(&[02u8 + (pubkey.W[64] % 2)]).unwrap();
+        sha_hasher.update(&pubkey.W[1..33]).unwrap();
+        let mut sha256hash = [0u8; 32];
+        sha_hasher.finalize(&mut sha256hash).unwrap();
+        let mut ripemd160_hasher = ledger_device_sdk::hash::ripemd::Ripemd160::new();
+        ripemd160_hasher.update(&sha256hash).unwrap();
+        let mut rip = [0u8; 20];
+        ripemd160_hasher.finalize(&mut rip).unwrap();
+        Ok(u32::from_be_bytes([rip[0], rip[1], rip[2], rip[3]]))
+    }
 }
 
 // make an error type for the CommEcallHandler<'a>
@@ -818,6 +934,25 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
             ECALL_HASH_DIGEST => self
                 .handle_hash_digest(cpu, reg!(A0), GPreg!(A1), GPreg!(A2))
                 .map_err(|_| CommEcallError::GenericError("hash_digest failed"))?,
+
+            ECALL_DERIVE_HD_NODE => {
+                self.handle_derive_hd_node(
+                    cpu,
+                    reg!(A0),
+                    GPreg!(A1),
+                    reg!(A2) as usize,
+                    GPreg!(A3),
+                    GPreg!(A4),
+                )
+                .map_err(|_| CommEcallError::GenericError("HD node derivation failed"))?;
+
+                reg!(A0) = 1;
+            }
+            ECALL_GET_MASTER_FINGERPRINT => {
+                reg!(A0) = self
+                    .handle_get_master_fingerprint(cpu, reg!(A0))
+                    .map_err(|_| CommEcallError::GenericError("get_master_fingerprint"))?;
+            }
 
             // Any other ecall is unhandled and will case the CPU to abort
             _ => {

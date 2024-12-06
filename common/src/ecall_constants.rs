@@ -13,6 +13,14 @@ pub const ECALL_POWM: u32 = 114;
 
 pub const MAX_BIGNUMBER_SIZE: usize = 64;
 
+// HD derivations
+pub enum CurveKind {
+    Secp256k1 = 0x21,
+}
+
+pub const ECALL_DERIVE_HD_NODE: u32 = 130;
+pub const ECALL_GET_MASTER_FINGERPRINT: u32 = 131;
+
 // Hash functions
 pub const ECALL_HASH_INIT: u32 = 150;
 pub const ECALL_HASH_UPDATE: u32 = 151;
