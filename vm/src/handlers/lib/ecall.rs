@@ -783,6 +783,97 @@ impl<'a> CommEcallHandler<'a> {
         ripemd160_hasher.finalize(&mut rip).unwrap();
         Ok(u32::from_be_bytes([rip[0], rip[1], rip[2], rip[3]]))
     }
+
+    fn handle_ecfp_add_point(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        r: GuestPointer,
+        p: GuestPointer,
+        q: GuestPointer,
+    ) -> Result<u32, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        // copy inputs to local memory
+        let mut p_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        p_local.curve = curve as u8;
+        p_local.W_len = 65;
+        cpu.get_segment(p.0)?.read_buffer(p.0, &mut p_local.W)?;
+
+        let mut q_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        q_local.curve = curve as u8;
+        q_local.W_len = 65;
+        cpu.get_segment(q.0)?.read_buffer(q.0, &mut q_local.W)?;
+
+        let mut r_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_ecfp_add_point_no_throw(
+                curve as u8,
+                r_local.W.as_mut_ptr(),
+                p_local.W.as_ptr(),
+                q_local.W.as_ptr(),
+            );
+            if res != CX_OK {
+                return Err("add_point failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local.W)?;
+
+        Ok(1)
+    }
+
+    fn handle_ecfp_scalar_mult(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        r: GuestPointer,
+        p: GuestPointer,
+        k: GuestPointer,
+        k_len: usize,
+    ) -> Result<u32, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        if k_len > 32 {
+            // TODO: do we need to support any larger?
+            return Err("k_len is too large");
+        }
+
+        // copy inputs to local memory
+        // we use r_local also for the final result
+        let mut r_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        r_local.curve = curve as u8;
+        r_local.W_len = 65;
+        cpu.get_segment(p.0)?.read_buffer(p.0, &mut r_local.W)?;
+
+        let mut k_local: [u8; 32] = [0; 32];
+        cpu.get_segment(k.0)?
+            .read_buffer(k.0, &mut k_local[0..k_len])?;
+
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_ecfp_scalar_mult_no_throw(
+                curve as u8,
+                r_local.W.as_mut_ptr(),
+                k_local.as_ptr(),
+                k_len,
+            );
+            if res != CX_OK {
+                return Err("scalar_mult failed");
+            }
+        }
+
+        // copy r_local to r
+        let segment = cpu.get_segment(r.0)?;
+        segment.write_buffer(r.0, &r_local.W)?;
+
+        Ok(1)
+    }
 }
 
 // make an error type for the CommEcallHandler<'a>
@@ -950,6 +1041,24 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                 reg!(A0) = self
                     .handle_get_master_fingerprint(cpu, reg!(A0))
                     .map_err(|_| CommEcallError::GenericError("get_master_fingerprint"))?;
+            }
+
+            ECALL_ECFP_ADD_POINT => {
+                reg!(A0) = self
+                    .handle_ecfp_add_point(cpu, reg!(A0), GPreg!(A1), GPreg!(A2), GPreg!(A3))
+                    .map_err(|_| CommEcallError::GenericError("ecfp_add_point failed"))?;
+            }
+            ECALL_ECFP_SCALAR_MULT => {
+                reg!(A0) = self
+                    .handle_ecfp_scalar_mult(
+                        cpu,
+                        reg!(A0),
+                        GPreg!(A1),
+                        GPreg!(A2),
+                        GPreg!(A3),
+                        reg!(A4) as usize,
+                    )
+                    .map_err(|_| CommEcallError::GenericError("ecfp_scalar_mult failed"))?;
             }
 
             // Any other ecall is unhandled and will case the CPU to abort

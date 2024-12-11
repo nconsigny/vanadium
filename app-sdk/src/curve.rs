@@ -1,3 +1,8 @@
+use core::{
+    marker::PhantomData,
+    ops::{Add, Mul},
+};
+
 use zeroize::Zeroizing;
 
 use common::ecall_constants::CurveKind;
@@ -28,6 +33,16 @@ impl<const SCALAR_LENGTH: usize> Default for HDPrivNode<SCALAR_LENGTH> {
     }
 }
 
+impl<const SCALAR_LENGTH: usize> core::fmt::Debug for HDPrivNode<SCALAR_LENGTH> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "HDPrivNode {{ chaincode: {:?}, privkey: [REDACTED] }}",
+            self.chaincode
+        )
+    }
+}
+
 /// A trait representing a cryptographic curve with hierarchical deterministic (HD) key derivation capabilities.
 ///
 /// # Constants
@@ -51,7 +66,7 @@ pub trait Curve<const SCALAR_LENGTH: usize> {
 }
 
 // A trait to simplify the implementation of `Curve` for different curves.
-pub(crate) trait HasCurveKind<const SCALAR_LENGTH: usize> {
+trait HasCurveKind<const SCALAR_LENGTH: usize> {
     // Returns the value that represents this curve in ECALLs.
     fn get_curve_kind() -> CurveKind;
 }
@@ -83,11 +98,162 @@ where
     }
 }
 
+/// A representation of an elliptic curve point in uncompressed form.
+///
+/// The format is:
+///
+/// `prefix | X-coordinate | Y-coordinate`
+///
+/// Where `prefix` is always `0x04` for uncompressed points, and `X` and `Y` are `SCALAR_LENGTH`
+/// byte arrays representing the coordinates.
+///
+/// # Type Parameters
+/// * `C` - The curve type implementing `Curve<SCALAR_LENGTH>`.
+/// * `SCALAR_LENGTH` - The byte length of the scalar and coordinate elements.
+#[repr(C)]
+pub struct Point<C, const SCALAR_LENGTH: usize>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    curve_marker: PhantomData<C>,
+    prefix: u8,
+    x: [u8; SCALAR_LENGTH],
+    y: [u8; SCALAR_LENGTH],
+}
+
+impl<C, const SCALAR_LENGTH: usize> Default for Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn default() -> Self {
+        Self {
+            curve_marker: PhantomData,
+            prefix: 0x04,
+            x: [0u8; SCALAR_LENGTH],
+            y: [0u8; SCALAR_LENGTH],
+        }
+    }
+}
+
+impl<C, const SCALAR_LENGTH: usize> Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    /// Returns a mutable pointer to the beginning of the point's data.
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        &mut self.prefix as *mut u8
+    }
+    /// Returns a pointer to the beginning of the point's data.
+    pub fn as_ptr(&self) -> *const u8 {
+        &self.prefix as *const u8
+    }
+
+    /// Creates a new Point with the given coordinates.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the point.
+    /// * `y` - The y-coordinate of the point.
+    ///
+    /// # Returns
+    ///
+    /// A new `Point` instance.
+    pub fn new(x: [u8; SCALAR_LENGTH], y: [u8; SCALAR_LENGTH]) -> Self {
+        Self {
+            curve_marker: PhantomData,
+            prefix: 0x04,
+            x,
+            y,
+        }
+    }
+}
+
 pub struct Secp256k1;
 
 impl HasCurveKind<32> for Secp256k1 {
     fn get_curve_kind() -> CurveKind {
         CurveKind::Secp256k1
+    }
+}
+
+pub type Secp256k1Point = Point<Secp256k1, 32>;
+
+// We could implement this for any SCALAR_LENGTH, but this currently requires
+// the #![feature(generic_const_exprs)], as the byte size is 1 + 2*SCALAR_LENGTH.
+impl<C: Curve<32>> Point<C, 32> {
+    /// Converts the point to a byte array.
+    ///
+    /// # Returns
+    ///
+    /// A byte array of length `1 + 2 * 32` representing the point.
+    pub fn to_bytes(&self) -> &[u8; 65] {
+        // SAFETY: `Point` is `#[repr(C)]` with a known layout:
+        // prefix (1 byte), x (32 bytes), y (32 bytes) = 65 bytes total.
+        // Therefore, we can safely reinterpret the memory as a [u8; 65].
+        unsafe { &*(self as *const Self as *const [u8; 65]) }
+    }
+
+    /// Creates a point from a byte array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - A byte array of length `1 + 2 * 32` representing the point.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `Self`.
+    pub fn from_bytes(bytes: &[u8; 65]) -> &Self {
+        if bytes[0] != 0x04 {
+            panic!("Invalid point prefix. Expected 0x04");
+        }
+        // SAFETY: The input slice has exactly 65 bytes and must match
+        // the memory layout of `Point`. The prefix is validated.
+        unsafe { &*(bytes as *const [u8; 65] as *const Self) }
+    }
+}
+
+impl<C, const SCALAR_LENGTH: usize> Add for &Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH> + HasCurveKind<SCALAR_LENGTH>,
+{
+    type Output = Point<C, SCALAR_LENGTH>;
+
+    fn add(self, other: Self) -> Self::Output {
+        let mut result = Point::default();
+
+        if 1 != Ecall::ecfp_add_point(
+            C::get_curve_kind() as u32,
+            result.as_mut_ptr(),
+            self.as_ptr(),
+            other.as_ptr(),
+        ) {
+            panic!("Failed to add points");
+        }
+
+        result
+    }
+}
+
+impl<C, const SCALAR_LENGTH: usize> Mul<&[u8; SCALAR_LENGTH]> for &Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH> + HasCurveKind<SCALAR_LENGTH>,
+{
+    type Output = Point<C, SCALAR_LENGTH>;
+
+    fn mul(self, scalar: &[u8; SCALAR_LENGTH]) -> Self::Output {
+        let mut result = Point::default();
+
+        if 1 != Ecall::ecfp_scalar_mult(
+            C::get_curve_kind() as u32,
+            result.as_mut_ptr(),
+            self.as_ptr(),
+            scalar.as_ptr(),
+            SCALAR_LENGTH,
+        ) {
+            panic!("Failed to multiply point by scalar");
+        }
+
+        result
     }
 }
 
@@ -122,6 +288,49 @@ mod tests {
         assert_eq!(
             node.privkey[..],
             hex!("239841e64103fd024b01283e752a213fee1a8969f6825204ee3617a45c5e4a91")
+        );
+    }
+
+    #[test]
+    fn test_secp256k1_point_addition() {
+        let point1 = Secp256k1Point::new(
+            hex!("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"),
+            hex!("1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a"),
+        );
+        let point2 = Secp256k1Point::new(
+            hex!("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"),
+            hex!("388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672"),
+        );
+
+        let result = &point1 + &point2;
+
+        assert_eq!(
+            result.x,
+            hex!("2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4")
+        );
+        assert_eq!(
+            result.y,
+            hex!("d8ac222636e5e3d6d4dba9dda6c9c426f788271bab0d6840dca87d3aa6ac62d6")
+        );
+    }
+
+    #[test]
+    fn test_secp256k1_point_scalarmul() {
+        let point1 = Secp256k1Point::new(
+            hex!("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"),
+            hex!("483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"),
+        );
+        let scalar = hex!("22445566778899aabbccddeeff0011223344556677889900aabbccddeeff0011");
+
+        let result = &point1 * &scalar;
+
+        assert_eq!(
+            result.x,
+            hex!("2748bce8ffc3f815e69e594ae974be5e9a3be69a233d5557ea9c92b71d69367b")
+        );
+        assert_eq!(
+            result.y,
+            hex!("747206115143153c85f3e8bb94d392bd955d36f1f0204921e6dd7684e81bdaab")
         );
     }
 }
