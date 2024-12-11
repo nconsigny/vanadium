@@ -15,6 +15,12 @@ pub enum BigIntOperator {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum ECPointOperation {
+    Add(Vec<u8>, Vec<u8>),
+    ScalarMult(Vec<u8>, Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Curve {
     Secp256k1,
 }
@@ -37,6 +43,10 @@ pub enum Command {
     DeriveHdNode {
         curve: Curve,
         path: Vec<u32>,
+    },
+    ECPointOperation {
+        curve: Curve,
+        operation: ECPointOperation,
     },
 }
 

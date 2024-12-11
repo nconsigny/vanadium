@@ -244,3 +244,41 @@ async fn test_secp256k1_derive_hd_node() {
         assert_eq!(exp_privkey, privkey);
     }
 }
+
+#[tokio::test]
+async fn test_secp256k1_point_add() {
+    let mut setup = test_common::setup().await;
+
+    let p = hex!("04c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee51ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a");
+    let q = hex!("04f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672");
+
+    let res = setup
+        .client
+        .ecpoint_add(common::Curve::Secp256k1, &p, &q)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        hex!("042f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4d8ac222636e5e3d6d4dba9dda6c9c426f788271bab0d6840dca87d3aa6ac62d6")
+    );
+}
+
+#[tokio::test]
+async fn test_secp256k1_point_scalarmul() {
+    let mut setup = test_common::setup().await;
+
+    let p = hex!("0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8");
+    let k = hex!("22445566778899aabbccddeeff0011223344556677889900aabbccddeeff0011");
+
+    let res = setup
+        .client
+        .ecpoint_scalarmult(common::Curve::Secp256k1, &p, &k)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        hex!("042748bce8ffc3f815e69e594ae974be5e9a3be69a233d5557ea9c92b71d69367b747206115143153c85f3e8bb94d392bd955d36f1f0204921e6dd7684e81bdaab")
+    );
+}
