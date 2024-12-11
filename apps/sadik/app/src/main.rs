@@ -6,7 +6,7 @@ use sdk::fatal;
 
 use sdk::{
     bignum::{BigNum, BigNumMod, Modulus},
-    curve::Curve as _,
+    curve::{Curve as _, Secp256k1Point},
     hash::Hasher,
 };
 
@@ -14,7 +14,7 @@ extern crate alloc;
 
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use common::{Command, Curve, HashId};
+use common::{Command, Curve, ECPointOperation, HashId};
 
 // Temporary to force the creation of a data section
 #[used]
@@ -192,6 +192,20 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                     result.extend_from_slice(&node.privkey[..]);
                     result
                 }
+            },
+            Command::ECPointOperation { curve, operation } => match curve {
+                Curve::Secp256k1 => match operation {
+                    ECPointOperation::Add(p, q) => {
+                        let p = Secp256k1Point::from_bytes(p.as_slice().try_into().unwrap());
+                        let q = Secp256k1Point::from_bytes(q.as_slice().try_into().unwrap());
+                        (p + q).to_bytes().to_vec()
+                    }
+                    ECPointOperation::ScalarMult(p, k) => {
+                        let p = Secp256k1Point::from_bytes(p.as_slice().try_into().unwrap());
+                        let k: [u8; 32] = k.as_slice().try_into().unwrap();
+                        (p * &k).to_bytes().to_vec()
+                    }
+                },
             },
         };
 

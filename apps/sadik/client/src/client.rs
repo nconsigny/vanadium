@@ -110,6 +110,40 @@ impl SadikClient {
             .expect("Error sending message"))
     }
 
+    pub async fn ecpoint_add(
+        &mut self,
+        curve: Curve,
+        p: &[u8],
+        q: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::ECPointOperation {
+            curve,
+            operation: common::ECPointOperation::Add(p.to_vec(), q.to_vec()),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn ecpoint_scalarmult(
+        &mut self,
+        curve: Curve,
+        p: &[u8],
+        k: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::ECPointOperation {
+            curve,
+            operation: common::ECPointOperation::ScalarMult(p.to_vec(), k.to_vec()),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
     pub async fn exit(&mut self) -> Result<i32, &'static str> {
         match send_message(&mut self.app_client, &[]).await {
             Ok(_) => Err("Exit message shouldn't return!"),
