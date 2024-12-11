@@ -140,7 +140,7 @@ pub(crate) trait EcallsInterface {
         chain_code: *mut u8,
     ) -> u32;
 
-    /// Retrieves the fingerprint for master public key for the specified curve.
+    /// Retrieves the fingerprint for the master public key for the specified curve.
     ///
     /// # Parameters
     /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
@@ -152,6 +152,31 @@ pub(crate) trait EcallsInterface {
     /// # Panics
     /// This function panics if the curve is not supported.
     fn get_master_fingerprint(curve: u32) -> u32;
+
+    /// Adds two elliptic curve points `p` and `q`, storing the result in `r`.
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `r`: Pointer to the result buffer.
+    /// - `p`: Pointer to the first point buffer.
+    /// - `q`: Pointer to the second point buffer.
+    ///
+    /// # Returns
+    /// 1 on success, 0 on error.
+    fn ecfp_add_point(curve: u32, r: *mut u8, p: *const u8, q: *const u8) -> u32;
+
+    /// Multiplies an elliptic curve point `p` by a scalar `k`, storing the result in `r`.
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `r`: Pointer to the result buffer.
+    /// - `p`: Pointer to the point buffer.
+    /// - `k`: Pointer to the scalar buffer.
+    /// - `k_len`: Length of the scalar buffer.
+    ///
+    /// # Returns
+    /// 1 on success, 0 on error.
+    fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32;
 }
 
 pub(crate) use ecalls_module::*;

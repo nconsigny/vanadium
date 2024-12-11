@@ -25,3 +25,7 @@ pub const ECALL_GET_MASTER_FINGERPRINT: u32 = 131;
 pub const ECALL_HASH_INIT: u32 = 150;
 pub const ECALL_HASH_UPDATE: u32 = 151;
 pub const ECALL_HASH_DIGEST: u32 = 152;
+
+// Operations for public keys over elliptic curves
+pub const ECALL_ECFP_ADD_POINT: u32 = 160;
+pub const ECALL_ECFP_SCALAR_MULT: u32 = 161;

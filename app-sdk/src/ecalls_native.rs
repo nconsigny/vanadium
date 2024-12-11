@@ -6,6 +6,13 @@ use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
 
 use bip32::{ChildNumber, XPrv};
 use hex_literal::hex;
+use k256::{
+    elliptic_curve::{
+        sec1::{FromEncodedPoint, ToEncodedPoint},
+        PrimeField,
+    },
+    EncodedPoint, ProjectivePoint, Scalar,
+};
 use num_bigint::BigUint;
 use num_traits::Zero;
 
@@ -253,7 +260,6 @@ impl EcallsInterface for Ecall {
         chain_code: *mut u8,
     ) -> u32 {
         if curve != CurveKind::Secp256k1 as u32 {
-            // unsopported curve
             panic!("Unsupported curve");
         }
         let mut key = Ecall::get_master_bip32_key();
@@ -285,11 +291,67 @@ impl EcallsInterface for Ecall {
 
     fn get_master_fingerprint(curve: u32) -> u32 {
         if curve != CurveKind::Secp256k1 as u32 {
-            // unsopported curve
             panic!("Unsupported curve");
         }
 
         u32::from_be_bytes(Ecall::get_master_bip32_key().public_key().fingerprint())
+    }
+
+    fn ecfp_add_point(curve: u32, r: *mut u8, p: *const u8, q: *const u8) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        let p_slice = unsafe { std::slice::from_raw_parts(p, 65) };
+        let q_slice = unsafe { std::slice::from_raw_parts(q, 65) };
+
+        let p_point = EncodedPoint::from_bytes(p_slice).expect("Invalid point P");
+        let q_point = EncodedPoint::from_bytes(q_slice).expect("Invalid point Q");
+
+        let p_point = ProjectivePoint::from_encoded_point(&p_point).unwrap();
+        let q_point = ProjectivePoint::from_encoded_point(&q_point).unwrap();
+
+        let result_point = p_point + q_point;
+
+        let result_encoded = result_point.to_encoded_point(false);
+        let result_bytes = result_encoded.as_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), r, result_bytes.len());
+        }
+
+        1
+    }
+
+    fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+        if k_len > 32 {
+            panic!("k_len is too large");
+        }
+
+        let p_slice = unsafe { std::slice::from_raw_parts(p, 65) };
+        let k_slice = unsafe { std::slice::from_raw_parts(k, k_len) };
+
+        let p_point = EncodedPoint::from_bytes(p_slice).expect("Invalid point P");
+        let p_point = ProjectivePoint::from_encoded_point(&p_point).unwrap();
+
+        // pad k_scalar to 32 bytes with initial zeros without using unsafe code
+        let mut k_scalar = [0u8; 32];
+        k_scalar[32 - k_len..].copy_from_slice(k_slice);
+        let k_scalar = Scalar::from_repr(k_scalar.into()).unwrap();
+
+        let result_point = p_point * k_scalar;
+        let result_encoded = result_point.to_encoded_point(false);
+
+        let result_bytes = result_encoded.as_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), r, result_bytes.len());
+        }
+
+        1
     }
 }
 
