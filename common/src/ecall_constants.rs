@@ -18,6 +18,29 @@ pub enum CurveKind {
     Secp256k1 = 0x21,
 }
 
+// TODO: IDs for now are matching the ones in the ledger SDK
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(C)]
+pub enum HashId {
+    Ripemd160 = 1,
+    Sha256 = 3,
+    Sha512 = 5,
+}
+
+// TODO: signing modes for now are matching the ones in the ledger SDK
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(C)]
+pub enum EcdsaSignMode {
+    RFC6979 = (3 << 9),
+}
+
+// TODO: signing modes for now are matching the ones in the ledger SDK
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(C)]
+pub enum SchnorrSignMode {
+    BIP340 = 0,
+}
+
 pub const ECALL_DERIVE_HD_NODE: u32 = 130;
 pub const ECALL_GET_MASTER_FINGERPRINT: u32 = 131;
 
@@ -29,3 +52,8 @@ pub const ECALL_HASH_DIGEST: u32 = 152;
 // Operations for public keys over elliptic curves
 pub const ECALL_ECFP_ADD_POINT: u32 = 160;
 pub const ECALL_ECFP_SCALAR_MULT: u32 = 161;
+
+pub const ECALL_ECDSA_SIGN: u32 = 180;
+pub const ECALL_ECDSA_VERIFY: u32 = 181;
+pub const ECALL_SCHNORR_SIGN: u32 = 182;
+pub const ECALL_SCHNORR_VERIFY: u32 = 183;

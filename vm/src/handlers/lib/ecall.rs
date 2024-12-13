@@ -6,7 +6,7 @@ use common::{
         Message, ReceiveBufferMessage, ReceiveBufferResponse, SendBufferMessage,
         SendPanicBufferMessage,
     },
-    ecall_constants::*,
+    ecall_constants::{self, *},
     manifest::Manifest,
     vm::{Cpu, EcallHandler},
 };
@@ -874,6 +874,249 @@ impl<'a> CommEcallHandler<'a> {
 
         Ok(1)
     }
+
+    fn handle_ecdsa_sign(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: GuestPointer,
+        msg_hash: GuestPointer,
+        signature: GuestPointer,
+    ) -> Result<usize, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        if mode != ecall_constants::EcdsaSignMode::RFC6979 as u32 {
+            return Err("Invalid or unsupported ecdsa signing mode");
+        }
+
+        if hash_id != ecall_constants::HashId::Sha256 as u32 {
+            return Err("Invalid or unsupported hash id");
+        }
+
+        // copy inputs to local memory
+        // TODO: we should zeroize the private key after use
+        let mut privkey_local: ledger_secure_sdk_sys::cx_ecfp_private_key_t = Default::default();
+        privkey_local.curve = curve as u8;
+        privkey_local.d_len = 32;
+        cpu.get_segment(privkey.0)?
+            .read_buffer(privkey.0, &mut privkey_local.d)?;
+
+        let mut msg_hash_local: [u8; 32] = [0; 32];
+        cpu.get_segment(msg_hash.0)?
+            .read_buffer(msg_hash.0, &mut msg_hash_local)?;
+
+        // ECDSA signatures are at most 72 bytes long.
+        let mut signature_local: [u8; 72] = [0; 72];
+        let mut signature_len: usize = signature_local.len();
+        let mut info: u32 = 0; // will get the parity bit
+
+        unsafe {
+            let res = ledger_secure_sdk_sys::cx_ecdsa_sign_no_throw(
+                &mut privkey_local,
+                ecall_constants::EcdsaSignMode::RFC6979 as u32,
+                ecall_constants::HashId::Sha256 as u8,
+                msg_hash_local.as_ptr(),
+                msg_hash_local.len(),
+                signature_local.as_mut_ptr(),
+                &mut signature_len,
+                &mut info,
+            );
+            if res != CX_OK {
+                return Err("cx_ecdsa_sign_no_throw failed");
+            }
+        }
+
+        // copy signature to V-App memory
+        cpu.get_segment(signature.0)?
+            .write_buffer(signature.0, &signature_local[0..signature_len as usize])?;
+
+        Ok(signature_len)
+    }
+
+    fn handle_ecdsa_verify(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        pubkey: GuestPointer,
+        msg_hash: GuestPointer,
+        signature: GuestPointer,
+        signature_len: usize,
+    ) -> Result<u32, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        if signature_len > 72 {
+            return Err("signature_len is too large");
+        }
+
+        // copy inputs to local memory
+        let mut pubkey_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        pubkey_local.curve = curve as u8;
+        pubkey_local.W_len = 65;
+        cpu.get_segment(pubkey.0)?
+            .read_buffer(pubkey.0, &mut pubkey_local.W)?;
+
+        let mut msg_hash_local: [u8; 32] = [0; 32];
+        cpu.get_segment(msg_hash.0)?
+            .read_buffer(msg_hash.0, &mut msg_hash_local)?;
+
+        let mut signature_local: [u8; 72] = [0; 72];
+        cpu.get_segment(signature.0)?
+            .read_buffer(signature.0, &mut signature_local[0..signature_len])?;
+
+        // verify the signature
+        let res = unsafe {
+            ledger_secure_sdk_sys::cx_ecdsa_verify_no_throw(
+                &pubkey_local,
+                msg_hash_local.as_ptr(),
+                msg_hash_local.len(),
+                signature_local.as_ptr(),
+                signature_len,
+            )
+        };
+
+        Ok(res as u32)
+    }
+
+    fn handle_schnorr_sign(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: GuestPointer,
+        msg: GuestPointer,
+        msg_len: usize,
+        signature: GuestPointer,
+    ) -> Result<usize, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        if mode != ecall_constants::SchnorrSignMode::BIP340 as u32 {
+            return Err("Invalid or unsupported schnorr signing mode");
+        }
+
+        if msg_len > 128 {
+            return Err("msg_len is too large");
+        }
+
+        if hash_id != ecall_constants::HashId::Sha256 as u32 {
+            return Err("Invalid or unsupported hash id");
+        }
+
+        // copy inputs to local memory
+        // TODO: we should zeroize the private key after use
+        let mut privkey_local: ledger_secure_sdk_sys::cx_ecfp_private_key_t = Default::default();
+        privkey_local.curve = curve as u8;
+        privkey_local.d_len = 32;
+        cpu.get_segment(privkey.0)?
+            .read_buffer(privkey.0, &mut privkey_local.d)?;
+
+        let mut msg_local = vec![0; 128];
+        cpu.get_segment(msg.0)?.read_buffer(msg.0, &mut msg_local)?;
+
+        // Schnorr signatures are at most 64 bytes long.
+        let mut signature_local: [u8; 64] = [0; 64];
+        let mut signature_len: usize = signature_local.len();
+
+        unsafe {
+            // We don't expose this, but cx_ecschnorr_sign_no_throw requires one of
+            // CX_RND_TRNG or CX_RND_PROVIDED to be provided. We just use CX_RND_TRNG for now.
+            const CX_RND_TRNG: u32 = 2 << 9;
+
+            let res = ledger_secure_sdk_sys::cx_ecschnorr_sign_no_throw(
+                &mut privkey_local,
+                mode | CX_RND_TRNG,
+                ecall_constants::HashId::Sha256 as u8,
+                msg_local.as_ptr(),
+                msg_len,
+                signature_local.as_mut_ptr(),
+                &mut signature_len,
+            );
+            if res != CX_OK {
+                return Err("cx_schnorr_sign_no_throw failed");
+            }
+        }
+
+        // signatures returned per BIP340 are always exactly 64 bytes
+        if signature_len != 64 {
+            return Err("cx_schnorr_sign_no_throw returned a signature of unexpected length");
+        }
+
+        // copy signature to V-App memory
+        cpu.get_segment(signature.0)?
+            .write_buffer(signature.0, &signature_local[0..signature_len as usize])?;
+
+        Ok(signature_len)
+    }
+
+    fn handle_schnorr_verify(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        pubkey: GuestPointer,
+        msg: GuestPointer,
+        msg_len: usize,
+        signature: GuestPointer,
+        signature_len: usize,
+    ) -> Result<u32, &'static str> {
+        if curve != CurveKind::Secp256k1 as u32 {
+            return Err("Unsupported curve");
+        }
+
+        if mode != ecall_constants::SchnorrSignMode::BIP340 as u32 {
+            return Err("Invalid or unsupported schnorr signing mode");
+        }
+
+        if msg_len > 128 {
+            return Err("msg_len is too large");
+        }
+
+        if hash_id != ecall_constants::HashId::Sha256 as u32 {
+            return Err("Invalid or unsupported hash id");
+        }
+
+        if signature_len != 64 {
+            return Err("Invalid signature length");
+        }
+
+        // copy inputs to local memory
+        let mut pubkey_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
+        pubkey_local.curve = curve as u8;
+        pubkey_local.W_len = 65;
+        cpu.get_segment(pubkey.0)?
+            .read_buffer(pubkey.0, &mut pubkey_local.W)?;
+
+        let mut msg_local = vec![0; 128];
+        cpu.get_segment(msg.0)?.read_buffer(msg.0, &mut msg_local)?;
+
+        let mut signature_local: [u8; 64] = [0; 64];
+        cpu.get_segment(signature.0)?
+            .read_buffer(signature.0, &mut signature_local)?;
+
+        // verify the signature
+        let res = unsafe {
+            ledger_secure_sdk_sys::cx_ecschnorr_verify(
+                &pubkey_local,
+                mode,
+                ecall_constants::HashId::Sha256 as u8,
+                msg_local.as_ptr(),
+                msg_len,
+                signature_local.as_ptr(),
+                signature_len,
+            )
+        };
+
+        Ok(res as u32)
+    }
 }
 
 // make an error type for the CommEcallHandler<'a>
@@ -1059,6 +1302,63 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                         reg!(A4) as usize,
                     )
                     .map_err(|_| CommEcallError::GenericError("ecfp_scalar_mult failed"))?;
+            }
+
+            ECALL_ECDSA_SIGN => {
+                reg!(A0) = self
+                    .handle_ecdsa_sign(
+                        cpu,
+                        reg!(A0),
+                        reg!(A1),
+                        reg!(A2),
+                        GPreg!(A3),
+                        GPreg!(A4),
+                        GPreg!(A5),
+                    )
+                    .map_err(|_| CommEcallError::GenericError("ecdsa_sign failed"))?
+                    as u32;
+            }
+            ECALL_ECDSA_VERIFY => {
+                reg!(A0) = self
+                    .handle_ecdsa_verify(
+                        cpu,
+                        reg!(A0),
+                        GPreg!(A1),
+                        GPreg!(A2),
+                        GPreg!(A3),
+                        reg!(A4) as usize,
+                    )
+                    .map_err(|_| CommEcallError::GenericError("ecdsa_verify failed"))?;
+            }
+            ECALL_SCHNORR_SIGN => {
+                reg!(A0) = self
+                    .handle_schnorr_sign(
+                        cpu,
+                        reg!(A0),
+                        reg!(A1),
+                        reg!(A2),
+                        GPreg!(A3),
+                        GPreg!(A4),
+                        reg!(A5) as usize,
+                        GPreg!(A6),
+                    )
+                    .map_err(|_| CommEcallError::GenericError("schnorr_sign failed"))?
+                    as u32;
+            }
+            ECALL_SCHNORR_VERIFY => {
+                reg!(A0) = self
+                    .handle_schnorr_verify(
+                        cpu,
+                        reg!(A0),
+                        reg!(A1),
+                        reg!(A2),
+                        GPreg!(A3),
+                        GPreg!(A4),
+                        reg!(A5) as usize,
+                        GPreg!(A6),
+                        reg!(A7) as usize,
+                    )
+                    .map_err(|_| CommEcallError::GenericError("schnorr_verify failed"))?;
             }
 
             // Any other ecall is unhandled and will case the CPU to abort

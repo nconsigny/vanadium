@@ -52,15 +52,7 @@ mod hashers {
 mod hashers {
     use super::*;
     use crate::Ecall;
-
-    // TODO: IDs for now are matching the ones in the ledger SDK
-    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-    #[repr(C)]
-    enum HashId {
-        Ripemd160 = 1,
-        Sha256 = 3,
-        Sha512 = 5,
-    }
+    use common::ecall_constants::HashId;
 
     #[derive(Clone, PartialEq, Eq, Debug)]
     #[repr(C)]

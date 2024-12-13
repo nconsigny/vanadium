@@ -307,6 +307,70 @@ macro_rules! ecall6 {
     };
 }
 
+macro_rules! ecall7 {
+    // ECALL with 7 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty),
+     ($arg5:ident: $arg5_type:ty),
+     ($arg6:ident: $arg6_type:ty),
+     ($arg7:ident: $arg7_type:ty), $ret_type:ty) => {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type, $arg7: $arg7_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4,            // Fourth argument in a3
+                    in("a4") $arg5,            // Fifth argument in a4
+                    in("a5") $arg6,            // Sixth argument in a5
+                    in("a6") $arg7,            // Seventh argument in a6
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
+
+macro_rules! ecall8 {
+    // ECALL with 8 arguments and returning a value
+    ($fn_name:ident, $syscall_number:expr,
+     ($arg1:ident: $arg1_type:ty),
+     ($arg2:ident: $arg2_type:ty),
+     ($arg3:ident: $arg3_type:ty),
+     ($arg4:ident: $arg4_type:ty),
+     ($arg5:ident: $arg5_type:ty),
+     ($arg6:ident: $arg6_type:ty),
+     ($arg7:ident: $arg7_type:ty),
+     ($arg8:ident: $arg8_type:ty), $ret_type:ty) => {
+        fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type, $arg7: $arg7_type, $arg8: $arg8_type) -> $ret_type {
+            let ret: $ret_type;
+            unsafe {
+                asm!(
+                    "ecall",
+                    in("t0") $syscall_number,  // Pass the syscall number in t0
+                    in("a0") $arg1,            // First argument in a0
+                    in("a1") $arg2,            // Second argument in a1
+                    in("a2") $arg3,            // Third argument in a2
+                    in("a3") $arg4,            // Fourth argument in a3
+                    in("a4") $arg5,            // Fifth argument in a4
+                    in("a5") $arg6,            // Sixth argument in a5
+                    in("a6") $arg7,            // Seventh argument in a6
+                    in("a7") $arg8,            // Eighth argument in a7
+                    lateout("a0") ret          // Return value in a0
+                );
+            }
+            ret
+        }
+    };
+}
+
 pub struct Ecall;
 
 impl EcallsInterface for Ecall {
@@ -350,6 +414,11 @@ impl EcallsInterface for Ecall {
 
     ecall4!(ecfp_add_point, ECALL_ECFP_ADD_POINT, (curve: u32), (r: *mut u8), (p: *const u8), (q: *const u8), u32);
     ecall5!(ecfp_scalar_mult, ECALL_ECFP_SCALAR_MULT, (curve: u32), (r: *mut u8), (p: *const u8), (k: *const u8), (k_len: usize), u32);
+
+    ecall6!(ecdsa_sign, ECALL_ECDSA_SIGN, (curve: u32), (mode: u32), (hash_id: u32), (privkey: *const u8), (msg_hash: *const u8), (signature: *mut u8), usize);
+    ecall5!(ecdsa_verify, ECALL_ECDSA_VERIFY, (curve: u32), (pubkey: *const u8), (msg_hash: *const u8), (signature: *const u8), (signature_len: usize), u32);
+    ecall7!(schnorr_sign, ECALL_SCHNORR_SIGN, (curve: u32), (mode: u32), (hash_id: u32), (privkey: *const u8), (msg: *const u8), (msg_len: usize), (signature: *mut u8), usize);
+    ecall8!(schnorr_verify, ECALL_SCHNORR_VERIFY, (curve: u32), (mode: u32), (hash_id: u32), (pubkey: *const u8), (msg: *const u8), (msg_len: usize), (signature: *const u8), (signature_len: usize), u32);
 }
 
 // The following ecalls are specific to this target

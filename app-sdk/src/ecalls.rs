@@ -177,6 +177,106 @@ pub(crate) trait EcallsInterface {
     /// # Returns
     /// 1 on success, 0 on error.
     fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32;
+
+    /// Signs a message hash using ECDSA.
+    ///
+    /// # Warning
+    /// **This ecall is unstable and subject to change in future versions.**
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `mode`: The signing mode. Only `RFC6979` is supported.
+    /// - `hash_id`: The hash identifier. Only `Sha256` is supported.
+    /// - `privkey`: Pointer to the private key buffer.
+    /// - `msg_hash`: Pointer to the message hash buffer.
+    /// - `signature`: Pointer to the buffer to store the signature.
+    ///
+    /// # Returns
+    /// The length of the signature on success, 0 on error.
+    fn ecdsa_sign(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: *const u8,
+        msg_hash: *const u8,
+        signature: *mut u8,
+    ) -> usize;
+
+    /// Verifies an ECDSA signature for a message hash.
+    ///
+    /// # Warning
+    /// **This ecall is unstable and subject to change in future versions.**
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `pubkey`: Pointer to the public key buffer.
+    /// - `msg_hash`: Pointer to the message hash buffer.
+    /// - `signature`: Pointer to the signature buffer.
+    /// - `signature_len`: Length of the signature buffer.
+    ///
+    /// # Returns
+    /// 1 on success, 0 on error.
+    fn ecdsa_verify(
+        curve: u32,
+        pubkey: *const u8,
+        msg_hash: *const u8,
+        signature: *const u8,
+        signature_len: usize,
+    ) -> u32;
+
+    /// Signs a message using Schnorr signature.
+    ///
+    /// # Warning
+    /// **This ecall is unstable and subject to change in future versions.**
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `mode`: The signing mode. Only `BIP340` is supported.
+    /// - `hash_id`: The hash identifier.
+    /// - `privkey`: Pointer to the private key buffer.
+    /// - `msg`: Pointer to the message buffer.
+    /// - `msg_len`: Length of the message buffer.
+    /// - `signature`: Pointer to the buffer to store the signature.
+    ///
+    /// # Returns
+    /// The length of the signature (always 64) on success, 0 on error.
+    fn schnorr_sign(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: *const u8,
+        msg: *const u8,
+        msg_len: usize,
+        signature: *mut u8,
+    ) -> usize;
+
+    /// Verifies a Schnorr signature for a message.
+    ///
+    /// # Warning
+    /// **This ecall is unstable and subject to change in future versions.**
+    ///
+    /// # Parameters
+    /// - `curve`: The elliptic curve identifier. Currently only `Secp256k1` is supported.
+    /// - `mode`: The verification mode. It must match the mode used for signing.
+    /// - `hash_id`: The hash identifier. Only `Sha256` is supported.
+    /// - `pubkey`: Pointer to the public key buffer.
+    /// - `msg`: Pointer to the message buffer.
+    /// - `msg_len`: Length of the message buffer.
+    /// - `signature`: Pointer to the signature buffer.
+    /// - `signature_len`: Length of the signature buffer.
+    ///
+    /// # Returns
+    /// 1 on success, 0 on error.
+    fn schnorr_verify(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        pubkey: *const u8,
+        msg: *const u8,
+        msg_len: usize,
+        signature: *const u8,
+        signature_len: usize,
+    ) -> u32;
 }
 
 pub(crate) use ecalls_module::*;

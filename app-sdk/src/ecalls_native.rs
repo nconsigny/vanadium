@@ -7,12 +7,18 @@ use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
 use bip32::{ChildNumber, XPrv};
 use hex_literal::hex;
 use k256::{
+    ecdsa::{
+        self,
+        signature::{hazmat::PrehashVerifier, SignerMut},
+    },
     elliptic_curve::{
         sec1::{FromEncodedPoint, ToEncodedPoint},
         PrimeField,
     },
+    schnorr::{self, signature::Verifier},
     EncodedPoint, ProjectivePoint, Scalar,
 };
+
 use num_bigint::BigUint;
 use num_traits::Zero;
 
@@ -352,6 +358,175 @@ impl EcallsInterface for Ecall {
         }
 
         1
+    }
+
+    fn ecdsa_sign(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: *const u8,
+        msg_hash: *const u8,
+        signature: *mut u8,
+    ) -> usize {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if mode != common::ecall_constants::EcdsaSignMode::RFC6979 as u32 {
+            panic!("Invalid or unsupported ecdsa signing mode");
+        }
+
+        if hash_id != common::ecall_constants::HashId::Sha256 as u32 {
+            panic!("Invalid or unsupported hash id");
+        }
+
+        let privkey_slice = unsafe { std::slice::from_raw_parts(privkey, 32) };
+        let msg_hash_slice = unsafe { std::slice::from_raw_parts(msg_hash, 32) };
+
+        let mut privkey_bytes = [0u8; 32];
+        privkey_bytes[..].copy_from_slice(privkey_slice);
+        let signing_key =
+            ecdsa::SigningKey::from_bytes(&privkey_bytes.into()).expect("Invalid private key");
+        let (signature_local, _) = signing_key
+            .sign_prehash_recoverable(msg_hash_slice)
+            .expect("Signing failed");
+
+        let signature_der = ecdsa::DerSignature::from(signature_local);
+
+        let signature_bytes = signature_der.to_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                signature_bytes.as_ptr(),
+                signature,
+                signature_bytes.len(),
+            );
+        }
+
+        signature_bytes.len()
+    }
+
+    fn ecdsa_verify(
+        curve: u32,
+        pubkey: *const u8,
+        msg_hash: *const u8,
+        signature: *const u8,
+        signature_len: usize,
+    ) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if signature_len > 72 {
+            panic!("signature_len is too large");
+        }
+
+        let pubkey_slice = unsafe { std::slice::from_raw_parts(pubkey, 65) };
+        let msg_hash_slice = unsafe { std::slice::from_raw_parts(msg_hash, 32) };
+        let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
+
+        let pubkey_point = EncodedPoint::from_bytes(pubkey_slice).expect("Invalid public key");
+        let verifying_key = ecdsa::VerifyingKey::from_encoded_point(&pubkey_point)
+            .expect("Failed to create verifying key");
+
+        let signature =
+            ecdsa::DerSignature::from_bytes(signature_slice.into()).expect("Invalid signature");
+
+        match verifying_key.verify_prehash(msg_hash_slice, &signature) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    }
+
+    fn schnorr_sign(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: *const u8,
+        msg: *const u8,
+        msg_len: usize,
+        signature: *mut u8,
+    ) -> usize {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if mode != common::ecall_constants::SchnorrSignMode::BIP340 as u32 {
+            panic!("Invalid or unsupported schnorr signing mode");
+        }
+
+        if msg_len > 128 {
+            panic!("msg_len is too large");
+        }
+
+        if hash_id != common::ecall_constants::HashId::Sha256 as u32 {
+            panic!("Invalid or unsupported hash id");
+        }
+
+        let privkey_slice = unsafe { std::slice::from_raw_parts(privkey, 32) };
+        let msg_slice = unsafe { std::slice::from_raw_parts(msg, msg_len) };
+
+        let mut privkey_bytes = [0u8; 32];
+        privkey_bytes[..].copy_from_slice(privkey_slice);
+        let mut signing_key =
+            schnorr::SigningKey::from_bytes(&privkey_bytes).expect("Invalid private key");
+
+        let signature_bytes = signing_key.sign(msg_slice).to_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                signature_bytes.as_ptr(),
+                signature,
+                signature_bytes.len(),
+            );
+        }
+
+        signature_bytes.len()
+    }
+
+    fn schnorr_verify(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        pubkey: *const u8,
+        msg: *const u8,
+        msg_len: usize,
+        signature: *const u8,
+        signature_len: usize,
+    ) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if mode != common::ecall_constants::SchnorrSignMode::BIP340 as u32 {
+            panic!("Invalid or unsupported schnorr signing mode");
+        }
+
+        if msg_len > 128 {
+            panic!("msg_len is too large");
+        }
+
+        if hash_id != common::ecall_constants::HashId::Sha256 as u32 {
+            panic!("Invalid or unsupported hash id");
+        }
+
+        if signature_len != 64 {
+            panic!("Invalid signature length");
+        }
+
+        let pubkey_slice = unsafe { std::slice::from_raw_parts(pubkey, 65) };
+        let xonly_pubkey_slice = &pubkey_slice[1..33];
+        let msg_slice = unsafe { std::slice::from_raw_parts(msg, msg_len) };
+        let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
+
+        let verifying_key =
+            schnorr::VerifyingKey::from_bytes(xonly_pubkey_slice).expect("Invalid public key");
+        let signature = schnorr::Signature::try_from(signature_slice).expect("Invalid signature");
+
+        match verifying_key.verify(msg_slice, &signature) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
     }
 }
 
