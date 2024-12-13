@@ -48,6 +48,28 @@ pub enum Command {
         curve: Curve,
         operation: ECPointOperation,
     },
+    EcdsaSign {
+        curve: Curve,
+        privkey: Vec<u8>,
+        msg_hash: Vec<u8>,
+    },
+    EcdsaVerify {
+        curve: Curve,
+        msg_hash: Vec<u8>,
+        pubkey: Vec<u8>,
+        signature: Vec<u8>,
+    },
+    SchnorrSign {
+        curve: Curve,
+        privkey: Vec<u8>,
+        msg: Vec<u8>,
+    },
+    SchnorrVerify {
+        curve: Curve,
+        pubkey: Vec<u8>,
+        msg: Vec<u8>,
+        signature: Vec<u8>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
