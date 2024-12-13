@@ -4,6 +4,7 @@ mod test_common;
 
 use common::{BigIntOperator, HashId};
 use hex_literal::hex;
+use sha2::Digest;
 
 #[tokio::test]
 #[rustfmt::skip]
@@ -281,4 +282,135 @@ async fn test_secp256k1_point_scalarmul() {
         res,
         hex!("042748bce8ffc3f815e69e594ae974be5e9a3be69a233d5557ea9c92b71d69367b747206115143153c85f3e8bb94d392bd955d36f1f0204921e6dd7684e81bdaab")
     );
+}
+
+#[tokio::test]
+async fn test_secp256k1_ecdsa_sign() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    // compute the sha256 hash using the sha2 crate
+    let msg_hash = sha2::Sha256::digest(msg.as_bytes()).to_vec();
+
+    let privkey = hex!("4242424242424242424242424242424242424242424242424242424242424242");
+
+    let result = setup
+        .client
+        .ecdsa_sign(common::Curve::Secp256k1, &privkey, &msg_hash)
+        .await
+        .unwrap();
+
+    let expected_signature = hex!("304402201bbd5947e4a9cdf85d6efb0aeecdfa8c179480a1b972a3dd8b277a78a409dcdf022064c812320ad4f0ae5a3fa1ef5d66ef70c78922bd9d9e30b224d1b38671a3291b");
+
+    // signature is deterministic per RFC6979
+    assert_eq!(result, expected_signature);
+}
+
+#[tokio::test]
+async fn test_secp256k1_ecdsa_verify() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    // compute the sha256 hash using the sha2 crate
+    let msg_hash = sha2::Sha256::digest(msg.as_bytes()).to_vec();
+
+    let pubkey = hex!("0424653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c119fc5009a032aa9fe47f5e149bb8442f71f884ccb516590686d8ff6ab91c613");
+    let signature = hex!("304402201bbd5947e4a9cdf85d6efb0aeecdfa8c179480a1b972a3dd8b277a78a409dcdf022064c812320ad4f0ae5a3fa1ef5d66ef70c78922bd9d9e30b224d1b38671a3291b");
+
+    let result = setup
+        .client
+        .ecdsa_verify(common::Curve::Secp256k1, &pubkey, &msg_hash, &signature)
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![1]);
+
+    let sig_wrong = {
+        let mut sig = signature.clone();
+        sig[16] ^= 0x01;
+        sig
+    };
+
+    let result = setup
+        .client
+        .ecdsa_verify(common::Curve::Secp256k1, &pubkey, &msg_hash, &sig_wrong)
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![0]);
+}
+
+#[tokio::test]
+async fn test_secp256k1_schnorr_sign() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    let privkey = hex!("4242424242424242424242424242424242424242424242424242424242424242");
+
+    let result = setup
+        .client
+        .schnorr_sign(common::Curve::Secp256k1, &privkey, &msg.as_bytes())
+        .await
+        .unwrap();
+
+    // Schnorr signature using BIP340 is not deterministic. Check that the returned signature is valid instead
+    assert_eq!(result.len(), 64);
+
+    println!("Signature: {:?}", result);
+
+    let signature = k256::schnorr::Signature::try_from(result.as_slice()).unwrap();
+
+    // verify that the signature is valid using the k256 crate
+    let pubkey = k256::schnorr::VerifyingKey::from_bytes(&hex!(
+        "24653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c"
+    ))
+    .unwrap();
+
+    // verify_raw uses unhashed messages; normally one wouldn't reaaly use this
+    pubkey.verify_raw(msg.as_bytes(), &signature).unwrap();
+}
+
+#[tokio::test]
+async fn test_secp256k1_schnorr_verify() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    let pubkey = hex!("0424653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1cee603aff65fcd55601b80a1eb6447bbd08e077b334ae9a6f97927008546e361c");
+    let signature = hex!("54a2a499ce77edc2599c3fdb99b66d461230165776abf6efebe3a86cb6b3a88e8bf4a388ff3fe1e424a907974826a991b2bb497691d055da66b1b5ba12bb67cc");
+
+    let result = setup
+        .client
+        .schnorr_verify(
+            common::Curve::Secp256k1,
+            &pubkey,
+            &msg.as_bytes(),
+            &signature,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![1]);
+
+    let sig_wrong = {
+        let mut sig = signature.clone();
+        sig[16] ^= 0x01;
+        sig
+    };
+
+    let result = setup
+        .client
+        .schnorr_verify(
+            common::Curve::Secp256k1,
+            &pubkey,
+            &msg.as_bytes(),
+            &sig_wrong,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![0]);
 }

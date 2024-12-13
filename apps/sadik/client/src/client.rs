@@ -144,6 +144,82 @@ impl SadikClient {
             .expect("Error sending message"))
     }
 
+    pub async fn ecdsa_sign(
+        &mut self,
+        curve: Curve,
+        privkey: &[u8],
+        msg_hash: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::EcdsaSign {
+            curve,
+            privkey: privkey.to_vec(),
+            msg_hash: msg_hash.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn ecdsa_verify(
+        &mut self,
+        curve: Curve,
+        pubkey: &[u8],
+        msg_hash: &[u8],
+        signature: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::EcdsaVerify {
+            curve,
+            pubkey: pubkey.to_vec(),
+            msg_hash: msg_hash.to_vec(),
+            signature: signature.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn schnorr_sign(
+        &mut self,
+        curve: Curve,
+        privkey: &[u8],
+        msg: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::SchnorrSign {
+            curve,
+            privkey: privkey.to_vec(),
+            msg: msg.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn schnorr_verify(
+        &mut self,
+        curve: Curve,
+        pubkey: &[u8],
+        msg: &[u8],
+        signature: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::SchnorrVerify {
+            curve,
+            pubkey: pubkey.to_vec(),
+            msg: msg.to_vec(),
+            signature: signature.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
     pub async fn exit(&mut self) -> Result<i32, &'static str> {
         match send_message(&mut self.app_client, &[]).await {
             Ok(_) => Err("Exit message shouldn't return!"),
