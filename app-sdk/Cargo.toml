@@ -15,7 +15,7 @@ zeroize = "1.8.1"
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 bip32 = "0.5.2"
 hex = "0.4.3"
-k256 = { version = "0.13.4", default-features = false, features = ["alloc"] }
+k256 = { version = "0.13.4", default-features = false, features = ["alloc", "ecdsa-core", "schnorr"] }
 num-bigint = "0.4.6"
 num-traits = "0.2.19"
 ripemd = "0.1.3"

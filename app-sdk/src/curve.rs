@@ -1,47 +1,15 @@
+use alloc::vec::Vec;
 use core::{
     marker::PhantomData,
-    ops::{Add, Mul},
+    ops::{Add, Deref, Mul},
 };
 
+use hex_literal::hex;
 use zeroize::Zeroizing;
 
-use common::ecall_constants::CurveKind;
+use common::ecall_constants::{CurveKind, EcdsaSignMode, HashId, SchnorrSignMode};
 
 use crate::ecalls::{Ecall, EcallsInterface};
-
-/// A struct representing a Hierarchical Deterministic (HD) node composed of a private key, and a 32-byte chaincode.
-///
-/// # Type Parameters
-///
-/// * `SCALAR_LENGTH` - The length of the private key scalar.
-///
-/// # Fields
-///
-/// * `chaincode` - A 32-byte array representing the chain code.
-/// * `privkey` - An array of bytes representing the private key, with a length defined by `SCALAR_LENGTH`.
-pub struct HDPrivNode<const SCALAR_LENGTH: usize> {
-    pub chaincode: [u8; 32],
-    pub privkey: Zeroizing<[u8; SCALAR_LENGTH]>,
-}
-
-impl<const SCALAR_LENGTH: usize> Default for HDPrivNode<SCALAR_LENGTH> {
-    fn default() -> Self {
-        Self {
-            chaincode: [0u8; 32],
-            privkey: Zeroizing::new([0u8; SCALAR_LENGTH]),
-        }
-    }
-}
-
-impl<const SCALAR_LENGTH: usize> core::fmt::Debug for HDPrivNode<SCALAR_LENGTH> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "HDPrivNode {{ chaincode: {:?}, privkey: [REDACTED] }}",
-            self.chaincode
-        )
-    }
-}
 
 /// A trait representing a cryptographic curve with hierarchical deterministic (HD) key derivation capabilities.
 ///
@@ -60,9 +28,54 @@ impl<const SCALAR_LENGTH: usize> core::fmt::Debug for HDPrivNode<SCALAR_LENGTH> 
 /// Retrieves the fingerprint of the master key.
 ///
 /// - Returns: A `u32` value representing the fingerprint of the master key.
-pub trait Curve<const SCALAR_LENGTH: usize> {
-    fn derive_hd_node(path: &[u32]) -> Result<HDPrivNode<SCALAR_LENGTH>, &'static str>;
+pub trait Curve<const SCALAR_LENGTH: usize>: Sized {
+    fn derive_hd_node(path: &[u32]) -> Result<HDPrivNode<Self, SCALAR_LENGTH>, &'static str>;
     fn get_master_fingerprint() -> u32;
+}
+
+/// A struct representing a Hierarchical Deterministic (HD) node composed of a private key, and a 32-byte chaincode.
+///
+/// # Type Parameters
+///
+/// * `SCALAR_LENGTH` - The length of the private key scalar.
+///
+/// # Fields
+///
+/// * `chaincode` - A 32-byte array representing the chain code.
+/// * `privkey` - An array of bytes representing the private key, with a length defined by `SCALAR_LENGTH`.
+pub struct HDPrivNode<C, const SCALAR_LENGTH: usize>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    curve_marker: PhantomData<C>,
+    pub chaincode: [u8; 32],
+    pub privkey: Zeroizing<[u8; SCALAR_LENGTH]>,
+}
+
+impl<C, const SCALAR_LENGTH: usize> Default for HDPrivNode<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn default() -> Self {
+        Self {
+            curve_marker: PhantomData,
+            chaincode: [0u8; 32],
+            privkey: Zeroizing::new([0u8; SCALAR_LENGTH]),
+        }
+    }
+}
+
+impl<C, const SCALAR_LENGTH: usize> core::fmt::Debug for HDPrivNode<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "HDPrivNode {{ chaincode: {:?}, privkey: [REDACTED] }}",
+            self.chaincode
+        )
+    }
 }
 
 // A trait to simplify the implementation of `Curve` for different curves.
@@ -71,12 +84,12 @@ trait HasCurveKind<const SCALAR_LENGTH: usize> {
     fn get_curve_kind() -> CurveKind;
 }
 
-impl<T, const SCALAR_LENGTH: usize> Curve<SCALAR_LENGTH> for T
+impl<C, const SCALAR_LENGTH: usize> Curve<SCALAR_LENGTH> for C
 where
-    T: HasCurveKind<SCALAR_LENGTH>,
+    C: HasCurveKind<SCALAR_LENGTH>,
 {
-    fn derive_hd_node(path: &[u32]) -> Result<HDPrivNode<SCALAR_LENGTH>, &'static str> {
-        let curve_kind = T::get_curve_kind();
+    fn derive_hd_node(path: &[u32]) -> Result<HDPrivNode<C, SCALAR_LENGTH>, &'static str> {
+        let curve_kind = C::get_curve_kind();
         let mut result = HDPrivNode::default();
 
         if 1 != Ecall::derive_hd_node(
@@ -93,7 +106,7 @@ where
     }
 
     fn get_master_fingerprint() -> u32 {
-        let curve_kind = T::get_curve_kind();
+        let curve_kind = C::get_curve_kind();
         Ecall::get_master_fingerprint(curve_kind as u32)
     }
 }
@@ -168,15 +181,80 @@ where
     }
 }
 
-pub struct Secp256k1;
+pub struct EcfpPublicKey<C, const SCALAR_LENGTH: usize>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    public_key: Point<C, SCALAR_LENGTH>,
+}
 
-impl HasCurveKind<32> for Secp256k1 {
-    fn get_curve_kind() -> CurveKind {
-        CurveKind::Secp256k1
+impl<C, const SCALAR_LENGTH: usize> EcfpPublicKey<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    /// Creates a new EcfpPublicKey from the given coordinates.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the public key.
+    /// * `y` - The y-coordinate of the public key.
+    ///
+    /// # Returns
+    ///
+    /// A new `EcfpPublicKey` instance.
+    pub fn new(x: [u8; SCALAR_LENGTH], y: [u8; SCALAR_LENGTH]) -> Self {
+        Self {
+            public_key: Point::new(x, y),
+        }
     }
 }
 
-pub type Secp256k1Point = Point<Secp256k1, 32>;
+impl<C, const SCALAR_LENGTH: usize> From<Point<C, SCALAR_LENGTH>>
+    for EcfpPublicKey<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn from(point: Point<C, SCALAR_LENGTH>) -> Self {
+        Self { public_key: point }
+    }
+}
+
+impl<C, const SCALAR_LENGTH: usize> From<EcfpPublicKey<C, SCALAR_LENGTH>>
+    for Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn from(public_key: EcfpPublicKey<C, SCALAR_LENGTH>) -> Self {
+        public_key.public_key
+    }
+}
+
+pub struct EcfpPrivateKey<C, const SCALAR_LENGTH: usize>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    curve_marker: PhantomData<C>,
+    private_key: Zeroizing<[u8; SCALAR_LENGTH]>,
+}
+
+impl<C, const SCALAR_LENGTH: usize> EcfpPrivateKey<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    pub fn new(private_key: [u8; SCALAR_LENGTH]) -> Self {
+        Self {
+            curve_marker: PhantomData,
+            private_key: Zeroizing::new(private_key),
+        }
+    }
+}
+
+pub trait ToPublicKey<C, const SCALAR_LENGTH: usize>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn to_public_key(&self) -> EcfpPublicKey<C, SCALAR_LENGTH>;
+}
 
 // We could implement this for any SCALAR_LENGTH, but this currently requires
 // the #![feature(generic_const_exprs)], as the byte size is 1 + 2*SCALAR_LENGTH.
@@ -257,10 +335,131 @@ where
     }
 }
 
+pub struct Secp256k1;
+
+impl HasCurveKind<32> for Secp256k1 {
+    fn get_curve_kind() -> CurveKind {
+        CurveKind::Secp256k1
+    }
+}
+
+pub type Secp256k1Point = Point<Secp256k1, 32>;
+
+impl Secp256k1 {
+    pub fn get_generator() -> Secp256k1Point {
+        Point::new(
+            hex!("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"),
+            hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"),
+        )
+    }
+}
+
+impl EcfpPrivateKey<Secp256k1, 32> {
+    /// Signs a 32-byte message hash using the ECDSA algorithm, with deterministic signing
+    /// per RFC 6979.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_hash` - A reference to a 32-byte array containing the message hash to be signed.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<u8>)` - A vector containing the ECDSA signature if the signing is successful.
+    /// The signature is DER-encoded as per the bitcoin standard, and up to 71 bytes long.
+    /// * `Err(&'static str)` - An error message if the signing fails.
+    pub fn ecdsa_sign_hash(&self, msg_hash: &[u8; 32]) -> Result<Vec<u8>, &'static str> {
+        let mut result = [0u8; 71];
+        let sig_size = Ecall::ecdsa_sign(
+            Secp256k1::get_curve_kind() as u32,
+            EcdsaSignMode::RFC6979 as u32,
+            HashId::Sha256 as u32,
+            self.private_key.as_ptr(),
+            msg_hash.as_ptr(),
+            result.as_mut_ptr(),
+        );
+        if sig_size == 0 {
+            return Err("Failed to sign hash with ecdsa");
+        }
+        Ok(result[0..sig_size].to_vec())
+    }
+
+    /// Signs a message using the Schnorr signature algorithm, as defined in BIP-0340.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - A reference to a byte slice containing the message to be signed.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<u8>)` - A vector containing the Schnorr signature if the signing is successful.
+    /// The length of the signature is always 64 bytes.
+    ///
+    /// * `Err(&'static str)` - An error message if the signing fails.
+    pub fn schnorr_sign(&self, msg: &[u8]) -> Result<Vec<u8>, &'static str> {
+        let mut result = [0u8; 64];
+        let sig_size = Ecall::schnorr_sign(
+            Secp256k1::get_curve_kind() as u32,
+            SchnorrSignMode::BIP340 as u32,
+            HashId::Sha256 as u32,
+            self.private_key.as_ptr(),
+            msg.as_ptr(),
+            msg.len(),
+            result.as_mut_ptr(),
+        );
+        if sig_size != 64 {
+            panic!("Schnorr signatures per BIP-340 must be exactly 64 bytes");
+        }
+        Ok(result.to_vec())
+    }
+}
+
+impl EcfpPublicKey<Secp256k1, 32> {
+    pub fn ecdsa_verify_hash(
+        &self,
+        msg_hash: &[u8; 32],
+        signature: &[u8],
+    ) -> Result<(), &'static str> {
+        if 1 != Ecall::ecdsa_verify(
+            Secp256k1::get_curve_kind() as u32,
+            self.public_key.as_ptr(),
+            msg_hash.as_ptr(),
+            signature.as_ptr(),
+            signature.len(),
+        ) {
+            return Err("Failed to verify hash with ecdsa");
+        }
+        Ok(())
+    }
+
+    pub fn schnorr_verify(&self, msg: &[u8], signature: &[u8]) -> Result<(), &'static str> {
+        if 1 != Ecall::schnorr_verify(
+            Secp256k1::get_curve_kind() as u32,
+            SchnorrSignMode::BIP340 as u32,
+            HashId::Sha256 as u32,
+            self.public_key.as_ptr(),
+            msg.as_ptr(),
+            msg.len(),
+            signature.as_ptr(),
+            signature.len(),
+        ) {
+            return Err("Failed to verify schnorr signature");
+        }
+        Ok(())
+    }
+}
+
+// TODO: can we generalize this to all curves?
+impl ToPublicKey<Secp256k1, 32> for EcfpPrivateKey<Secp256k1, 32> {
+    fn to_public_key(&self) -> EcfpPublicKey<Secp256k1, 32> {
+        (&Secp256k1::get_generator() * self.private_key.deref()).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::hash::Hasher;
+
     use super::*;
-    use hex_literal::hex;
 
     #[test]
     fn test_secp256k1_get_master_fingerprint() {
@@ -332,5 +531,44 @@ mod tests {
             result.y,
             hex!("747206115143153c85f3e8bb94d392bd955d36f1f0204921e6dd7684e81bdaab")
         );
+    }
+
+    #[test]
+    fn test_secp256k1_ecdsa_sign_verify() {
+        let privkey = EcfpPrivateKey::<Secp256k1, 32> {
+            curve_marker: PhantomData,
+            private_key: Zeroizing::new(hex!(
+                "4242424242424242424242424242424242424242424242424242424242424242"
+            )),
+        };
+        let msg = "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+        let msg_hash = crate::hash::Sha256::hash(msg.as_bytes());
+
+        let signature = privkey.ecdsa_sign_hash(&msg_hash).unwrap();
+
+        println!("Signature: {:?}", signature);
+
+        let pubkey = privkey.to_public_key();
+        println!("Public key: {:?}", pubkey.public_key.to_bytes());
+        pubkey.ecdsa_verify_hash(&msg_hash, &signature).unwrap();
+    }
+
+    #[test]
+    fn test_secp256k1_schnorr_sign_verify() {
+        let privkey = EcfpPrivateKey::<Secp256k1, 32> {
+            curve_marker: PhantomData,
+            private_key: Zeroizing::new(hex!(
+                "4242424242424242424242424242424242424242424242424242424242424242"
+            )),
+        };
+        let msg = "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+        let signature = privkey.schnorr_sign(msg.as_bytes()).unwrap();
+        println!("Signature: {:?}", signature);
+
+        let pubkey = privkey.to_public_key();
+        pubkey.schnorr_verify(msg.as_bytes(), &signature).unwrap();
+
+        println!("pubkey: {:?}", pubkey.public_key.to_bytes());
     }
 }
