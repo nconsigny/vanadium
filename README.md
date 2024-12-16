@@ -1,3 +1,10 @@
+# DISCLAIMER
+
+:warning: | THIS IS AN EXPERIMENTAL PROJECT. IT IS INSECURE AT THIS STAGE<br/>Please don't start depending on it, and do not use it in production. Large parts of this project are subject to change. | :warning:
+:---: | :--- | :---
+
+---
+
 # Vanadium
 
 Vanadium is a Risc-V VM that runs in an embedded Secure Element.
