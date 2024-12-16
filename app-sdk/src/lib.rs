@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 
 pub mod bignum;
 pub mod comm;
+pub mod curve;
 pub mod hash;
 pub mod ux;
 

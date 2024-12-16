@@ -18,7 +18,9 @@ serde = "1.0.215"
 tokio = { version = "1.38.1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync"] }
 
 [dev-dependencies]
+k256 = { version = "0.13.4", features = ["schnorr"] }
 hex-literal = "0.4.1"
+sha2 = "0.10.8"
 
 [lib]
 name = "vnd_sadik_client"

@@ -4,6 +4,7 @@ mod test_common;
 
 use common::{BigIntOperator, HashId};
 use hex_literal::hex;
+use sha2::Digest;
 
 #[tokio::test]
 #[rustfmt::skip]
@@ -192,4 +193,224 @@ async fn test_sha512() {
             expected
         );
     }
+}
+
+#[tokio::test]
+async fn test_secp256k1_get_master_fingerprint() {
+    let mut setup = test_common::setup().await;
+
+    assert_eq!(
+        setup
+            .client
+            .get_master_fingerprint(common::Curve::Secp256k1)
+            .await
+            .unwrap(),
+        hex!("f5acc2fd").to_vec()
+    );
+}
+
+#[tokio::test]
+async fn test_secp256k1_derive_hd_node() {
+    let mut setup = test_common::setup().await;
+
+    let test_cases: Vec<(Vec<u32>, ([u8; 32], [u8; 32]))> = vec![
+        (
+            vec![],
+            (
+                hex!("eb473a0fa0af5031f14db9fe7c37bb8416a4ff01bb69dae9966dc83b5e5bf921"),
+                hex!("34ac5d784ebb4df4727bcddf6a6743f5d5d46d83dd74aa825866390c694f2938"),
+            ),
+        ),
+        (
+            vec![0x8000002c, 0x80000000, 0x80000001, 0, 3],
+            (
+                hex!("6da5f32f47232b3b9b2d6b59b802e2b313afa7cbda242f73da607139d8e04989"),
+                hex!("239841e64103fd024b01283e752a213fee1a8969f6825204ee3617a45c5e4a91"),
+            ),
+        ),
+    ];
+
+    for (path, (exp_chaincode, exp_privkey)) in test_cases {
+        let res = setup
+            .client
+            .derive_hd_node(common::Curve::Secp256k1, path)
+            .await
+            .unwrap();
+
+        assert_eq!(res.len(), exp_chaincode.len() + exp_privkey.len());
+        let chaincode = &res[0..exp_chaincode.len()];
+        let privkey = &res[exp_chaincode.len()..];
+
+        assert_eq!(exp_chaincode, chaincode);
+        assert_eq!(exp_privkey, privkey);
+    }
+}
+
+#[tokio::test]
+async fn test_secp256k1_point_add() {
+    let mut setup = test_common::setup().await;
+
+    let p = hex!("04c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee51ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a");
+    let q = hex!("04f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672");
+
+    let res = setup
+        .client
+        .ecpoint_add(common::Curve::Secp256k1, &p, &q)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        hex!("042f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4d8ac222636e5e3d6d4dba9dda6c9c426f788271bab0d6840dca87d3aa6ac62d6")
+    );
+}
+
+#[tokio::test]
+async fn test_secp256k1_point_scalarmul() {
+    let mut setup = test_common::setup().await;
+
+    let p = hex!("0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8");
+    let k = hex!("22445566778899aabbccddeeff0011223344556677889900aabbccddeeff0011");
+
+    let res = setup
+        .client
+        .ecpoint_scalarmult(common::Curve::Secp256k1, &p, &k)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        hex!("042748bce8ffc3f815e69e594ae974be5e9a3be69a233d5557ea9c92b71d69367b747206115143153c85f3e8bb94d392bd955d36f1f0204921e6dd7684e81bdaab")
+    );
+}
+
+#[tokio::test]
+async fn test_secp256k1_ecdsa_sign() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    // compute the sha256 hash using the sha2 crate
+    let msg_hash = sha2::Sha256::digest(msg.as_bytes()).to_vec();
+
+    let privkey = hex!("4242424242424242424242424242424242424242424242424242424242424242");
+
+    let result = setup
+        .client
+        .ecdsa_sign(common::Curve::Secp256k1, &privkey, &msg_hash)
+        .await
+        .unwrap();
+
+    let expected_signature = hex!("304402201bbd5947e4a9cdf85d6efb0aeecdfa8c179480a1b972a3dd8b277a78a409dcdf022064c812320ad4f0ae5a3fa1ef5d66ef70c78922bd9d9e30b224d1b38671a3291b");
+
+    // signature is deterministic per RFC6979
+    assert_eq!(result, expected_signature);
+}
+
+#[tokio::test]
+async fn test_secp256k1_ecdsa_verify() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    // compute the sha256 hash using the sha2 crate
+    let msg_hash = sha2::Sha256::digest(msg.as_bytes()).to_vec();
+
+    let pubkey = hex!("0424653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c119fc5009a032aa9fe47f5e149bb8442f71f884ccb516590686d8ff6ab91c613");
+    let signature = hex!("304402201bbd5947e4a9cdf85d6efb0aeecdfa8c179480a1b972a3dd8b277a78a409dcdf022064c812320ad4f0ae5a3fa1ef5d66ef70c78922bd9d9e30b224d1b38671a3291b");
+
+    let result = setup
+        .client
+        .ecdsa_verify(common::Curve::Secp256k1, &pubkey, &msg_hash, &signature)
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![1]);
+
+    let sig_wrong = {
+        let mut sig = signature.clone();
+        sig[16] ^= 0x01;
+        sig
+    };
+
+    let result = setup
+        .client
+        .ecdsa_verify(common::Curve::Secp256k1, &pubkey, &msg_hash, &sig_wrong)
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![0]);
+}
+
+#[tokio::test]
+async fn test_secp256k1_schnorr_sign() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    let privkey = hex!("4242424242424242424242424242424242424242424242424242424242424242");
+
+    let result = setup
+        .client
+        .schnorr_sign(common::Curve::Secp256k1, &privkey, &msg.as_bytes())
+        .await
+        .unwrap();
+
+    // Schnorr signature using BIP340 is not deterministic. Check that the returned signature is valid instead
+    assert_eq!(result.len(), 64);
+
+    println!("Signature: {:?}", result);
+
+    let signature = k256::schnorr::Signature::try_from(result.as_slice()).unwrap();
+
+    // verify that the signature is valid using the k256 crate
+    let pubkey = k256::schnorr::VerifyingKey::from_bytes(&hex!(
+        "24653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1c"
+    ))
+    .unwrap();
+
+    // verify_raw uses unhashed messages; normally one wouldn't reaaly use this
+    pubkey.verify_raw(msg.as_bytes(), &signature).unwrap();
+}
+
+#[tokio::test]
+async fn test_secp256k1_schnorr_verify() {
+    let mut setup = test_common::setup().await;
+    let msg =
+        "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+
+    let pubkey = hex!("0424653eac434488002cc06bbfb7f10fe18991e35f9fe4302dbea6d2353dc0ab1cee603aff65fcd55601b80a1eb6447bbd08e077b334ae9a6f97927008546e361c");
+    let signature = hex!("54a2a499ce77edc2599c3fdb99b66d461230165776abf6efebe3a86cb6b3a88e8bf4a388ff3fe1e424a907974826a991b2bb497691d055da66b1b5ba12bb67cc");
+
+    let result = setup
+        .client
+        .schnorr_verify(
+            common::Curve::Secp256k1,
+            &pubkey,
+            &msg.as_bytes(),
+            &signature,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![1]);
+
+    let sig_wrong = {
+        let mut sig = signature.clone();
+        sig[16] ^= 0x01;
+        sig
+    };
+
+    let result = setup
+        .client
+        .schnorr_verify(
+            common::Curve::Secp256k1,
+            &pubkey,
+            &msg.as_bytes(),
+            &sig_wrong,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result, vec![0]);
 }

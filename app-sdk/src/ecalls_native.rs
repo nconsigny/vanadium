@@ -2,7 +2,23 @@ use std::io;
 use std::io::Write;
 
 use crate::ecalls::EcallsInterface;
-use common::ecall_constants::MAX_BIGNUMBER_SIZE;
+use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
+
+use bip32::{ChildNumber, XPrv};
+use hex_literal::hex;
+use k256::{
+    ecdsa::{
+        self,
+        signature::{hazmat::PrehashVerifier, SignerMut},
+    },
+    elliptic_curve::{
+        sec1::{FromEncodedPoint, ToEncodedPoint},
+        PrimeField,
+    },
+    schnorr::{self, signature::Verifier},
+    EncodedPoint, ProjectivePoint, Scalar,
+};
+
 use num_bigint::BigUint;
 use num_traits::Zero;
 
@@ -240,5 +256,285 @@ impl EcallsInterface for Ecall {
         }
 
         1
+    }
+
+    fn derive_hd_node(
+        curve: u32,
+        path: *const u32,
+        path_len: usize,
+        privkey: *mut u8,
+        chain_code: *mut u8,
+    ) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+        let mut key = Ecall::get_master_bip32_key();
+
+        let path_slice = unsafe { std::slice::from_raw_parts(path, path_len) };
+        for path_step in path_slice {
+            let child = ChildNumber::from(*path_step);
+            key = match key.derive_child(child) {
+                Ok(k) => k,
+                Err(_) => return 0,
+            };
+        }
+
+        // Copy the private key and chain code to the output buffers
+        let privkey_bytes = key.private_key().to_bytes();
+        let chain_code_bytes = key.attrs().chain_code;
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(privkey_bytes.as_ptr(), privkey, privkey_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                chain_code_bytes.as_ptr(),
+                chain_code,
+                chain_code_bytes.len(),
+            );
+        }
+
+        1
+    }
+
+    fn get_master_fingerprint(curve: u32) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        u32::from_be_bytes(Ecall::get_master_bip32_key().public_key().fingerprint())
+    }
+
+    fn ecfp_add_point(curve: u32, r: *mut u8, p: *const u8, q: *const u8) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        let p_slice = unsafe { std::slice::from_raw_parts(p, 65) };
+        let q_slice = unsafe { std::slice::from_raw_parts(q, 65) };
+
+        let p_point = EncodedPoint::from_bytes(p_slice).expect("Invalid point P");
+        let q_point = EncodedPoint::from_bytes(q_slice).expect("Invalid point Q");
+
+        let p_point = ProjectivePoint::from_encoded_point(&p_point).unwrap();
+        let q_point = ProjectivePoint::from_encoded_point(&q_point).unwrap();
+
+        let result_point = p_point + q_point;
+
+        let result_encoded = result_point.to_encoded_point(false);
+        let result_bytes = result_encoded.as_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), r, result_bytes.len());
+        }
+
+        1
+    }
+
+    fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+        if k_len > 32 {
+            panic!("k_len is too large");
+        }
+
+        let p_slice = unsafe { std::slice::from_raw_parts(p, 65) };
+        let k_slice = unsafe { std::slice::from_raw_parts(k, k_len) };
+
+        let p_point = EncodedPoint::from_bytes(p_slice).expect("Invalid point P");
+        let p_point = ProjectivePoint::from_encoded_point(&p_point).unwrap();
+
+        // pad k_scalar to 32 bytes with initial zeros without using unsafe code
+        let mut k_scalar = [0u8; 32];
+        k_scalar[32 - k_len..].copy_from_slice(k_slice);
+        let k_scalar = Scalar::from_repr(k_scalar.into()).unwrap();
+
+        let result_point = p_point * k_scalar;
+        let result_encoded = result_point.to_encoded_point(false);
+
+        let result_bytes = result_encoded.as_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), r, result_bytes.len());
+        }
+
+        1
+    }
+
+    fn ecdsa_sign(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: *const u8,
+        msg_hash: *const u8,
+        signature: *mut u8,
+    ) -> usize {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if mode != common::ecall_constants::EcdsaSignMode::RFC6979 as u32 {
+            panic!("Invalid or unsupported ecdsa signing mode");
+        }
+
+        if hash_id != common::ecall_constants::HashId::Sha256 as u32 {
+            panic!("Invalid or unsupported hash id");
+        }
+
+        let privkey_slice = unsafe { std::slice::from_raw_parts(privkey, 32) };
+        let msg_hash_slice = unsafe { std::slice::from_raw_parts(msg_hash, 32) };
+
+        let mut privkey_bytes = [0u8; 32];
+        privkey_bytes[..].copy_from_slice(privkey_slice);
+        let signing_key =
+            ecdsa::SigningKey::from_bytes(&privkey_bytes.into()).expect("Invalid private key");
+        let (signature_local, _) = signing_key
+            .sign_prehash_recoverable(msg_hash_slice)
+            .expect("Signing failed");
+
+        let signature_der = ecdsa::DerSignature::from(signature_local);
+
+        let signature_bytes = signature_der.to_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                signature_bytes.as_ptr(),
+                signature,
+                signature_bytes.len(),
+            );
+        }
+
+        signature_bytes.len()
+    }
+
+    fn ecdsa_verify(
+        curve: u32,
+        pubkey: *const u8,
+        msg_hash: *const u8,
+        signature: *const u8,
+        signature_len: usize,
+    ) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if signature_len > 72 {
+            panic!("signature_len is too large");
+        }
+
+        let pubkey_slice = unsafe { std::slice::from_raw_parts(pubkey, 65) };
+        let msg_hash_slice = unsafe { std::slice::from_raw_parts(msg_hash, 32) };
+        let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
+
+        let pubkey_point = EncodedPoint::from_bytes(pubkey_slice).expect("Invalid public key");
+        let verifying_key = ecdsa::VerifyingKey::from_encoded_point(&pubkey_point)
+            .expect("Failed to create verifying key");
+
+        let signature =
+            ecdsa::DerSignature::from_bytes(signature_slice.into()).expect("Invalid signature");
+
+        match verifying_key.verify_prehash(msg_hash_slice, &signature) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    }
+
+    fn schnorr_sign(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        privkey: *const u8,
+        msg: *const u8,
+        msg_len: usize,
+        signature: *mut u8,
+    ) -> usize {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if mode != common::ecall_constants::SchnorrSignMode::BIP340 as u32 {
+            panic!("Invalid or unsupported schnorr signing mode");
+        }
+
+        if msg_len > 128 {
+            panic!("msg_len is too large");
+        }
+
+        if hash_id != common::ecall_constants::HashId::Sha256 as u32 {
+            panic!("Invalid or unsupported hash id");
+        }
+
+        let privkey_slice = unsafe { std::slice::from_raw_parts(privkey, 32) };
+        let msg_slice = unsafe { std::slice::from_raw_parts(msg, msg_len) };
+
+        let mut privkey_bytes = [0u8; 32];
+        privkey_bytes[..].copy_from_slice(privkey_slice);
+        let mut signing_key =
+            schnorr::SigningKey::from_bytes(&privkey_bytes).expect("Invalid private key");
+
+        let signature_bytes = signing_key.sign(msg_slice).to_bytes();
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                signature_bytes.as_ptr(),
+                signature,
+                signature_bytes.len(),
+            );
+        }
+
+        signature_bytes.len()
+    }
+
+    fn schnorr_verify(
+        curve: u32,
+        mode: u32,
+        hash_id: u32,
+        pubkey: *const u8,
+        msg: *const u8,
+        msg_len: usize,
+        signature: *const u8,
+        signature_len: usize,
+    ) -> u32 {
+        if curve != CurveKind::Secp256k1 as u32 {
+            panic!("Unsupported curve");
+        }
+
+        if mode != common::ecall_constants::SchnorrSignMode::BIP340 as u32 {
+            panic!("Invalid or unsupported schnorr signing mode");
+        }
+
+        if msg_len > 128 {
+            panic!("msg_len is too large");
+        }
+
+        if hash_id != common::ecall_constants::HashId::Sha256 as u32 {
+            panic!("Invalid or unsupported hash id");
+        }
+
+        if signature_len != 64 {
+            panic!("Invalid signature length");
+        }
+
+        let pubkey_slice = unsafe { std::slice::from_raw_parts(pubkey, 65) };
+        let xonly_pubkey_slice = &pubkey_slice[1..33];
+        let msg_slice = unsafe { std::slice::from_raw_parts(msg, msg_len) };
+        let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
+
+        let verifying_key =
+            schnorr::VerifyingKey::from_bytes(xonly_pubkey_slice).expect("Invalid public key");
+        let signature = schnorr::Signature::try_from(signature_slice).expect("Invalid signature");
+
+        match verifying_key.verify(msg_slice, &signature) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    }
+}
+
+impl Ecall {
+    // default seed used in Speculos, corrseponding to the mnemonic "glory promote mansion idle axis finger extra february uncover one trip resource lawn turtle enact monster seven myth punch hobby comfort wild raise skin"
+    const DEFAULT_SEED: [u8; 64] = hex!("b11997faff420a331bb4a4ffdc8bdc8ba7c01732a99a30d83dbbebd469666c84b47d09d3f5f472b3b9384ac634beba2a440ba36ec7661144132f35e206873564");
+
+    fn get_master_bip32_key() -> XPrv {
+        XPrv::new(&Self::DEFAULT_SEED).expect("Failed to create master key from seed")
     }
 }

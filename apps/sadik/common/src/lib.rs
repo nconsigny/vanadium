@@ -15,6 +15,17 @@ pub enum BigIntOperator {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum ECPointOperation {
+    Add(Vec<u8>, Vec<u8>),
+    ScalarMult(Vec<u8>, Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum Curve {
+    Secp256k1,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Command {
     BigIntOperation {
         operator: BigIntOperator,
@@ -25,6 +36,39 @@ pub enum Command {
     Hash {
         hash_id: u32,
         msg: Vec<u8>,
+    },
+    GetMasterFingerprint {
+        curve: Curve,
+    },
+    DeriveHdNode {
+        curve: Curve,
+        path: Vec<u32>,
+    },
+    ECPointOperation {
+        curve: Curve,
+        operation: ECPointOperation,
+    },
+    EcdsaSign {
+        curve: Curve,
+        privkey: Vec<u8>,
+        msg_hash: Vec<u8>,
+    },
+    EcdsaVerify {
+        curve: Curve,
+        msg_hash: Vec<u8>,
+        pubkey: Vec<u8>,
+        signature: Vec<u8>,
+    },
+    SchnorrSign {
+        curve: Curve,
+        privkey: Vec<u8>,
+        msg: Vec<u8>,
+    },
+    SchnorrVerify {
+        curve: Curve,
+        pubkey: Vec<u8>,
+        msg: Vec<u8>,
+        signature: Vec<u8>,
     },
 }
 
