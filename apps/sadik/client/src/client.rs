@@ -1,4 +1,4 @@
-use common::{BigIntOperator, Command, HashId};
+use common::{BigIntOperator, Command, Curve, HashId};
 use sdk::{
     comm::{send_message, SendMessageError},
     vanadium_client::{VAppClient, VAppExecutionError},
@@ -77,6 +77,141 @@ impl SadikClient {
             a: a.to_vec(),
             b: b.to_vec(),
             modulus: modulus.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn derive_hd_node(
+        &mut self,
+        curve: Curve,
+        path: Vec<u32>,
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::DeriveHdNode { curve, path };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn get_master_fingerprint(
+        &mut self,
+        curve: Curve,
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::GetMasterFingerprint { curve };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn ecpoint_add(
+        &mut self,
+        curve: Curve,
+        p: &[u8],
+        q: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::ECPointOperation {
+            curve,
+            operation: common::ECPointOperation::Add(p.to_vec(), q.to_vec()),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn ecpoint_scalarmult(
+        &mut self,
+        curve: Curve,
+        p: &[u8],
+        k: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::ECPointOperation {
+            curve,
+            operation: common::ECPointOperation::ScalarMult(p.to_vec(), k.to_vec()),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn ecdsa_sign(
+        &mut self,
+        curve: Curve,
+        privkey: &[u8],
+        msg_hash: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::EcdsaSign {
+            curve,
+            privkey: privkey.to_vec(),
+            msg_hash: msg_hash.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn ecdsa_verify(
+        &mut self,
+        curve: Curve,
+        pubkey: &[u8],
+        msg_hash: &[u8],
+        signature: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::EcdsaVerify {
+            curve,
+            pubkey: pubkey.to_vec(),
+            msg_hash: msg_hash.to_vec(),
+            signature: signature.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn schnorr_sign(
+        &mut self,
+        curve: Curve,
+        privkey: &[u8],
+        msg: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::SchnorrSign {
+            curve,
+            privkey: privkey.to_vec(),
+            msg: msg.to_vec(),
+        };
+
+        let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");
+        Ok(send_message(&mut self.app_client, &msg)
+            .await
+            .expect("Error sending message"))
+    }
+
+    pub async fn schnorr_verify(
+        &mut self,
+        curve: Curve,
+        pubkey: &[u8],
+        msg: &[u8],
+        signature: &[u8],
+    ) -> Result<Vec<u8>, SadikClientError> {
+        let cmd = Command::SchnorrVerify {
+            curve,
+            pubkey: pubkey.to_vec(),
+            msg: msg.to_vec(),
+            signature: signature.to_vec(),
         };
 
         let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");

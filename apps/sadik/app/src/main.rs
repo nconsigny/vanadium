@@ -6,14 +6,14 @@ use sdk::fatal;
 
 use sdk::{
     bignum::{BigNum, BigNumMod, Modulus},
+    curve::{Curve as _, EcfpPrivateKey, EcfpPublicKey, Secp256k1Point},
     hash::Hasher,
 };
 
 extern crate alloc;
 
-use alloc::string::ToString;
-use alloc::vec::Vec;
-use common::{Command, HashId};
+use alloc::{string::ToString, vec, vec::Vec};
+use common::{Command, Curve, ECPointOperation, HashId};
 
 // Temporary to force the creation of a data section
 #[used]
@@ -40,6 +40,20 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 #[no_mangle]
 pub fn _start(_argc: isize, _argv: *const *const u8) -> isize {
     main(_argc, _argv)
+}
+
+// parses a 65-byte uncompressed pubkey into an EcfpPublicKey
+fn parse_pubkey(pubkey: &[u8]) -> EcfpPublicKey<sdk::curve::Secp256k1, 32> {
+    let pubkey_raw: [u8; 65] = pubkey
+        .try_into()
+        .expect("invalid pubkey: it must be 65 bytes in uncompressed form");
+    if pubkey_raw[0] != 0x04 {
+        panic!("invalid pubkey: it must start with 0x04");
+    }
+    EcfpPublicKey::new(
+        pubkey_raw[1..33].try_into().unwrap(),
+        pubkey_raw[33..65].try_into().unwrap(),
+    )
 }
 
 #[start]
@@ -178,6 +192,98 @@ pub fn main(_: isize, _: *const *const u8) -> isize {
                     }
                 }
             }
+            Command::GetMasterFingerprint { curve } => match curve {
+                Curve::Secp256k1 => sdk::curve::Secp256k1::get_master_fingerprint()
+                    .to_be_bytes()
+                    .to_vec(),
+            },
+            Command::DeriveHdNode { curve, path } => match curve {
+                // returns the concatenation of the chaincode and private key
+                Curve::Secp256k1 => {
+                    let node = sdk::curve::Secp256k1::derive_hd_node(&path).unwrap();
+                    let mut result = node.chaincode.to_vec();
+                    result.extend_from_slice(&node.privkey[..]);
+                    result
+                }
+            },
+            Command::ECPointOperation { curve, operation } => match curve {
+                Curve::Secp256k1 => match operation {
+                    ECPointOperation::Add(p, q) => {
+                        let p = Secp256k1Point::from_bytes(p.as_slice().try_into().unwrap());
+                        let q = Secp256k1Point::from_bytes(q.as_slice().try_into().unwrap());
+                        (p + q).to_bytes().to_vec()
+                    }
+                    ECPointOperation::ScalarMult(p, k) => {
+                        let p = Secp256k1Point::from_bytes(p.as_slice().try_into().unwrap());
+                        let k: [u8; 32] = k.as_slice().try_into().unwrap();
+                        (p * &k).to_bytes().to_vec()
+                    }
+                },
+            },
+            Command::EcdsaSign {
+                curve,
+                privkey,
+                msg_hash,
+            } => match curve {
+                Curve::Secp256k1 => {
+                    let msg_hash: [u8; 32] = msg_hash
+                        .as_slice()
+                        .try_into()
+                        .expect("hash must be 32 bytes");
+                    let privkey: EcfpPrivateKey<sdk::curve::Secp256k1, 32> = EcfpPrivateKey::new(
+                        privkey.as_slice().try_into().expect("invalid privkey"),
+                    );
+
+                    privkey.ecdsa_sign_hash(&msg_hash).unwrap()
+                }
+            },
+            Command::EcdsaVerify {
+                curve,
+                msg_hash,
+                pubkey,
+                signature,
+            } => match curve {
+                Curve::Secp256k1 => {
+                    let pubkey = parse_pubkey(&pubkey);
+                    let msg_hash: [u8; 32] = msg_hash
+                        .as_slice()
+                        .try_into()
+                        .expect("hash must be 32 bytes");
+
+                    if pubkey.ecdsa_verify_hash(&msg_hash, &signature).is_ok() {
+                        vec![1]
+                    } else {
+                        vec![0]
+                    }
+                }
+            },
+            Command::SchnorrSign {
+                curve,
+                privkey,
+                msg,
+            } => match curve {
+                Curve::Secp256k1 => {
+                    let privkey: EcfpPrivateKey<sdk::curve::Secp256k1, 32> = EcfpPrivateKey::new(
+                        privkey.as_slice().try_into().expect("invalid privkey"),
+                    );
+                    privkey.schnorr_sign(&msg).unwrap()
+                }
+            },
+            Command::SchnorrVerify {
+                curve,
+                pubkey,
+                msg,
+                signature,
+            } => match curve {
+                Curve::Secp256k1 => {
+                    let pubkey: EcfpPublicKey<sdk::curve::Secp256k1, 32> = parse_pubkey(&pubkey);
+                    if pubkey.schnorr_verify(&msg, &signature).is_ok() {
+                        vec![1]
+                    } else {
+                        vec![0]
+                    }
+                }
+            },
         };
 
         sdk::comm::send_message(&response);
