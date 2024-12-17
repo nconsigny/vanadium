@@ -1,0 +1,28 @@
+run:
+  speculos build/nanos2/bin/app.elf
+
+run-nanox:
+  speculos build/nanox/bin/app.elf
+
+run-nanosplus:
+  speculos build/nanos2/bin/app.elf
+
+run-flex:
+  speculos build/flex/bin/app.elf
+
+run-stax:
+  speculos build/stax/bin/app.elf
+
+
+load-nanosplus:
+  python3 -m ledgerblue.runScript  --scp --fileName build/nanos2/bin/app.apdu --elfFile build/nanos2/bin/app.elf
+
+load-nanox:
+  python3 -m ledgerblue.runScript  --scp --fileName build/nanox/bin/app.apdu --elfFile build/nanox/bin/app.elf
+  
+load-flex:
+  python3 -m ledgerblue.runScript  --scp --fileName build/flex/bin/app.apdu --elfFile build/flex/bin/app.elf
+
+load-stax:
+  python3 -m ledgerblue.runScript  --scp --fileName build/stax/bin/app.apdu --elfFile build/stax/bin/app.elf
+
