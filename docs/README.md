@@ -1,7 +1,3 @@
-
-
-![Vanadium architecture chart](assets/architecture.svg)
-
 # Compilation targets
 
 With the exception of the Vanadium app itself, which is an embedded Ledger app on the `ARM` target, all the other crates target either the `native` or the `riscv` targets.
@@ -11,7 +7,11 @@ With the exception of the Vanadium app itself, which is an embedded Ledger app o
 
 > **⚠️ WARNING: The native target is insecure.**<br> While it is possible to compile and run the V-Apps on native targets, this is only intended for development and testing purposes. The cryptographic primitives are not hardened against side channels, or other kinds of attacks.
 
-# System crates
+# Architecture
+
+![Vanadium architecture chart](assets/architecture.svg)
+
+## System crates
 
 In the above chart, all the crates outside *USERLAND* are developed as part of the Vanadium project.
 
@@ -19,7 +19,7 @@ In the above chart, all the crates outside *USERLAND* are developed as part of t
 * `vanadium-app-sdk`: The SDK used for developing V-Apps. It has `riscv` and `native` targets, in `no_std` mode.
 * `vanadium-client-sdk`: The SDK used for developing the client of V-Apps. It contains the client code common to all V-Apps; in particular, it manages the outsourced memory of the V-App, providing the content of memory pages (and proofs of correctness) when requested by the VM. It only has the `native` target. 
 
-# V-App structure
+## V-App structure
 
 Currently, all existing V-Apps are in this repository, with a monorepo structure.
 
@@ -29,3 +29,7 @@ A V-App called `foo` should contain three crates:
 * `vnd-foo`: the code of the app. It has `riscv` and `native` targets, in `no_std` mode.
 * `vnd-foo-client`: contains the client code of the V-App, built using the `vanadium-app-client-sdk` crate. It only has the `native` target. 
 * `vnd-foo-common`: any shared code between the app and client crates. It has `riscv` and `native`, in `no_std` mode.
+
+# Other documentation
+
+* [ECALLs](ecalls.md)
