@@ -17,14 +17,13 @@
 
 #![no_std]
 #![no_main]
-#![feature(panic_info_message)]
 
 mod app_ui;
 mod handlers;
 
 mod settings;
 
-use alloc::{vec, vec::Vec};
+use alloc::{string::ToString, vec, vec::Vec};
 use app_ui::menu::ui_menu_main;
 use handlers::{
     get_version::handler_get_version, register_vapp::handler_register_vapp,
@@ -71,12 +70,16 @@ fn handle_panic(info: &core::panic::PanicInfo) -> ! {
             "Panic occurred in file '{}' at line {}: {:?}",
             location.file(),
             location.line(),
-            info.message().unwrap_or(&format_args!("no message"))
+            info.message()
+                .as_str()
+                .unwrap_or(&format_args!("no message").to_string())
         )
     } else {
         alloc::format!(
             "Panic occurred: {}",
-            info.message().unwrap_or(&format_args!("no message"))
+            info.message()
+                .as_str()
+                .unwrap_or(&format_args!("no message").to_string())
         )
     };
     println!("{}", message);
