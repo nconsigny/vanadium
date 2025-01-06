@@ -1,4 +1,3 @@
-#![feature(asm_const)]
 #![cfg_attr(target_arch = "riscv32", no_main, no_std)]
 
 extern crate alloc;
