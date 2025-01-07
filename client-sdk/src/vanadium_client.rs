@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use common::vm::MemoryError;
 use std::cmp::min;
 use std::path::Path;
 use std::sync::Arc;
@@ -7,11 +8,13 @@ use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
-use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulator};
+use common::accumulator::{
+    AccumulatorError, HashOutput, Hasher, MerkleAccumulator, VectorAccumulator,
+};
 use common::client_commands::{
     ClientCommandCode, CommitPageContentMessage, CommitPageMessage, GetPageMessage, Message,
-    ReceiveBufferMessage, ReceiveBufferResponse, SectionKind, SendBufferMessage,
-    SendPanicBufferMessage,
+    MessageDeserializationError, ReceiveBufferMessage, ReceiveBufferResponse, SectionKind,
+    SendBufferMessage, SendPanicBufferMessage,
 };
 use common::constants::{page_start, PAGE_SIZE};
 use common::manifest::Manifest;
@@ -47,6 +50,47 @@ impl Hasher<32> for Sha256Hasher {
     }
 }
 
+#[derive(Debug)]
+enum MemorySegmentError {
+    PageNotFound,
+    InvalidPageSize,
+    MemoryError(MemoryError),
+    AccumulatorError(AccumulatorError),
+}
+
+impl From<MemoryError> for MemorySegmentError {
+    fn from(e: MemoryError) -> Self {
+        MemorySegmentError::MemoryError(e)
+    }
+}
+
+impl From<AccumulatorError> for MemorySegmentError {
+    fn from(e: AccumulatorError) -> Self {
+        MemorySegmentError::AccumulatorError(e)
+    }
+}
+
+impl std::fmt::Display for MemorySegmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            MemorySegmentError::PageNotFound => write!(f, "Page not found"),
+            MemorySegmentError::InvalidPageSize => write!(f, "Invalid page size"),
+            MemorySegmentError::MemoryError(e) => write!(f, "Memory error: {}", e),
+            MemorySegmentError::AccumulatorError(e) => write!(f, "Accumulator error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for MemorySegmentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            MemorySegmentError::MemoryError(e) => Some(e),
+            MemorySegmentError::AccumulatorError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 // Represents a memory segment stored by the client, using a MerkleAccumulator to provide proofs of integrity.
 struct MemorySegment {
     start: u32,
@@ -55,7 +99,7 @@ struct MemorySegment {
 }
 
 impl MemorySegment {
-    fn new(start: u32, data: &[u8]) -> Result<Self, &'static str> {
+    fn new(start: u32, data: &[u8]) -> Self {
         let end = start + data.len() as u32;
 
         let mut pages: Vec<Vec<u8>> = Vec::new();
@@ -86,18 +130,21 @@ impl MemorySegment {
             pages.push(page_content);
         }
 
-        Ok(Self {
+        Self {
             start,
             end,
             content: MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::new(pages),
-        })
+        }
     }
 
-    fn get_page(&self, page_index: u32) -> Result<(Vec<u8>, Vec<HashOutput<32>>), &'static str> {
+    fn get_page(
+        &self,
+        page_index: u32,
+    ) -> Result<(Vec<u8>, Vec<HashOutput<32>>), MemorySegmentError> {
         let content = self
             .content
             .get(page_index as usize)
-            .ok_or("Page not found")?
+            .ok_or(MemorySegmentError::PageNotFound)?
             .clone();
 
         let proof = self.content.prove(page_index as usize)?;
@@ -109,9 +156,9 @@ impl MemorySegment {
         &mut self,
         page_index: u32,
         content: &[u8],
-    ) -> Result<(Vec<HashOutput<32>>, Vec<u8>), &'static str> {
+    ) -> Result<(Vec<HashOutput<32>>, Vec<u8>), MemorySegmentError> {
         if content.len() != PAGE_SIZE {
-            return Err("Invalid page size");
+            return Err(MemorySegmentError::InvalidPageSize);
         }
         let proof = self.content.update(page_index as usize, content.to_vec())?;
         Ok(proof)
@@ -128,6 +175,83 @@ enum ClientMessage {
     ReceiveBuffer(Vec<u8>),
 }
 
+#[derive(Debug)]
+pub enum VAppEngineError<E: std::fmt::Debug + Send + Sync + 'static> {
+    ManifestSerializationError,
+    InvalidCommandCode,
+    TransportError(E),
+    AccessViolation,
+    InterruptedExecutionExpected,
+    ResponseError(&'static str),
+    VMRuntimeError,
+    VAppPanic,
+    GenericError(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> std::fmt::Display for VAppEngineError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VAppEngineError::ManifestSerializationError => {
+                write!(f, "Manifest serialization error")
+            }
+            VAppEngineError::InvalidCommandCode => write!(f, "Invalid command code"),
+            VAppEngineError::TransportError(e) => write!(f, "Transport error: {:?}", e),
+            VAppEngineError::AccessViolation => write!(f, "Access violation"),
+            VAppEngineError::InterruptedExecutionExpected => {
+                write!(f, "Expected an interrupted execution status word")
+            }
+            VAppEngineError::ResponseError(e) => write!(f, "Invalid response: {}", e),
+            VAppEngineError::VMRuntimeError => write!(f, "VM runtime error"),
+            VAppEngineError::VAppPanic => write!(f, "V-App panicked"),
+            VAppEngineError::GenericError(e) => write!(f, "Generic error: {}", e),
+        }
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> std::error::Error for VAppEngineError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            VAppEngineError::ManifestSerializationError => None,
+            VAppEngineError::InvalidCommandCode => None,
+            VAppEngineError::TransportError(_) => None,
+            VAppEngineError::AccessViolation => None,
+            VAppEngineError::InterruptedExecutionExpected => None,
+            VAppEngineError::ResponseError(_) => None,
+            VAppEngineError::VMRuntimeError => None,
+            VAppEngineError::VAppPanic => None,
+            VAppEngineError::GenericError(e) => Some(&**e),
+        }
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> From<postcard::Error> for VAppEngineError<E> {
+    fn from(error: postcard::Error) -> Self {
+        VAppEngineError::GenericError(Box::new(error))
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> From<MemorySegmentError> for VAppEngineError<E> {
+    fn from(error: MemorySegmentError) -> Self {
+        VAppEngineError::GenericError(Box::new(error))
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> From<MessageDeserializationError>
+    for VAppEngineError<E>
+{
+    fn from(error: MessageDeserializationError) -> Self {
+        VAppEngineError::GenericError(Box::new(error))
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> From<Box<dyn std::error::Error + Send + Sync>>
+    for VAppEngineError<E>
+{
+    fn from(error: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        VAppEngineError::GenericError(error)
+    }
+}
+
 struct VAppEngine<E: std::fmt::Debug + Send + Sync + 'static> {
     manifest: Manifest,
     code_seg: MemorySegment,
@@ -139,19 +263,16 @@ struct VAppEngine<E: std::fmt::Debug + Send + Sync + 'static> {
 }
 
 impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
-    pub async fn run(mut self, app_hmac: [u8; 32]) -> Result<(), &'static str> {
-        let serialized_manifest =
-            postcard::to_allocvec(&self.manifest).map_err(|_| "manifest serialization failed")?;
+    pub async fn run(mut self, app_hmac: [u8; 32]) -> Result<(), VAppEngineError<E>> {
+        let serialized_manifest = postcard::to_allocvec(&self.manifest)?;
 
         let (status, result) = self
             .transport
             .exchange(&apdu_run_vapp(serialized_manifest, app_hmac))
             .await
-            .map_err(|_| "exchange failed")?;
+            .map_err(VAppEngineError::TransportError)?;
 
-        self.busy_loop(status, result).await?;
-
-        Ok(())
+        self.busy_loop(status, result).await
     }
 
     // Sends and APDU and repeatedly processes the response if it's a GetPage or CommitPage client command.
@@ -159,18 +280,21 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
     async fn exchange_and_process_page_requests(
         &mut self,
         apdu: &APDUCommand,
-    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+    ) -> Result<(StatusWord, Vec<u8>), VAppEngineError<E>> {
         let (mut status, mut result) = self
             .transport
             .exchange(apdu)
             .await
-            .map_err(|_| "exchange failed")?;
+            .map_err(VAppEngineError::TransportError)?;
 
         loop {
             if status != StatusWord::InterruptedExecution || result.len() == 0 {
                 return Ok((status, result));
             }
-            let client_command_code: ClientCommandCode = result[0].try_into()?;
+            let client_command_code: ClientCommandCode = result[0]
+                .try_into()
+                .map_err(|_| VAppEngineError::InvalidCommandCode)?;
+
             (status, result) = match client_command_code {
                 ClientCommandCode::GetPage => self.process_get_page(&result).await?,
                 ClientCommandCode::CommitPage => self.process_commit_page(&result).await?,
@@ -182,7 +306,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
     async fn process_get_page(
         &mut self,
         command: &[u8],
-    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+    ) -> Result<(StatusWord, Vec<u8>), VAppEngineError<E>> {
         let GetPageMessage {
             command_code: _,
             section_kind,
@@ -204,18 +328,18 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             .transport
             .exchange(&apdu_continue_with_p1(data, p1))
             .await
-            .map_err(|_| "exchange failed")?)
+            .map_err(VAppEngineError::TransportError)?)
     }
 
     async fn process_commit_page(
         &mut self,
         command: &[u8],
-    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+    ) -> Result<(StatusWord, Vec<u8>), VAppEngineError<E>> {
         let msg = CommitPageMessage::deserialize(command)?;
 
         let segment = match msg.section_kind {
             SectionKind::Code => {
-                return Err("The code segment is immutable");
+                return Err(VAppEngineError::AccessViolation);
             }
             SectionKind::Data => &mut self.data_seg,
             SectionKind::Stack => &mut self.stack_seg,
@@ -226,10 +350,10 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             .transport
             .exchange(&apdu_continue(vec![]))
             .await
-            .map_err(|_| "exchange failed")?;
+            .map_err(VAppEngineError::TransportError)?;
 
         if tmp_status != StatusWord::InterruptedExecution {
-            return Err("Expected InterruptedExecution status word");
+            return Err(VAppEngineError::InterruptedExecutionExpected);
         }
 
         let CommitPageContentMessage {
@@ -245,14 +369,14 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             .transport
             .exchange(&apdu_continue(vec![]))
             .await
-            .map_err(|_| "exchange failed")?)
+            .map_err(VAppEngineError::TransportError)?)
     }
 
     // receive a buffer sent by the V-App via xsend; send it to the VappEngine
     async fn process_send_buffer(
         &mut self,
         command: &[u8],
-    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+    ) -> Result<(StatusWord, Vec<u8>), VAppEngineError<E>> {
         let SendBufferMessage {
             command_code: _,
             total_remaining_size: mut remaining_len,
@@ -260,7 +384,9 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         } = SendBufferMessage::deserialize(command)?;
 
         if (buf.len() as u32) > remaining_len {
-            return Err("Received data length exceeds expected remaining length");
+            return Err(VAppEngineError::ResponseError(
+                "Received data length exceeds expected remaining length",
+            ));
         }
 
         remaining_len -= buf.len() as u32;
@@ -268,16 +394,21 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         while remaining_len > 0 {
             let (status, result) = self
                 .exchange_and_process_page_requests(&apdu_continue(vec![]))
-                .await
-                .map_err(|_| "exchange failed")?;
+                .await?;
 
-            if status != StatusWord::InterruptedExecution || result.len() == 0 {
-                return Err("Unexpected response");
+            if status != StatusWord::InterruptedExecution {
+                return Err(VAppEngineError::InterruptedExecutionExpected);
             }
+            if result.len() == 0 {
+                return Err(VAppEngineError::ResponseError("Empty response"));
+            }
+
             let msg = SendBufferMessage::deserialize(&result)?;
 
             if msg.total_remaining_size != remaining_len {
-                return Err("Received total_remaining_size does not match expected");
+                return Err(VAppEngineError::ResponseError(
+                    "Received total_remaining_size does not match expected",
+                ));
             }
 
             buf.extend_from_slice(&msg.data);
@@ -288,19 +419,17 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         self.engine_to_client_sender
             .send(VAppMessage::SendBuffer(buf))
             .await
-            .map_err(|_| "Failed to send buffer data")?;
+            .map_err(|e| VAppEngineError::GenericError(Box::new(e)))?;
 
-        Ok(self
-            .exchange_and_process_page_requests(&apdu_continue(vec![]))
+        self.exchange_and_process_page_requests(&apdu_continue(vec![]))
             .await
-            .map_err(|_| "exchange failed")?)
     }
 
     // the V-App is expecting a buffer via xrecv; get it from the VAppEngine, and send it to the V-App
     async fn process_receive_buffer(
         &mut self,
         command: &[u8],
-    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+    ) -> Result<(StatusWord, Vec<u8>), VAppEngineError<E>> {
         ReceiveBufferMessage::deserialize(command)?;
 
         // Wait for the message from the client
@@ -308,7 +437,9 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             .client_to_engine_receiver
             .recv()
             .await
-            .ok_or("Failed to receive buffer from client")?;
+            .ok_or(VAppEngineError::ResponseError(
+                "Failed to receive buffer from client",
+            ))?;
 
         let mut remaining_len = bytes.len() as u32;
         let mut offset: usize = 0;
@@ -324,8 +455,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
 
             let (status, result) = self
                 .exchange_and_process_page_requests(&apdu_continue(data))
-                .await
-                .map_err(|_| "exchange failed")?;
+                .await?;
 
             remaining_len -= chunk_len;
             offset += chunk_len as usize;
@@ -335,8 +465,11 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             } else {
                 // the message is not over, so we expect an InterruptedExecution status word
                 // and another ReceiveBufferMessage to receive the rest.
-                if status != StatusWord::InterruptedExecution || result.len() == 0 {
-                    return Err("Unexpected response");
+                if status != StatusWord::InterruptedExecution {
+                    return Err(VAppEngineError::InterruptedExecutionExpected);
+                }
+                if result.len() == 0 {
+                    return Err(VAppEngineError::ResponseError("Empty response"));
                 }
                 ReceiveBufferMessage::deserialize(&result)?;
             }
@@ -348,7 +481,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
     async fn process_send_panic_buffer(
         &mut self,
         command: &[u8],
-    ) -> Result<(StatusWord, Vec<u8>), &'static str> {
+    ) -> Result<(StatusWord, Vec<u8>), VAppEngineError<E>> {
         let SendPanicBufferMessage {
             command_code: _,
             total_remaining_size: mut remaining_len,
@@ -356,7 +489,9 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         } = SendPanicBufferMessage::deserialize(command)?;
 
         if (buf.len() as u32) > remaining_len {
-            return Err("Received data length exceeds expected remaining length");
+            return Err(VAppEngineError::ResponseError(
+                "Received data length exceeds expected remaining length",
+            ));
         }
 
         remaining_len -= buf.len() as u32;
@@ -364,82 +499,91 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         while remaining_len > 0 {
             let (status, result) = self
                 .exchange_and_process_page_requests(&apdu_continue(vec![]))
-                .await
-                .map_err(|_| "exchange failed")?;
+                .await?;
 
-            if status != StatusWord::InterruptedExecution || result.len() == 0 {
-                return Err("Unexpected response");
+            if status != StatusWord::InterruptedExecution {
+                return Err(VAppEngineError::InterruptedExecutionExpected);
+            }
+            if result.len() == 0 {
+                return Err(VAppEngineError::ResponseError("Empty response"));
             }
             let msg = SendPanicBufferMessage::deserialize(&result)?;
 
             if msg.total_remaining_size != remaining_len {
-                return Err("Received total_remaining_size does not match expected");
+                return Err(VAppEngineError::ResponseError(
+                    "Received total_remaining_size does not match expected",
+                ));
             }
 
             buf.extend_from_slice(&msg.data);
             remaining_len -= msg.data.len() as u32;
         }
 
-        let panic_message = String::from_utf8(buf).map_err(|_| "Invalid UTF-8 in panic message")?;
+        let panic_message =
+            String::from_utf8(buf).map_err(|e| VAppEngineError::GenericError(Box::new(e)))?;
 
         // Send the panic message back to the client via engine_to_client_sender
         self.engine_to_client_sender
             .send(VAppMessage::SendPanicBuffer(panic_message))
             .await
-            .map_err(|_| "Failed to send panic message")?;
+            .map_err(|e| VAppEngineError::GenericError(Box::new(e)))?;
 
         // Continue processing
-        Ok(self
-            .exchange_and_process_page_requests(&apdu_continue(vec![]))
+        self.exchange_and_process_page_requests(&apdu_continue(vec![]))
             .await
-            .map_err(|_| "exchange failed")?)
     }
 
     async fn busy_loop(
         &mut self,
         first_sw: StatusWord,
         first_result: Vec<u8>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), VAppEngineError<E>> {
         let mut status = first_sw;
         let mut result = first_result;
 
         loop {
             if status == StatusWord::OK {
                 if result.len() != 4 {
-                    return Err("The V-App should return a 4-byte exit code");
+                    return Err(VAppEngineError::ResponseError(
+                        "The V-App should return a 4-byte exit code",
+                    ));
                 }
                 let st = i32::from_be_bytes(result.try_into().unwrap());
                 self.engine_to_client_sender
                     .send(VAppMessage::VAppExited { status: st })
                     .await
-                    .map_err(|_| "Failed to send exit code")?;
+                    .map_err(|e| VAppEngineError::GenericError(Box::new(e)))?;
                 return Ok(());
             }
 
             if status == StatusWord::VMRuntimeError {
-                return Err("VM runtime error");
+                return Err(VAppEngineError::VMRuntimeError);
             }
 
             if status == StatusWord::VAppPanic {
-                return Err("V-App panicked");
+                return Err(VAppEngineError::VAppPanic);
             }
 
             if status != StatusWord::InterruptedExecution {
-                return Err("Unexpected status word");
+                return Err(VAppEngineError::InterruptedExecutionExpected);
             }
 
             if result.len() == 0 {
-                return Err("empty command");
+                return Err(VAppEngineError::ResponseError("empty command"));
             }
 
-            let client_command_code: ClientCommandCode = result[0].try_into()?;
+            let client_command_code: ClientCommandCode = result[0]
+                .try_into()
+                .map_err(|_| VAppEngineError::InvalidCommandCode)?;
 
             (status, result) = match client_command_code {
                 ClientCommandCode::GetPage => self.process_get_page(&result).await?,
                 ClientCommandCode::CommitPage => self.process_commit_page(&result).await?,
                 ClientCommandCode::CommitPageContent => {
                     // not a top-level command, part of CommitPage handling
-                    return Err("Unexpected CommitPageContent client command");
+                    return Err(VAppEngineError::ResponseError(
+                        "Unexpected CommitPageContent client command",
+                    ));
                 }
                 ClientCommandCode::SendBuffer => self.process_send_buffer(&result).await?,
                 ClientCommandCode::ReceiveBuffer => self.process_receive_buffer(&result).await?,
@@ -451,10 +595,10 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
     }
 }
 
-struct GenericVanadiumClient {
+struct GenericVanadiumClient<E: std::fmt::Debug + Send + Sync + 'static> {
     client_to_engine_sender: Option<mpsc::Sender<ClientMessage>>,
     engine_to_client_receiver: Option<Mutex<mpsc::Receiver<VAppMessage>>>,
-    vapp_engine_handle: Option<JoinHandle<Result<(), &'static str>>>,
+    vapp_engine_handle: Option<JoinHandle<Result<(), VAppEngineError<E>>>>,
 }
 
 #[derive(Debug)]
@@ -486,7 +630,7 @@ impl std::error::Error for VanadiumClientError {
     }
 }
 
-impl GenericVanadiumClient {
+impl<E: std::fmt::Debug + Send + Sync + 'static> GenericVanadiumClient<E> {
     pub fn new() -> Self {
         Self {
             client_to_engine_sender: None,
@@ -495,7 +639,7 @@ impl GenericVanadiumClient {
         }
     }
 
-    pub async fn register_vapp<E: std::fmt::Debug + Send + Sync + 'static>(
+    pub async fn register_vapp(
         &self,
         transport: Arc<dyn Transport<Error = E>>,
         manifest: &Manifest,
@@ -521,24 +665,23 @@ impl GenericVanadiumClient {
         }
     }
 
-    pub fn run_vapp<E: std::fmt::Debug + Send + Sync + 'static>(
+    pub fn run_vapp(
         &mut self,
         transport: Arc<dyn Transport<Error = E>>,
         manifest: &Manifest,
         app_hmac: &[u8; 32],
         elf: &ElfFile,
-    ) -> Result<(), &'static str> {
-        let mut data =
-            postcard::to_allocvec(manifest).map_err(|_| "manifest serialization failed")?;
+    ) -> Result<(), VAppEngineError<E>> {
+        let mut data = postcard::to_allocvec(manifest)?;
         data.extend_from_slice(app_hmac);
 
         // Create the memory segments for the code, data, and stack sections
-        let code_seg = MemorySegment::new(elf.code_segment.start, &elf.code_segment.data)?;
-        let data_seg = MemorySegment::new(elf.data_segment.start, &elf.data_segment.data)?;
+        let code_seg = MemorySegment::new(elf.code_segment.start, &elf.code_segment.data);
+        let data_seg = MemorySegment::new(elf.data_segment.start, &elf.data_segment.data);
         let stack_seg = MemorySegment::new(
             manifest.stack_start,
             &vec![0; (manifest.stack_end - manifest.stack_start) as usize],
-        )?;
+        );
 
         let (client_to_engine_sender, client_to_engine_receiver) =
             mpsc::channel::<ClientMessage>(10);
@@ -644,12 +787,41 @@ pub trait VAppClient {
 }
 
 /// Implementation of a VAppClient using the Vanadium VM.
-pub struct VanadiumAppClient {
-    client: GenericVanadiumClient,
+pub struct VanadiumAppClient<E: std::fmt::Debug + Send + Sync + 'static> {
+    client: GenericVanadiumClient<E>,
 }
 
-impl VanadiumAppClient {
-    pub async fn new<E: std::fmt::Debug + Send + Sync + 'static>(
+#[derive(Debug)]
+pub enum VanadiumAppClientError<E: std::fmt::Debug + Send + Sync + 'static> {
+    VAppEngineError(VAppEngineError<E>),
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> std::fmt::Display for VanadiumAppClientError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VanadiumAppClientError::VAppEngineError(e) => write!(f, "VAppEngine error: {}", e),
+        }
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> std::error::Error for VanadiumAppClientError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            VanadiumAppClientError::VAppEngineError(e) => Some(e),
+        }
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> From<VAppEngineError<E>>
+    for VanadiumAppClientError<E>
+{
+    fn from(error: VAppEngineError<E>) -> Self {
+        VanadiumAppClientError::VAppEngineError(error)
+    }
+}
+
+impl<E: std::fmt::Debug + Send + Sync + 'static> VanadiumAppClient<E> {
+    pub async fn new(
         elf_path: &str,
         transport: Arc<dyn Transport<Error = E>>,
         app_hmac: Option<[u8; 32]>,
@@ -687,7 +859,7 @@ impl VanadiumAppClient {
 }
 
 #[async_trait]
-impl VAppClient for VanadiumAppClient {
+impl<E: std::fmt::Debug + Send + Sync + 'static> VAppClient for VanadiumAppClient<E> {
     async fn send_message(&mut self, msg: &[u8]) -> Result<Vec<u8>, VAppExecutionError> {
         match self.client.send_message(msg).await {
             Ok(response) => Ok(response),
