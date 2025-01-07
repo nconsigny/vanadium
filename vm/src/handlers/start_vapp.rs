@@ -67,7 +67,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     loop {
         // TODO: handle errors
         let instr = cpu
-            .fetch_instruction()
+            .fetch_instruction::<CommEcallError>()
             .expect("Failed to fetch instruction");
 
         // TODO: remove debug prints
@@ -86,7 +86,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
         match result {
             Ok(_) => {}
-            Err(common::vm::CpuExecutionError::EcallError(e)) => match e {
+            Err(common::vm::CpuError::EcallError(e)) => match e {
                 CommEcallError::Exit(status) => {
                     println!("Vanadium ran {} instructions", instr_count);
                     println!("Exiting with status {}", status);
@@ -100,12 +100,16 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
                     println!("Runtime error: {}", e);
                     return Err(AppSW::VMRuntimeError);
                 }
-                CommEcallError::UnhandledEcall => {
-                    println!("Unhandled ecall");
+                e => {
+                    println!("CommEcallError: {:?}", e);
                     return Err(AppSW::VMRuntimeError);
                 }
             },
-            Err(common::vm::CpuExecutionError::GenericError(e)) => {
+            Err(common::vm::CpuError::MemoryError(e)) => {
+                println!("Memory error: {}", e);
+                return Err(AppSW::VMRuntimeError);
+            }
+            Err(common::vm::CpuError::GenericError(e)) => {
                 println!("Error executing instruction: {}", e);
                 return Err(AppSW::VMRuntimeError);
             }

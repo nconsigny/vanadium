@@ -40,6 +40,18 @@ pub struct OutsourcedMemory<'c> {
     usage_counter: u32,
 }
 
+impl<'c> core::fmt::Debug for OutsourcedMemory<'c> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OutsourcedMemory")
+            .field("comm", &"...")
+            .field("pages", &self.pages)
+            .field("is_readonly", &self.is_readonly)
+            .field("section_kind", &self.section_kind)
+            .field("usage_counter", &self.usage_counter)
+            .finish()
+    }
+}
+
 impl<'c> OutsourcedMemory<'c> {
     pub fn new(
         comm: Rc<RefCell<&'c mut io::Comm>>,
@@ -57,7 +69,7 @@ impl<'c> OutsourcedMemory<'c> {
         }
     }
 
-    fn commit_page_at(&mut self, index: usize) -> Result<(), &'static str> {
+    fn commit_page_at(&mut self, index: usize) -> Result<(), common::vm::MemoryError> {
         let page = &self.pages[index];
         assert!(page.valid, "Trying to commit an invalid page");
 
@@ -66,11 +78,12 @@ impl<'c> OutsourcedMemory<'c> {
         comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {
-            return Err("INS not supported"); // expected "Continue"
+            return Err(common::vm::MemoryError::GenericError("INS not supported"));
+            // expected "Continue"
         };
 
         if (p1, p2) != (0, 0) {
-            return Err("Wrong P1/P2");
+            return Err(common::vm::MemoryError::GenericError("Wrong P1/P2"));
         }
 
         // Second message: communicate the page content
@@ -78,32 +91,36 @@ impl<'c> OutsourcedMemory<'c> {
         comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {
-            return Err("INS not supported"); // expected "Continue"
+            return Err(common::vm::MemoryError::GenericError("INS not supported"));
+            // expected "Continue"
         };
 
         if (p1, p2) != (0, 0) {
-            return Err("Wrong P1/P2");
+            return Err(common::vm::MemoryError::GenericError("Wrong P1/P2"));
         }
 
         Ok(())
     }
 
-    fn load_page(&mut self, page_index: u32) -> Result<Page, &'static str> {
+    fn load_page(&mut self, page_index: u32) -> Result<Page, common::vm::MemoryError> {
         let mut comm = self.comm.borrow_mut();
         GetPageMessage::new(self.section_kind, page_index).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);
 
         let Instruction::Continue(p1, p2) = comm.next_command() else {
-            return Err("INS not supported"); // expected "Continue"
+            // expected "Continue"
+            return Err(common::vm::MemoryError::GenericError("INS not supported"));
         };
 
         if p2 != 0 {
-            return Err("Wrong P2");
+            return Err(common::vm::MemoryError::GenericError("Wrong P2"));
         }
 
-        let fetched_data = comm.get_data().map_err(|_| "Wrong APDU length")?;
+        let fetched_data = comm
+            .get_data()
+            .map_err(|_| common::vm::MemoryError::GenericError("Wrong APDU length"))?;
         if fetched_data.len() != PAGE_SIZE - 1 {
-            return Err("Wrong APDU length");
+            return Err(common::vm::MemoryError::GenericError("Wrong APDU length"));
         }
 
         let mut data = [0u8; PAGE_SIZE];
@@ -115,9 +132,12 @@ impl<'c> OutsourcedMemory<'c> {
 }
 
 impl<'c> PagedMemory for OutsourcedMemory<'c> {
-    type PageRef<'a> = &'a mut Page where Self: 'a;
+    type PageRef<'a>
+        = &'a mut Page
+    where
+        Self: 'a;
 
-    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, &'static str> {
+    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, common::vm::MemoryError> {
         // Increment the global usage counter
         self.usage_counter = self.usage_counter.wrapping_add(1);
 

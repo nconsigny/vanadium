@@ -21,6 +21,7 @@ pub enum MemoryError {
     ZeroSize,
     StartAddressNotAligned,
     Overflow,
+    GenericError(&'static str),
 }
 
 impl fmt::Display for MemoryError {
@@ -33,7 +34,8 @@ impl fmt::Display for MemoryError {
             MemoryError::StartAddressNotAligned => {
                 write!(f, "start_address must be divisible by 4")
             }
-            MemoryError::Overflow => write!(f, "start_address + size does not fit in a u32"),
+            MemoryError::Overflow => write!(f, "end address too large for a u32"),
+            MemoryError::GenericError(msg) => write!(f, "{msg}"),
         }
     }
 }
@@ -48,7 +50,7 @@ pub struct Page {
 
 /// A generic trait representing a memory that is split into pages.
 /// This allows abstracting over different ways of storing pages.
-pub trait PagedMemory {
+pub trait PagedMemory: fmt::Debug {
     type PageRef<'a>: Deref<Target = Page> + DerefMut<Target = Page> + 'a
     where
         Self: 'a;
@@ -347,7 +349,7 @@ pub struct Cpu<M: PagedMemory> {
 
 pub trait EcallHandler {
     type Memory: PagedMemory;
-    type Error;
+    type Error: fmt::Debug;
 
     fn handle_ecall(&mut self, cpu: &mut Cpu<Self::Memory>) -> Result<(), Self::Error>;
 }
