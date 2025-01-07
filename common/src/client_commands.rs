@@ -2,9 +2,39 @@
 
 use crate::constants::PAGE_SIZE;
 use alloc::vec::Vec;
+use core::fmt;
 
 #[cfg(feature = "device_sdk")]
 use ledger_device_sdk::io::Comm;
+
+#[derive(Debug)]
+pub enum MessageDeserializationError {
+    InvalidClientCommandCode,
+    MismatchingClientCommandCode,
+    InvalidSectionKind,
+    InvalidDataLength,
+    UnexpectedCommandCode,
+}
+
+impl fmt::Display for MessageDeserializationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MessageDeserializationError::InvalidClientCommandCode => {
+                write!(f, "Invalid client command code")
+            }
+            MessageDeserializationError::MismatchingClientCommandCode => {
+                write!(f, "Mismatching client command code")
+            }
+            MessageDeserializationError::InvalidSectionKind => write!(f, "Invalid section kind"),
+            MessageDeserializationError::InvalidDataLength => write!(f, "Invalid data length"),
+            MessageDeserializationError::UnexpectedCommandCode => {
+                write!(f, "Unexpected command code")
+            }
+        }
+    }
+}
+
+impl core::error::Error for MessageDeserializationError {}
 
 pub trait Message: Sized {
     fn serialize_with<F: FnMut(&[u8])>(&self, f: F);
@@ -21,7 +51,7 @@ pub trait Message: Sized {
         result
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str>;
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError>;
 }
 
 // Commands from the VM to the client
@@ -102,16 +132,18 @@ impl Message for CommitPageMessage {
         f(&self.page_index.to_be_bytes());
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() != 6 {
-            return Err("Invalid data for CommitPageMessage");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
-        let command_code = ClientCommandCode::try_from(data[0])?;
+        let command_code = ClientCommandCode::try_from(data[0])
+            .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if !matches!(command_code, ClientCommandCode::CommitPage) {
-            return Err("Invalid data for CommitPageMessage");
+            return Err(MessageDeserializationError::MismatchingClientCommandCode);
         }
 
-        let section_kind = SectionKind::try_from(data[1])?;
+        let section_kind = SectionKind::try_from(data[1])
+            .map_err(|_| MessageDeserializationError::InvalidSectionKind)?;
         let page_index = u32::from_be_bytes([data[2], data[3], data[4], data[5]]);
 
         Ok(CommitPageMessage {
@@ -149,14 +181,15 @@ impl Message for CommitPageContentMessage {
         f(&self.data);
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() != PAGE_SIZE + 1 {
-            return Err("Invalid data for CommitPageContentMessage");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
 
-        let command_code = ClientCommandCode::try_from(data[0])?;
+        let command_code = ClientCommandCode::try_from(data[0])
+            .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if !matches!(command_code, ClientCommandCode::CommitPageContent) {
-            return Err("Invalid data for CommitPageContentMessage");
+            return Err(MessageDeserializationError::MismatchingClientCommandCode);
         }
         Ok(CommitPageContentMessage {
             command_code,
@@ -192,15 +225,17 @@ impl Message for GetPageMessage {
         f(&self.page_index.to_be_bytes());
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() != 6 {
-            return Err("Invalid data for GetPageMessage");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
-        let command_code = ClientCommandCode::try_from(data[0])?;
+        let command_code = ClientCommandCode::try_from(data[0])
+            .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if !matches!(command_code, ClientCommandCode::GetPage) {
-            return Err("Invalid data for GetPageMessage");
+            return Err(MessageDeserializationError::MismatchingClientCommandCode);
         }
-        let section_kind = SectionKind::try_from(data[1])?;
+        let section_kind = SectionKind::try_from(data[1])
+            .map_err(|_| MessageDeserializationError::InvalidSectionKind)?;
         let page_index = u32::from_be_bytes([data[2], data[3], data[4], data[5]]);
 
         Ok(GetPageMessage {
@@ -242,16 +277,17 @@ impl Message for SendBufferMessage {
         f(&self.data);
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
-        let command_code = ClientCommandCode::try_from(data[0])?;
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+        let command_code = ClientCommandCode::try_from(data[0])
+            .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if (!matches!(command_code, ClientCommandCode::SendBuffer)) || (data.len() < 5) {
-            return Err("Invalid data for SendBufferMessage");
+            return Err(MessageDeserializationError::MismatchingClientCommandCode);
         }
         let total_remaining_size = u32::from_be_bytes([data[1], data[2], data[3], data[4]]);
         let data = data[5..].to_vec();
 
         if data.len() > total_remaining_size as usize {
-            return Err("Data size exceeds total remaining size");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
 
         Ok(SendBufferMessage {
@@ -282,13 +318,14 @@ impl Message for ReceiveBufferMessage {
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
     }
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() != 1 {
-            return Err("Invalid data for ReceiveBufferMessage");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
-        let command_code = ClientCommandCode::try_from(data[0])?;
+        let command_code = ClientCommandCode::try_from(data[0])
+            .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if !matches!(command_code, ClientCommandCode::ReceiveBuffer) {
-            return Err("Invalid data for ReceiveBufferMessage");
+            return Err(MessageDeserializationError::MismatchingClientCommandCode);
         }
 
         Ok(ReceiveBufferMessage { command_code })
@@ -320,13 +357,13 @@ impl Message for ReceiveBufferResponse {
     }
 
     #[inline]
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() < 4 {
-            return Err("Invalid data for ReceiveBufferResponse");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
         let remaining_length = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
         if data.len() - 4 > remaining_length as usize {
-            return Err("Data for ReceiveBufferResponse is too long");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
         Ok(ReceiveBufferResponse {
             remaining_length,
@@ -366,16 +403,21 @@ impl Message for SendPanicBufferMessage {
         f(&self.data);
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, &'static str> {
-        let command_code = ClientCommandCode::try_from(data[0])?;
-        if (!matches!(command_code, ClientCommandCode::SendPanicBuffer)) || (data.len() < 5) {
-            return Err("Invalid data for SendPanicBufferMessage");
+    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+        let command_code = ClientCommandCode::try_from(data[0])
+            .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
+        if !matches!(command_code, ClientCommandCode::SendPanicBuffer) {
+            return Err(MessageDeserializationError::MismatchingClientCommandCode);
+        }
+
+        if data.len() < 5 {
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
         let total_remaining_size = u32::from_be_bytes([data[1], data[2], data[3], data[4]]);
         let data = data[5..].to_vec();
 
         if data.len() > total_remaining_size as usize {
-            return Err("Data size exceeds total remaining size");
+            return Err(MessageDeserializationError::InvalidDataLength);
         }
 
         Ok(SendPanicBufferMessage {

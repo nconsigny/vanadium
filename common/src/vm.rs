@@ -13,6 +13,33 @@ use crate::{
 };
 use alloc::{format, vec::Vec};
 
+#[derive(Debug)]
+pub enum MemoryError {
+    PageNotFound,
+    AddressOutOfBounds,
+    UnalignedAddress,
+    ZeroSize,
+    StartAddressNotAligned,
+    Overflow,
+}
+
+impl fmt::Display for MemoryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemoryError::PageNotFound => write!(f, "Page not found"),
+            MemoryError::AddressOutOfBounds => write!(f, "Address out of bounds"),
+            MemoryError::UnalignedAddress => write!(f, "Unaligned address"),
+            MemoryError::ZeroSize => write!(f, "size cannot be 0"),
+            MemoryError::StartAddressNotAligned => {
+                write!(f, "start_address must be divisible by 4")
+            }
+            MemoryError::Overflow => write!(f, "start_address + size does not fit in a u32"),
+        }
+    }
+}
+
+impl core::error::Error for MemoryError {}
+
 /// Represents a single page of memory.
 #[derive(Clone, Debug)]
 pub struct Page {
@@ -27,7 +54,7 @@ pub trait PagedMemory {
         Self: 'a;
 
     /// Retrieves a mutable reference to the page at the given index.
-    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, &'static str>;
+    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, MemoryError>;
 }
 
 /// A simple implementation of `PagedMemory` using a vector of pages.
@@ -37,12 +64,15 @@ pub struct VecMemory {
 }
 
 impl PagedMemory for VecMemory {
-    type PageRef<'a> = &'a mut Page where Self: 'a;
+    type PageRef<'a>
+        = &'a mut Page
+    where
+        Self: 'a;
 
-    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, &'static str> {
+    fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, MemoryError> {
         self.pages
             .get_mut(page_index as usize)
-            .ok_or("Page not found")
+            .ok_or(MemoryError::PageNotFound)
     }
 }
 
@@ -69,17 +99,17 @@ pub struct MemorySegment<M: PagedMemory> {
 
 impl<M: PagedMemory> MemorySegment<M> {
     /// Creates a new `MemorySegment`.
-    pub fn new(start_address: u32, size: u32, paged_memory: M) -> Result<Self, &'static str> {
+    pub fn new(start_address: u32, size: u32, paged_memory: M) -> Result<Self, MemoryError> {
         if size == 0 {
-            return Err("size cannot be 0");
+            MemoryError::ZeroSize;
         }
 
         if start_address & 3 != 0 {
-            return Err("start_address must be divisible by 4");
+            return Err(MemoryError::StartAddressNotAligned);
         }
 
         if start_address.checked_add(size - 1).is_none() {
-            return Err("start_address + size does not fit in a u32");
+            return Err(MemoryError::Overflow);
         }
 
         Ok(Self {
@@ -97,9 +127,9 @@ impl<M: PagedMemory> MemorySegment<M> {
 
     /// Reads a byte from the specified address.
     #[inline]
-    pub fn read_u8(&mut self, address: u32) -> Result<u8, &'static str> {
+    pub fn read_u8(&mut self, address: u32) -> Result<u8, MemoryError> {
         if address < self.start_address || address > self.start_address + self.size - 1 {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         let relative_address = address - page_start(self.start_address);
@@ -113,13 +143,13 @@ impl<M: PagedMemory> MemorySegment<M> {
 
     /// Reads a 16-bit value from the specified address.
     #[inline]
-    pub fn read_u16(&mut self, address: u32) -> Result<u16, &'static str> {
+    pub fn read_u16(&mut self, address: u32) -> Result<u16, MemoryError> {
         if address < self.start_address || address > self.start_address + self.size - 2 {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         if address % 2 != 0 {
-            return Err("Unaligned address");
+            return Err(MemoryError::UnalignedAddress);
         }
 
         let relative_address = address - page_start(self.start_address);
@@ -135,13 +165,13 @@ impl<M: PagedMemory> MemorySegment<M> {
 
     /// Reads a 32-bit value from the specified address.
     #[inline]
-    pub fn read_u32(&mut self, address: u32) -> Result<u32, &'static str> {
+    pub fn read_u32(&mut self, address: u32) -> Result<u32, MemoryError> {
         if address < self.start_address || address > self.start_address + self.size - 4 {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         if address % 4 != 0 {
-            return Err("Unaligned address");
+            return Err(MemoryError::UnalignedAddress);
         }
 
         let relative_address = address - page_start(self.start_address);
@@ -162,9 +192,9 @@ impl<M: PagedMemory> MemorySegment<M> {
 
     /// Writes a byte to the specified address.
     #[inline]
-    pub fn write_u8(&mut self, address: u32, value: u8) -> Result<(), &'static str> {
+    pub fn write_u8(&mut self, address: u32, value: u8) -> Result<(), MemoryError> {
         if address < self.start_address || address > self.start_address + self.size - 1 {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         let relative_address = address - page_start(self.start_address);
@@ -180,13 +210,13 @@ impl<M: PagedMemory> MemorySegment<M> {
 
     /// Writes a 16-bit value to the specified address.
     #[inline]
-    pub fn write_u16(&mut self, address: u32, value: u16) -> Result<(), &'static str> {
+    pub fn write_u16(&mut self, address: u32, value: u16) -> Result<(), MemoryError> {
         if address < self.start_address || address > self.start_address + self.size - 2 {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         if address % 2 != 0 {
-            return Err("Unaligned address");
+            return Err(MemoryError::UnalignedAddress);
         }
 
         let relative_address = address - page_start(self.start_address);
@@ -203,13 +233,13 @@ impl<M: PagedMemory> MemorySegment<M> {
 
     /// Writes a 32-bit value to the specified address.
     #[inline]
-    pub fn write_u32(&mut self, address: u32, value: u32) -> Result<(), &'static str> {
+    pub fn write_u32(&mut self, address: u32, value: u32) -> Result<(), MemoryError> {
         if address < self.start_address || address > self.start_address + self.size - 4 {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         if address % 4 != 0 {
-            return Err("Unaligned address");
+            return Err(MemoryError::UnalignedAddress);
         }
 
         let relative_address = address - page_start(self.start_address);
@@ -230,16 +260,16 @@ impl<M: PagedMemory> MemorySegment<M> {
     ///
     /// This method reads a buffer of data from the memory segment starting at the specified address.
     /// The method takes care of page boundary crossing while reading data from pages.
-    pub fn read_buffer(&mut self, address: u32, buffer: &mut [u8]) -> Result<(), &'static str> {
+    pub fn read_buffer(&mut self, address: u32, buffer: &mut [u8]) -> Result<(), MemoryError> {
         let mut current_address = address;
         let mut bytes_read = 0;
 
         // Check if the entire buffer is within the bounds of the memory segment
         let end_address = address
             .checked_add(buffer.len() as u32)
-            .ok_or("Address out of bounds")?;
+            .ok_or(MemoryError::Overflow)?;
         if address < self.start_address || end_address > self.start_address + self.size {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         while bytes_read < buffer.len() {
@@ -269,16 +299,16 @@ impl<M: PagedMemory> MemorySegment<M> {
     ///
     /// This method writes a buffer of data to the memory segment starting at the specified address.
     /// The method takes care of page boundary crossing and flushes the content to the page.
-    pub fn write_buffer(&mut self, address: u32, buffer: &[u8]) -> Result<(), &'static str> {
+    pub fn write_buffer(&mut self, address: u32, buffer: &[u8]) -> Result<(), MemoryError> {
         let mut current_address = address;
         let mut bytes_written = 0;
 
         // Check if the entire buffer is within the bounds of the memory segment
         let end_address = address
             .checked_add(buffer.len() as u32)
-            .ok_or("Address out of bounds")?;
+            .ok_or(MemoryError::Overflow)?;
         if address < self.start_address || end_address > self.start_address + self.size {
-            return Err("Address out of bounds");
+            return Err(MemoryError::AddressOutOfBounds);
         }
 
         while bytes_written < buffer.len() {
@@ -322,14 +352,44 @@ pub trait EcallHandler {
     fn handle_ecall(&mut self, cpu: &mut Cpu<Self::Memory>) -> Result<(), Self::Error>;
 }
 
-pub enum CpuExecutionError<E> {
+#[derive(Debug)]
+pub enum CpuError<E: fmt::Debug> {
     EcallError(E),
+    MemoryError(MemoryError),
     GenericError(&'static str), // TODO: make errors more specific
 }
 
-impl<E> From<&'static str> for CpuExecutionError<E> {
+impl<E: fmt::Debug> core::error::Error for CpuError<E> {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            CpuError::EcallError(_) => None,
+            CpuError::MemoryError(err) => Some(err),
+            CpuError::GenericError(_) => None,
+        }
+    }
+}
+
+impl<E: fmt::Debug> From<&'static str> for CpuError<E> {
     fn from(err: &'static str) -> Self {
-        CpuExecutionError::GenericError(err)
+        CpuError::GenericError(err)
+    }
+}
+
+impl<E: fmt::Debug> fmt::Display for CpuError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CpuError::EcallError(_) => {
+                write!(f, "Error returned from the ECALL handler")
+            }
+            CpuError::MemoryError(err) => write!(f, "Memory error: {err}"),
+            CpuError::GenericError(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl<E: fmt::Debug> From<MemoryError> for CpuError<E> {
+    fn from(err: MemoryError) -> Self {
+        CpuError::MemoryError(err)
     }
 }
 
@@ -372,67 +432,70 @@ impl<M: PagedMemory> Cpu<M> {
         }
     }
 
-    fn read_u8(&mut self, address: u32) -> Result<u8, &'static str> {
+    fn read_u8<E: fmt::Debug>(&mut self, address: u32) -> Result<u8, CpuError<E>> {
         if self.stack_seg.contains(address) {
-            return self.stack_seg.read_u8(address);
+            return Ok(self.stack_seg.read_u8(address)?);
         } else if self.data_seg.contains(address) {
-            return self.data_seg.read_u8(address);
+            return Ok(self.data_seg.read_u8(address)?);
         } else if self.code_seg.contains(address) {
-            return self.code_seg.read_u8(address);
+            return Ok(self.code_seg.read_u8(address)?);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
-    fn read_u16(&mut self, address: u32) -> Result<u16, &'static str> {
+    fn read_u16<E: fmt::Debug>(&mut self, address: u32) -> Result<u16, CpuError<E>> {
         if self.stack_seg.contains(address) {
-            return self.stack_seg.read_u16(address);
+            return Ok(self.stack_seg.read_u16(address)?);
         } else if self.data_seg.contains(address) {
-            return self.data_seg.read_u16(address);
+            return Ok(self.data_seg.read_u16(address)?);
         } else if self.code_seg.contains(address) {
-            return self.code_seg.read_u16(address);
+            return Ok(self.code_seg.read_u16(address)?);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
-    fn read_u32(&mut self, address: u32) -> Result<u32, &'static str> {
+    fn read_u32<E: fmt::Debug>(&mut self, address: u32) -> Result<u32, CpuError<E>> {
         if self.stack_seg.contains(address) {
-            return self.stack_seg.read_u32(address);
+            return Ok(self.stack_seg.read_u32(address)?);
         } else if self.data_seg.contains(address) {
-            return self.data_seg.read_u32(address);
+            return Ok(self.data_seg.read_u32(address)?);
         } else if self.code_seg.contains(address) {
-            return self.code_seg.read_u32(address);
+            return Ok(self.code_seg.read_u32(address)?);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
-    fn write_u8(&mut self, address: u32, value: u8) -> Result<(), &'static str> {
+    fn write_u8<E: fmt::Debug>(&mut self, address: u32, value: u8) -> Result<(), CpuError<E>> {
         if self.stack_seg.contains(address) {
-            return self.stack_seg.write_u8(address, value);
+            return Ok(self.stack_seg.write_u8(address, value)?);
         } else if self.data_seg.contains(address) {
-            return self.data_seg.write_u8(address, value);
+            return Ok(self.data_seg.write_u8(address, value)?);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
-    fn write_u16(&mut self, address: u32, value: u16) -> Result<(), &'static str> {
+    fn write_u16<E: fmt::Debug>(&mut self, address: u32, value: u16) -> Result<(), CpuError<E>> {
         if self.stack_seg.contains(address) {
-            return self.stack_seg.write_u16(address, value);
+            return Ok(self.stack_seg.write_u16(address, value)?);
         } else if self.data_seg.contains(address) {
-            return self.data_seg.write_u16(address, value);
+            return Ok(self.data_seg.write_u16(address, value)?);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
-    fn write_u32(&mut self, address: u32, value: u32) -> Result<(), &'static str> {
+    fn write_u32<E: fmt::Debug>(&mut self, address: u32, value: u32) -> Result<(), CpuError<E>> {
         if self.stack_seg.contains(address) {
-            return self.stack_seg.write_u32(address, value);
+            return Ok(self.stack_seg.write_u32(address, value)?);
         } else if self.data_seg.contains(address) {
-            return self.data_seg.write_u32(address, value);
+            return Ok(self.data_seg.write_u32(address, value)?);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
-    pub fn get_segment(&mut self, address: u32) -> Result<&mut MemorySegment<M>, &'static str> {
+    pub fn get_segment<E: fmt::Debug>(
+        &mut self,
+        address: u32,
+    ) -> Result<&mut MemorySegment<M>, CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(&mut self.stack_seg);
         } else if self.data_seg.contains(address) {
@@ -440,18 +503,18 @@ impl<M: PagedMemory> Cpu<M> {
         } else if self.code_seg.contains(address) {
             return Ok(&mut self.code_seg);
         }
-        Err("Address out of bounds")
+        Err(MemoryError::AddressOutOfBounds.into())
     }
 
     #[inline(always)]
     /// Fetches the next instruction to be executed.
-    pub fn fetch_instruction(&mut self) -> Result<u32, &'static str> {
-        self.code_seg.read_u32(self.pc)
+    pub fn fetch_instruction<E: fmt::Debug>(&mut self) -> Result<u32, CpuError<E>> {
+        Ok(self.code_seg.read_u32(self.pc)?)
     }
 
     #[rustfmt::skip]
     #[inline(always)]
-    pub fn execute<E>(&mut self, inst: u32, ecall_handler: Option<&mut dyn EcallHandler<Memory = M, Error = E>>) -> Result<(), CpuExecutionError<E>> {
+    pub fn execute<E: fmt::Debug>(&mut self, inst: u32, ecall_handler: Option<&mut dyn EcallHandler<Memory = M, Error = E>>) -> Result<(), CpuError<E>> {
         let mut pc_inc: u32 = 4;
         const INST_SIZE: u32 = 4;
 
@@ -576,7 +639,7 @@ impl<M: PagedMemory> Cpu<M> {
 
             Op::Ecall => {
                 if let Some(ecall_handler) = ecall_handler {
-                    ecall_handler.handle_ecall(self).map_err(CpuExecutionError::EcallError)?;
+                    ecall_handler.handle_ecall(self).map_err(CpuError::EcallError)?;
                 } else {
                     return Err("No ECALL handler".into());
                 }

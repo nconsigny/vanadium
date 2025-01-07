@@ -1,3 +1,4 @@
+
 //! This module provides a generic framework, and a Merkle-tree based implementation,
 //! for vector accumulators. This allows a party (the verifier) to outsource the storage
 //! of the vector to another party (the prover). The verifier only maintains a single
@@ -7,8 +8,25 @@
 //! produced by the prover.
 
 use alloc::{vec, vec::Vec};
-use core::marker::PhantomData;
+use core::{error::Error, fmt, marker::PhantomData};
 use serde::{Serialize, Deserialize, Serializer, Deserializer, de::DeserializeOwned};
+
+
+#[derive(Debug)]
+pub enum AccumulatorError {
+    IndexOutOfBounds,
+}
+
+impl fmt::Display for AccumulatorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AccumulatorError::IndexOutOfBounds => write!(f, "Index out of bounds"),
+        }
+    }
+}
+
+impl Error for AccumulatorError {}
+
 
 /// A trait representing a cryptographic hasher that produces a fixed-size output.
 pub trait Hasher<const OUTPUT_SIZE: usize>: Sized {
@@ -91,7 +109,7 @@ pub trait VectorAccumulator<T: AsRef<[u8]> + Clone + Serialize + DeserializeOwne
 
     /// Generates a proof of inclusion for an element at the given index.
     /// Returns the inclusion proof, or an error string if the index is out of bounds.
-    fn prove(&self, index: usize) -> Result<Self::InclusionProof, &'static str>;
+    fn prove(&self, index: usize) -> Result<Self::InclusionProof, AccumulatorError>;
 
     /// Verifies an inclusion proof. This associated function is called by the verifier,
     /// rather than the owner of the instance.
@@ -119,7 +137,7 @@ pub trait VectorAccumulator<T: AsRef<[u8]> + Clone + Serialize + DeserializeOwne
     /// # Returns
     ///
     /// An update proof, or an error string if the index is out of bounds.
-    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, &'static str>;
+    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, AccumulatorError>;
 
     /// Verifies an update proof. This associated function is called by the verifier,
     /// rather than the owner of the instance.
@@ -194,9 +212,9 @@ impl<H: Hasher<OUTPUT_SIZE>, T: AsRef<[u8]> + Clone + Serialize + DeserializeOwn
     /// # Returns
     ///
     /// An inclusion proof as a vector of hash outputs.
-    fn prove(&self, index: usize) -> Result<Self::InclusionProof, &'static str> {
+    fn prove(&self, index: usize) -> Result<Self::InclusionProof, AccumulatorError> {
         if index >= self.data.len() {
-            return Err("Index out of bounds");
+            return Err(AccumulatorError::IndexOutOfBounds);
         }
 
         let mut proof = Vec::new();
@@ -242,9 +260,9 @@ impl<H: Hasher<OUTPUT_SIZE>, T: AsRef<[u8]> + Clone + Serialize + DeserializeOwn
     /// # Returns
     ///
     /// An update proof, or an error string if the index is out of bounds.
-    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, &'static str> {
+    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, AccumulatorError> {
         if index >= self.data.len() {
-            return Err("Index out of bounds");
+            return Err(AccumulatorError::IndexOutOfBounds);
         }
 
         let old_root = self.root();
