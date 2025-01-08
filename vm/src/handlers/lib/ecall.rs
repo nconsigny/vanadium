@@ -1,14 +1,14 @@
-use core::{cell::RefCell, cmp::min};
+use core::{cell::RefCell, cmp::min, fmt};
 
-use alloc::{rc::Rc, vec};
+use alloc::{format, rc::Rc, string::String, vec};
 use common::{
     client_commands::{
-        Message, ReceiveBufferMessage, ReceiveBufferResponse, SendBufferMessage,
-        SendPanicBufferMessage,
+        Message, MessageDeserializationError, ReceiveBufferMessage, ReceiveBufferResponse,
+        SendBufferMessage, SendPanicBufferMessage,
     },
     ecall_constants::{self, *},
     manifest::Manifest,
-    vm::{Cpu, EcallHandler},
+    vm::{Cpu, CpuError, EcallHandler, MemoryError},
 };
 use ledger_device_sdk::hash::HashInit;
 use ledger_secure_sdk_sys::{
@@ -105,6 +105,23 @@ impl Register {
 #[derive(Debug, Clone, Copy)]
 struct GuestPointer(pub u32);
 
+#[derive(Debug, Clone, Copy)]
+enum LedgerHashContextError {
+    InvalidHashId,
+    UnsupportedHashId,
+}
+
+impl fmt::Display for LedgerHashContextError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LedgerHashContextError::InvalidHashId => write!(f, "Invalid hash id"),
+            LedgerHashContextError::UnsupportedHashId => write!(f, "Unsupported hash id"),
+        }
+    }
+}
+
+impl core::error::Error for LedgerHashContextError {}
+
 // A union of all the supported hash contexts, in the same memory layout used in the Ledger SDK
 #[repr(C)]
 union LedgerHashContext {
@@ -118,15 +135,15 @@ impl LedgerHashContext {
     const MAX_DIGEST_LEN: usize = 64;
 
     // in-memory size of the hash context struct for the corresponding hash type
-    fn get_size_from_id(hash_id: u32) -> Result<usize, &'static str> {
+    fn get_size_from_id(hash_id: u32) -> Result<usize, LedgerHashContextError> {
         if hash_id > 255 {
-            return Err("Invalid hash id");
+            return Err(LedgerHashContextError::InvalidHashId);
         }
         let res = match hash_id as u8 {
             CX_RIPEMD160 => core::mem::size_of::<cx_ripemd160_t>(),
             CX_SHA256 => core::mem::size_of::<cx_sha256_t>(),
             CX_SHA512 => core::mem::size_of::<cx_sha512_t>(),
-            _ => return Err("Unsupported hash id"),
+            _ => return Err(LedgerHashContextError::UnsupportedHashId),
         };
 
         assert!(res <= Self::MAX_HASH_CONTEXT_SIZE);
@@ -134,20 +151,104 @@ impl LedgerHashContext {
         Ok(res)
     }
 
-    fn get_digest_len_from_id(hash_id: u32) -> Result<usize, &'static str> {
+    fn get_digest_len_from_id(hash_id: u32) -> Result<usize, LedgerHashContextError> {
         if hash_id > 255 {
-            return Err("Invalid hash id");
+            return Err(LedgerHashContextError::InvalidHashId);
         }
         let res = match hash_id as u8 {
             CX_RIPEMD160 => 20,
             CX_SHA256 => 32,
             CX_SHA512 => 64,
-            _ => return Err("Unsupported hash id"),
+            _ => return Err(LedgerHashContextError::UnsupportedHashId),
         };
 
         assert!(res <= Self::MAX_DIGEST_LEN);
 
         Ok(res)
+    }
+}
+
+pub enum CommEcallError {
+    Exit(i32),
+    Panic,
+    InvalidParameters(&'static str),
+    GenericError(&'static str),
+    WrongINS,
+    WrongP1P2,
+    Overflow,
+    HashError(LedgerHashContextError),
+    MessageDeserializationError(MessageDeserializationError),
+    InvalidResponse(&'static str),
+    CpuError(String),
+    MemoryError(MemoryError),
+    UnhandledEcall,
+}
+
+impl core::fmt::Display for CommEcallError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CommEcallError::Exit(code) => write!(f, "Exit with code {}", code),
+            CommEcallError::Panic => write!(f, "Panic occurred"),
+            CommEcallError::InvalidParameters(msg) => {
+                write!(f, "Invalid parameters: {}", msg)
+            }
+            CommEcallError::GenericError(msg) => write!(f, "Error: {}", msg),
+            CommEcallError::WrongINS => write!(f, "Wrong INS"),
+            CommEcallError::WrongP1P2 => write!(f, "Wrong P1/P2"),
+            CommEcallError::Overflow => write!(f, "Buffer overflow"),
+            CommEcallError::HashError(e) => write!(f, "Hash error: {:?}", e),
+            CommEcallError::MessageDeserializationError(e) => {
+                write!(f, "Message deserialization error: {:?}", e)
+            }
+            CommEcallError::InvalidResponse(msg) => {
+                write!(f, "Invalid response from host: {}", msg)
+            }
+            CommEcallError::CpuError(e) => write!(f, "Cpu error: {:?}", e),
+            CommEcallError::MemoryError(e) => write!(f, "Memory error: {:?}", e),
+            CommEcallError::UnhandledEcall => write!(f, "Unhandled ecall"),
+        }
+    }
+}
+
+impl core::fmt::Debug for CommEcallError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Display::fmt(self, f)
+    }
+}
+
+impl<E: fmt::Debug> From<CpuError<E>> for CommEcallError {
+    fn from(error: CpuError<E>) -> Self {
+        CommEcallError::CpuError(format!("{:?}", error))
+    }
+}
+
+impl From<LedgerHashContextError> for CommEcallError {
+    fn from(error: LedgerHashContextError) -> Self {
+        CommEcallError::HashError(error)
+    }
+}
+
+impl From<MemoryError> for CommEcallError {
+    fn from(error: MemoryError) -> Self {
+        CommEcallError::MemoryError(error)
+    }
+}
+
+impl From<MessageDeserializationError> for CommEcallError {
+    fn from(error: MessageDeserializationError) -> Self {
+        CommEcallError::MessageDeserializationError(error)
+    }
+}
+
+impl core::error::Error for CommEcallError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            CommEcallError::MemoryError(e) => Some(e),
+            CommEcallError::MessageDeserializationError(e) => Some(e),
+            CommEcallError::HashError(e) => Some(e),
+            // since we convert CpuError to a string, we don't keep the original error
+            _ => None,
+        }
     }
 }
 
@@ -165,12 +266,12 @@ impl<'a> CommEcallHandler<'a> {
     }
 
     // TODO: can we refactor this and handle_xsend? They are almost identical
-    fn handle_panic(
+    fn handle_panic<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         buffer: GuestPointer,
         mut size: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if size == 0 {
             // We must not read the pointer for an empty buffer; Rust always uses address 0x01 for
             // an empty buffer
@@ -180,22 +281,22 @@ impl<'a> CommEcallHandler<'a> {
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
-                return Err("INS not supported"); // expected "Continue"
+                return Err(CommEcallError::WrongINS); // expected "Continue"
             };
 
             if (p1, p2) != (0, 0) {
-                return Err("Wrong P1/P2");
+                return Err(CommEcallError::WrongP1P2);
             }
             return Ok(());
         }
 
         if buffer.0.checked_add(size as u32).is_none() {
-            return Err("Buffer overflow");
+            return Err(CommEcallError::Overflow);
         }
 
         let mut g_ptr = buffer.0;
 
-        let segment = cpu.get_segment(g_ptr)?;
+        let segment = cpu.get_segment::<E>(g_ptr)?;
 
         // loop while size > 0
         while size > 0 {
@@ -209,11 +310,11 @@ impl<'a> CommEcallHandler<'a> {
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
-                return Err("INS not supported"); // expected "Continue"
+                return Err(CommEcallError::WrongINS); // expected "Continue"
             };
 
             if (p1, p2) != (0, 0) {
-                return Err("Wrong P1/P2");
+                return Err(CommEcallError::WrongP1P2);
             }
 
             size -= copy_size;
@@ -225,12 +326,12 @@ impl<'a> CommEcallHandler<'a> {
 
     // Sends exactly size bytes from the buffer in the V-app memory to the host
     // TODO: we might want to revise the protocol, not as optimized as it could be
-    fn handle_xsend(
+    fn handle_xsend<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         buffer: GuestPointer,
         mut size: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if size == 0 {
             // We must not read the pointer for an empty buffer; Rust always uses address 0x01 for
             // an empty buffer
@@ -240,22 +341,22 @@ impl<'a> CommEcallHandler<'a> {
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
-                return Err("INS not supported"); // expected "Continue"
+                return Err(CommEcallError::WrongINS); // expected "Continue"
             };
 
             if (p1, p2) != (0, 0) {
-                return Err("Wrong P1/P2");
+                return Err(CommEcallError::WrongP1P2);
             }
             return Ok(());
         }
 
         if buffer.0.checked_add(size as u32).is_none() {
-            return Err("Buffer overflow");
+            return Err(CommEcallError::Overflow);
         }
 
         let mut g_ptr = buffer.0;
 
-        let segment = cpu.get_segment(g_ptr)?;
+        let segment = cpu.get_segment::<E>(g_ptr)?;
 
         // loop while size > 0
         while size > 0 {
@@ -269,11 +370,11 @@ impl<'a> CommEcallHandler<'a> {
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
-                return Err("INS not supported"); // expected "Continue"
+                return Err(CommEcallError::WrongINS); // expected "Continue"
             };
 
             if (p1, p2) != (0, 0) {
-                return Err("Wrong P1/P2");
+                return Err(CommEcallError::WrongP1P2);
             }
 
             size -= copy_size;
@@ -285,15 +386,15 @@ impl<'a> CommEcallHandler<'a> {
 
     // Receives up to max_size bytes from the host into the buffer in the V-app memory
     // Returns the catual of bytes received.
-    fn handle_xrecv(
+    fn handle_xrecv<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         buffer: GuestPointer,
         max_size: usize,
-    ) -> Result<usize, &'static str> {
+    ) -> Result<usize, CommEcallError> {
         let mut g_ptr = buffer.0;
 
-        let segment = cpu.get_segment(g_ptr)?;
+        let segment = cpu.get_segment::<E>(g_ptr)?;
 
         let mut remaining_length = None;
         let mut total_received: usize = 0;
@@ -303,14 +404,16 @@ impl<'a> CommEcallHandler<'a> {
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
-                return Err("INS not supported"); // expected "Data"
+                return Err(CommEcallError::WrongINS); // expected "Data"
             };
 
             if (p1, p2) != (0, 0) {
-                return Err("Wrong P1/P2");
+                return Err(CommEcallError::WrongP1P2);
             }
 
-            let raw_data = comm.get_data().map_err(|_| "Invalid response from host")?;
+            let raw_data = comm
+                .get_data()
+                .map_err(|_| CommEcallError::InvalidResponse(""))?;
             let response = ReceiveBufferResponse::deserialize(raw_data)?;
 
             drop(comm); // TODO: figure out how to avoid having to deal with this drop explicitly
@@ -319,13 +422,17 @@ impl<'a> CommEcallHandler<'a> {
                 None => {
                     // first chunk, check if the total length is acceptable
                     if response.remaining_length > max_size as u32 {
-                        return Err("Received data is too large");
+                        return Err(CommEcallError::InvalidResponse(
+                            "Received data is too large",
+                        ));
                     }
                     remaining_length = Some(response.remaining_length);
                 }
                 Some(remaining) => {
                     if remaining != response.remaining_length {
-                        return Err("Mismatching remaining length");
+                        return Err(CommEcallError::InvalidResponse(
+                            "Mismatching remaining length",
+                        ));
                     }
                 }
             }
@@ -339,7 +446,7 @@ impl<'a> CommEcallHandler<'a> {
         Ok(total_received)
     }
 
-    fn handle_bn_modm(
+    fn handle_bn_modm<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         r: GuestPointer,
@@ -347,18 +454,20 @@ impl<'a> CommEcallHandler<'a> {
         len: usize,
         m: GuestPointer,
         m_len: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if len > MAX_BIGNUMBER_SIZE || m_len > MAX_BIGNUMBER_SIZE {
-            return Err("len or m_len is too large");
+            return Err(CommEcallError::InvalidParameters(
+                "len or m_len is too large",
+            ));
         }
 
         // copy inputs to local memory
         // we use r_local both for the input and for the result
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(n.0)?
+        cpu.get_segment::<E>(n.0)?
             .read_buffer(n.0, &mut r_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?
+        cpu.get_segment::<E>(m.0)?
             .read_buffer(m.0, &mut m_local[0..m_len])?;
 
         unsafe {
@@ -369,17 +478,17 @@ impl<'a> CommEcallHandler<'a> {
                 m_len,
             );
             if res != CX_OK {
-                return Err("modm failed");
+                return Err(CommEcallError::GenericError("modm failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
-    fn handle_bn_addm(
+    fn handle_bn_addm<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         r: GuestPointer,
@@ -387,20 +496,20 @@ impl<'a> CommEcallHandler<'a> {
         b: GuestPointer,
         m: GuestPointer,
         len: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if len > MAX_BIGNUMBER_SIZE {
-            return Err("len is too large");
+            return Err(CommEcallError::InvalidParameters("len is too large"));
         }
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?
+        cpu.get_segment::<E>(a.0)?
             .read_buffer(a.0, &mut a_local[0..len])?;
         let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(b.0)?
+        cpu.get_segment::<E>(b.0)?
             .read_buffer(b.0, &mut b_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?
+        cpu.get_segment::<E>(m.0)?
             .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
@@ -413,17 +522,17 @@ impl<'a> CommEcallHandler<'a> {
                 len,
             );
             if res != CX_OK {
-                return Err("addm failed");
+                return Err(CommEcallError::GenericError("addm failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
-    fn handle_bn_subm(
+    fn handle_bn_subm<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         r: GuestPointer,
@@ -431,20 +540,20 @@ impl<'a> CommEcallHandler<'a> {
         b: GuestPointer,
         m: GuestPointer,
         len: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if len > MAX_BIGNUMBER_SIZE {
-            return Err("len is too large");
+            return Err(CommEcallError::InvalidParameters("len is too large"));
         }
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?
+        cpu.get_segment::<E>(a.0)?
             .read_buffer(a.0, &mut a_local[0..len])?;
         let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(b.0)?
+        cpu.get_segment::<E>(b.0)?
             .read_buffer(b.0, &mut b_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?
+        cpu.get_segment::<E>(m.0)?
             .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
@@ -457,17 +566,17 @@ impl<'a> CommEcallHandler<'a> {
                 len,
             );
             if res != CX_OK {
-                return Err("addm failed");
+                return Err(CommEcallError::GenericError("subm failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
-    fn handle_bn_multm(
+    fn handle_bn_multm<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         r: GuestPointer,
@@ -475,20 +584,20 @@ impl<'a> CommEcallHandler<'a> {
         b: GuestPointer,
         m: GuestPointer,
         len: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if len > MAX_BIGNUMBER_SIZE {
-            return Err("len is too large");
+            return Err(CommEcallError::InvalidParameters("len is too large"));
         }
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?
+        cpu.get_segment::<E>(a.0)?
             .read_buffer(a.0, &mut a_local[0..len])?;
         let mut b_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(b.0)?
+        cpu.get_segment::<E>(b.0)?
             .read_buffer(b.0, &mut b_local[0..len])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?
+        cpu.get_segment::<E>(m.0)?
             .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
@@ -501,17 +610,17 @@ impl<'a> CommEcallHandler<'a> {
                 len,
             );
             if res != CX_OK {
-                return Err("addm failed");
+                return Err(CommEcallError::GenericError("multm failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
-    fn handle_bn_powm(
+    fn handle_bn_powm<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         r: GuestPointer,
@@ -520,23 +629,23 @@ impl<'a> CommEcallHandler<'a> {
         len_e: usize,
         m: GuestPointer,
         len: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if len_e > MAX_BIGNUMBER_SIZE {
-            return Err("len_e is too large");
+            return Err(CommEcallError::InvalidParameters("len_e is too large"));
         }
         if len > MAX_BIGNUMBER_SIZE {
-            return Err("len is too large");
+            return Err(CommEcallError::InvalidParameters("len is too large"));
         }
 
         // copy inputs to local memory
         let mut a_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(a.0)?
+        cpu.get_segment::<E>(a.0)?
             .read_buffer(a.0, &mut a_local[0..len])?;
         let mut e_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(e.0)?
+        cpu.get_segment::<E>(e.0)?
             .read_buffer(e.0, &mut e_local[0..len_e])?;
         let mut m_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
-        cpu.get_segment(m.0)?
+        cpu.get_segment::<E>(m.0)?
             .read_buffer(m.0, &mut m_local[0..len])?;
 
         let mut r_local: [u8; MAX_BIGNUMBER_SIZE] = [0; MAX_BIGNUMBER_SIZE];
@@ -550,22 +659,22 @@ impl<'a> CommEcallHandler<'a> {
                 len,
             );
             if res != CX_OK {
-                return Err("addm failed");
+                return Err(CommEcallError::GenericError("addm failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local[0..len])?;
         Ok(())
     }
 
-    fn handle_hash_init(
+    fn handle_hash_init<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         hash_id: u32,
         ctx: GuestPointer,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         // in-memory size of the hash context struct
         let ctx_size = LedgerHashContext::get_size_from_id(hash_id)?;
 
@@ -573,7 +682,7 @@ impl<'a> CommEcallHandler<'a> {
         let mut ctx_local: [u8; LedgerHashContext::MAX_HASH_CONTEXT_SIZE] =
             [0; LedgerHashContext::MAX_HASH_CONTEXT_SIZE];
 
-        cpu.get_segment(ctx.0)?
+        cpu.get_segment::<E>(ctx.0)?
             .read_buffer(ctx.0, &mut ctx_local[0..ctx_size])?;
 
         unsafe {
@@ -584,20 +693,20 @@ impl<'a> CommEcallHandler<'a> {
         }
 
         // copy context back to V-App memory
-        let segment = cpu.get_segment(ctx.0)?;
+        let segment = cpu.get_segment::<E>(ctx.0)?;
         segment.write_buffer(ctx.0, &ctx_local[0..ctx_size])?;
 
         Ok(())
     }
 
-    fn handle_hash_update(
+    fn handle_hash_update<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         hash_id: u32,
         ctx: GuestPointer,
         data: GuestPointer,
         data_len: usize,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         // in-memory size of the hash context struct
         let ctx_size = LedgerHashContext::get_size_from_id(hash_id)?;
 
@@ -609,14 +718,14 @@ impl<'a> CommEcallHandler<'a> {
         let mut ctx_local: [u8; LedgerHashContext::MAX_HASH_CONTEXT_SIZE] =
             [0; LedgerHashContext::MAX_HASH_CONTEXT_SIZE];
 
-        cpu.get_segment(ctx.0)?
+        cpu.get_segment::<E>(ctx.0)?
             .read_buffer(ctx.0, &mut ctx_local[0..ctx_size])?;
 
         // copy data to local memory in chanks of at most 256 bytes
         let mut data_local: [u8; 256] = [0; 256];
         let mut data_remaining = data_len;
         let mut data_ptr = data.0;
-        let data_seg = cpu.get_segment(data_ptr)?;
+        let data_seg = cpu.get_segment::<E>(data_ptr)?;
         while data_remaining > 0 {
             let copy_size = min(data_remaining, 256);
             data_seg.read_buffer(data_ptr, &mut data_local[0..copy_size])?;
@@ -634,19 +743,19 @@ impl<'a> CommEcallHandler<'a> {
         }
 
         // copy context back to V-App memory
-        cpu.get_segment(ctx.0)?
+        cpu.get_segment::<E>(ctx.0)?
             .write_buffer(ctx.0, &ctx_local[0..ctx_size])?;
 
         Ok(())
     }
 
-    fn handle_hash_digest(
+    fn handle_hash_digest<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         hash_id: u32,
         ctx: GuestPointer,
         digest: GuestPointer,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         // in-memory size of the hash context struct
         let ctx_size = LedgerHashContext::get_size_from_id(hash_id)?;
 
@@ -654,7 +763,7 @@ impl<'a> CommEcallHandler<'a> {
         let mut ctx_local: [u8; LedgerHashContext::MAX_HASH_CONTEXT_SIZE] =
             [0; LedgerHashContext::MAX_HASH_CONTEXT_SIZE];
 
-        cpu.get_segment(ctx.0)?
+        cpu.get_segment::<E>(ctx.0)?
             .read_buffer(ctx.0, &mut ctx_local[0..ctx_size])?;
 
         // compute the digest; no supported hash function has a digest bigger than 64 bytes
@@ -670,13 +779,13 @@ impl<'a> CommEcallHandler<'a> {
         // actual length of the digest
         let digest_len = LedgerHashContext::get_digest_len_from_id(hash_id)?;
         // copy digest to V-App memory
-        let segment = cpu.get_segment(digest.0)?;
+        let segment = cpu.get_segment::<E>(digest.0)?;
         segment.write_buffer(digest.0, &digest_local[0..digest_len])?;
 
         Ok(())
     }
 
-    fn handle_derive_hd_node(
+    fn handle_derive_hd_node<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
@@ -684,19 +793,19 @@ impl<'a> CommEcallHandler<'a> {
         path_len: usize,
         private_key: GuestPointer,
         chain_code: GuestPointer,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
         if path_len > MAX_BIP32_PATH {
-            return Err("path_len is too large");
+            return Err(CommEcallError::InvalidParameters("path_len is too large"));
         }
 
         // copy path to local memory (if path_len == 0, the pointer is invalid,
         // so we don't want to read from the segment)
         let mut path_local_raw: [u8; MAX_BIP32_PATH * 4] = [0; MAX_BIP32_PATH * 4];
         if path_len > 0 {
-            cpu.get_segment(path.0)?
+            cpu.get_segment::<E>(path.0)?
                 .read_buffer(path.0, &mut path_local_raw[0..(path_len * 4)])?;
         }
 
@@ -719,21 +828,21 @@ impl<'a> CommEcallHandler<'a> {
         }
 
         // copy private_key and chain_code to V-App memory
-        cpu.get_segment(private_key.0)?
+        cpu.get_segment::<E>(private_key.0)?
             .write_buffer(private_key.0, &private_key_local[..])?;
-        cpu.get_segment(chain_code.0)?
+        cpu.get_segment::<E>(chain_code.0)?
             .write_buffer(chain_code.0, &chain_code_local)?;
 
         Ok(())
     }
 
-    fn handle_get_master_fingerprint(
+    fn handle_get_master_fingerprint<E: fmt::Debug>(
         &self,
         _cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
-    ) -> Result<u32, &'static str> {
+    ) -> Result<u32, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         // derive the key
@@ -768,7 +877,7 @@ impl<'a> CommEcallHandler<'a> {
             );
 
             if ret1 != CX_OK || ret2 != CX_OK {
-                return Err("Failed to generate key pair");
+                return Err(CommEcallError::GenericError("Failed to generate key pair"));
             }
         }
 
@@ -784,28 +893,30 @@ impl<'a> CommEcallHandler<'a> {
         Ok(u32::from_be_bytes([rip[0], rip[1], rip[2], rip[3]]))
     }
 
-    fn handle_ecfp_add_point(
+    fn handle_ecfp_add_point<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
         r: GuestPointer,
         p: GuestPointer,
         q: GuestPointer,
-    ) -> Result<u32, &'static str> {
+    ) -> Result<u32, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         // copy inputs to local memory
         let mut p_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
         p_local.curve = curve as u8;
         p_local.W_len = 65;
-        cpu.get_segment(p.0)?.read_buffer(p.0, &mut p_local.W)?;
+        cpu.get_segment::<E>(p.0)?
+            .read_buffer(p.0, &mut p_local.W)?;
 
         let mut q_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
         q_local.curve = curve as u8;
         q_local.W_len = 65;
-        cpu.get_segment(q.0)?.read_buffer(q.0, &mut q_local.W)?;
+        cpu.get_segment::<E>(q.0)?
+            .read_buffer(q.0, &mut q_local.W)?;
 
         let mut r_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
         unsafe {
@@ -816,18 +927,18 @@ impl<'a> CommEcallHandler<'a> {
                 q_local.W.as_ptr(),
             );
             if res != CX_OK {
-                return Err("add_point failed");
+                return Err(CommEcallError::GenericError("add_point failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local.W)?;
 
         Ok(1)
     }
 
-    fn handle_ecfp_scalar_mult(
+    fn handle_ecfp_scalar_mult<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
@@ -835,14 +946,14 @@ impl<'a> CommEcallHandler<'a> {
         p: GuestPointer,
         k: GuestPointer,
         k_len: usize,
-    ) -> Result<u32, &'static str> {
+    ) -> Result<u32, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         if k_len > 32 {
             // TODO: do we need to support any larger?
-            return Err("k_len is too large");
+            return Err(CommEcallError::InvalidParameters("k_len is too large"));
         }
 
         // copy inputs to local memory
@@ -850,10 +961,11 @@ impl<'a> CommEcallHandler<'a> {
         let mut r_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
         r_local.curve = curve as u8;
         r_local.W_len = 65;
-        cpu.get_segment(p.0)?.read_buffer(p.0, &mut r_local.W)?;
+        cpu.get_segment::<E>(p.0)?
+            .read_buffer(p.0, &mut r_local.W)?;
 
         let mut k_local: [u8; 32] = [0; 32];
-        cpu.get_segment(k.0)?
+        cpu.get_segment::<E>(k.0)?
             .read_buffer(k.0, &mut k_local[0..k_len])?;
 
         unsafe {
@@ -864,18 +976,18 @@ impl<'a> CommEcallHandler<'a> {
                 k_len,
             );
             if res != CX_OK {
-                return Err("scalar_mult failed");
+                return Err(CommEcallError::GenericError("scalar_mult failed"));
             }
         }
 
         // copy r_local to r
-        let segment = cpu.get_segment(r.0)?;
+        let segment = cpu.get_segment::<E>(r.0)?;
         segment.write_buffer(r.0, &r_local.W)?;
 
         Ok(1)
     }
 
-    fn handle_ecdsa_sign(
+    fn handle_ecdsa_sign<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
@@ -884,17 +996,21 @@ impl<'a> CommEcallHandler<'a> {
         privkey: GuestPointer,
         msg_hash: GuestPointer,
         signature: GuestPointer,
-    ) -> Result<usize, &'static str> {
+    ) -> Result<usize, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         if mode != ecall_constants::EcdsaSignMode::RFC6979 as u32 {
-            return Err("Invalid or unsupported ecdsa signing mode");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid or unsupported ecdsa signing mode",
+            ));
         }
 
         if hash_id != ecall_constants::HashId::Sha256 as u32 {
-            return Err("Invalid or unsupported hash id");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid or unsupported hash id",
+            ));
         }
 
         // copy inputs to local memory
@@ -902,11 +1018,11 @@ impl<'a> CommEcallHandler<'a> {
         let mut privkey_local: ledger_secure_sdk_sys::cx_ecfp_private_key_t = Default::default();
         privkey_local.curve = curve as u8;
         privkey_local.d_len = 32;
-        cpu.get_segment(privkey.0)?
+        cpu.get_segment::<E>(privkey.0)?
             .read_buffer(privkey.0, &mut privkey_local.d)?;
 
         let mut msg_hash_local: [u8; 32] = [0; 32];
-        cpu.get_segment(msg_hash.0)?
+        cpu.get_segment::<E>(msg_hash.0)?
             .read_buffer(msg_hash.0, &mut msg_hash_local)?;
 
         // ECDSA signatures are at most 72 bytes long.
@@ -926,18 +1042,20 @@ impl<'a> CommEcallHandler<'a> {
                 &mut info,
             );
             if res != CX_OK {
-                return Err("cx_ecdsa_sign_no_throw failed");
+                return Err(CommEcallError::GenericError(
+                    "cx_ecdsa_sign_no_throw failed",
+                ));
             }
         }
 
         // copy signature to V-App memory
-        cpu.get_segment(signature.0)?
+        cpu.get_segment::<E>(signature.0)?
             .write_buffer(signature.0, &signature_local[0..signature_len as usize])?;
 
         Ok(signature_len)
     }
 
-    fn handle_ecdsa_verify(
+    fn handle_ecdsa_verify<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
@@ -945,28 +1063,30 @@ impl<'a> CommEcallHandler<'a> {
         msg_hash: GuestPointer,
         signature: GuestPointer,
         signature_len: usize,
-    ) -> Result<u32, &'static str> {
+    ) -> Result<u32, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         if signature_len > 72 {
-            return Err("signature_len is too large");
+            return Err(CommEcallError::InvalidParameters(
+                "signature_len is too large",
+            ));
         }
 
         // copy inputs to local memory
         let mut pubkey_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
         pubkey_local.curve = curve as u8;
         pubkey_local.W_len = 65;
-        cpu.get_segment(pubkey.0)?
+        cpu.get_segment::<E>(pubkey.0)?
             .read_buffer(pubkey.0, &mut pubkey_local.W)?;
 
         let mut msg_hash_local: [u8; 32] = [0; 32];
-        cpu.get_segment(msg_hash.0)?
+        cpu.get_segment::<E>(msg_hash.0)?
             .read_buffer(msg_hash.0, &mut msg_hash_local)?;
 
         let mut signature_local: [u8; 72] = [0; 72];
-        cpu.get_segment(signature.0)?
+        cpu.get_segment::<E>(signature.0)?
             .read_buffer(signature.0, &mut signature_local[0..signature_len])?;
 
         // verify the signature
@@ -983,7 +1103,7 @@ impl<'a> CommEcallHandler<'a> {
         Ok(res as u32)
     }
 
-    fn handle_schnorr_sign(
+    fn handle_schnorr_sign<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
@@ -993,21 +1113,25 @@ impl<'a> CommEcallHandler<'a> {
         msg: GuestPointer,
         msg_len: usize,
         signature: GuestPointer,
-    ) -> Result<usize, &'static str> {
+    ) -> Result<usize, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         if mode != ecall_constants::SchnorrSignMode::BIP340 as u32 {
-            return Err("Invalid or unsupported schnorr signing mode");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid or unsupported schnorr signing mode",
+            ));
         }
 
         if msg_len > 128 {
-            return Err("msg_len is too large");
+            return Err(CommEcallError::InvalidParameters("msg_len is too large"));
         }
 
         if hash_id != ecall_constants::HashId::Sha256 as u32 {
-            return Err("Invalid or unsupported hash id");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid or unsupported hash id",
+            ));
         }
 
         // copy inputs to local memory
@@ -1015,11 +1139,12 @@ impl<'a> CommEcallHandler<'a> {
         let mut privkey_local: ledger_secure_sdk_sys::cx_ecfp_private_key_t = Default::default();
         privkey_local.curve = curve as u8;
         privkey_local.d_len = 32;
-        cpu.get_segment(privkey.0)?
+        cpu.get_segment::<E>(privkey.0)?
             .read_buffer(privkey.0, &mut privkey_local.d)?;
 
         let mut msg_local = vec![0; 128];
-        cpu.get_segment(msg.0)?.read_buffer(msg.0, &mut msg_local)?;
+        cpu.get_segment::<E>(msg.0)?
+            .read_buffer(msg.0, &mut msg_local)?;
 
         // Schnorr signatures are at most 64 bytes long.
         let mut signature_local: [u8; 64] = [0; 64];
@@ -1040,23 +1165,27 @@ impl<'a> CommEcallHandler<'a> {
                 &mut signature_len,
             );
             if res != CX_OK {
-                return Err("cx_schnorr_sign_no_throw failed");
+                return Err(CommEcallError::GenericError(
+                    "cx_schnorr_sign_no_throw failed",
+                ));
             }
         }
 
         // signatures returned per BIP340 are always exactly 64 bytes
         if signature_len != 64 {
-            return Err("cx_schnorr_sign_no_throw returned a signature of unexpected length");
+            return Err(CommEcallError::GenericError(
+                "cx_schnorr_sign_no_throw returned a signature of unexpected length",
+            ));
         }
 
         // copy signature to V-App memory
-        cpu.get_segment(signature.0)?
+        cpu.get_segment::<E>(signature.0)?
             .write_buffer(signature.0, &signature_local[0..signature_len as usize])?;
 
         Ok(signature_len)
     }
 
-    fn handle_schnorr_verify(
+    fn handle_schnorr_verify<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         curve: u32,
@@ -1067,39 +1196,46 @@ impl<'a> CommEcallHandler<'a> {
         msg_len: usize,
         signature: GuestPointer,
         signature_len: usize,
-    ) -> Result<u32, &'static str> {
+    ) -> Result<u32, CommEcallError> {
         if curve != CurveKind::Secp256k1 as u32 {
-            return Err("Unsupported curve");
+            return Err(CommEcallError::InvalidParameters("Unsupported curve"));
         }
 
         if mode != ecall_constants::SchnorrSignMode::BIP340 as u32 {
-            return Err("Invalid or unsupported schnorr signing mode");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid or unsupported schnorr signing mode",
+            ));
         }
 
         if msg_len > 128 {
-            return Err("msg_len is too large");
+            return Err(CommEcallError::InvalidParameters("msg_len is too large"));
         }
 
         if hash_id != ecall_constants::HashId::Sha256 as u32 {
-            return Err("Invalid or unsupported hash id");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid or unsupported hash id",
+            ));
         }
 
         if signature_len != 64 {
-            return Err("Invalid signature length");
+            return Err(CommEcallError::InvalidParameters(
+                "Invalid signature length",
+            ));
         }
 
         // copy inputs to local memory
         let mut pubkey_local: ledger_secure_sdk_sys::cx_ecfp_public_key_t = Default::default();
         pubkey_local.curve = curve as u8;
         pubkey_local.W_len = 65;
-        cpu.get_segment(pubkey.0)?
+        cpu.get_segment::<E>(pubkey.0)?
             .read_buffer(pubkey.0, &mut pubkey_local.W)?;
 
         let mut msg_local = vec![0; 128];
-        cpu.get_segment(msg.0)?.read_buffer(msg.0, &mut msg_local)?;
+        cpu.get_segment::<E>(msg.0)?
+            .read_buffer(msg.0, &mut msg_local)?;
 
         let mut signature_local: [u8; 64] = [0; 64];
-        cpu.get_segment(signature.0)?
+        cpu.get_segment::<E>(signature.0)?
             .read_buffer(signature.0, &mut signature_local)?;
 
         // verify the signature
@@ -1117,14 +1253,6 @@ impl<'a> CommEcallHandler<'a> {
 
         Ok(res as u32)
     }
-}
-
-// make an error type for the CommEcallHandler<'a>
-pub enum CommEcallError {
-    Exit(i32),
-    Panic,
-    GenericError(&'static str),
-    UnhandledEcall,
 }
 
 impl<'a> EcallHandler for CommEcallHandler<'a> {
@@ -1148,16 +1276,16 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
         match ecall_code {
             ECALL_EXIT => return Err(CommEcallError::Exit(reg!(A0) as i32)),
             ECALL_FATAL => {
-                self.handle_panic(cpu, GPreg!(A0), reg!(A1) as usize)
+                self.handle_panic::<CommEcallError>(cpu, GPreg!(A0), reg!(A1) as usize)
                     .map_err(|_| CommEcallError::GenericError("xsend failed"))?;
                 return Err(CommEcallError::Panic);
             }
             ECALL_XSEND => self
-                .handle_xsend(cpu, GPreg!(A0), reg!(A1) as usize)
+                .handle_xsend::<CommEcallError>(cpu, GPreg!(A0), reg!(A1) as usize)
                 .map_err(|_| CommEcallError::GenericError("xsend failed"))?,
             ECALL_XRECV => {
                 let ret = self
-                    .handle_xrecv(cpu, GPreg!(A0), reg!(A1) as usize)
+                    .handle_xrecv::<CommEcallError>(cpu, GPreg!(A0), reg!(A1) as usize)
                     .map_err(|_| CommEcallError::GenericError("xrecv failed"))?;
                 reg!(A0) = ret as u32;
             }
@@ -1192,33 +1320,31 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                 }
             }
             ECALL_MODM => {
-                self.handle_bn_modm(
+                self.handle_bn_modm::<CommEcallError>(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
                     reg!(A2) as usize,
                     GPreg!(A3),
                     reg!(A4) as usize,
-                )
-                .map_err(|_| CommEcallError::GenericError("bn_modm failed"))?;
+                )?;
 
                 reg!(A0) = 1;
             }
             ECALL_ADDM => {
-                self.handle_bn_addm(
+                self.handle_bn_addm::<CommEcallError>(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
                     GPreg!(A2),
                     GPreg!(A3),
                     reg!(A4) as usize,
-                )
-                .map_err(|_| CommEcallError::GenericError("bn_addm failed"))?;
+                )?;
 
                 reg!(A0) = 1;
             }
             ECALL_SUBM => {
-                self.handle_bn_subm(
+                self.handle_bn_subm::<CommEcallError>(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -1231,20 +1357,19 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                 reg!(A0) = 1;
             }
             ECALL_MULTM => {
-                self.handle_bn_multm(
+                self.handle_bn_multm::<CommEcallError>(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
                     GPreg!(A2),
                     GPreg!(A3),
                     reg!(A4) as usize,
-                )
-                .map_err(|_| CommEcallError::GenericError("bn_multm failed"))?;
+                )?;
 
                 reg!(A0) = 1;
             }
             ECALL_POWM => {
-                self.handle_bn_powm(
+                self.handle_bn_powm::<CommEcallError>(
                     cpu,
                     GPreg!(A0),
                     GPreg!(A1),
@@ -1252,113 +1377,107 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     reg!(A3) as usize,
                     GPreg!(A4),
                     reg!(A5) as usize,
-                )
-                .map_err(|_| CommEcallError::GenericError("bn_powm failed"))?;
+                )?;
 
                 reg!(A0) = 1;
             }
             ECALL_HASH_INIT => self
-                .handle_hash_init(cpu, reg!(A0), GPreg!(A1))
+                .handle_hash_init::<CommEcallError>(cpu, reg!(A0), GPreg!(A1))
                 .map_err(|_| CommEcallError::GenericError("hash_init failed"))?,
             ECALL_HASH_UPDATE => self
-                .handle_hash_update(cpu, reg!(A0), GPreg!(A1), GPreg!(A2), reg!(A3) as usize)
+                .handle_hash_update::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    reg!(A3) as usize,
+                )
                 .map_err(|_| CommEcallError::GenericError("hash_update failed"))?,
             ECALL_HASH_DIGEST => self
-                .handle_hash_digest(cpu, reg!(A0), GPreg!(A1), GPreg!(A2))
+                .handle_hash_digest::<CommEcallError>(cpu, reg!(A0), GPreg!(A1), GPreg!(A2))
                 .map_err(|_| CommEcallError::GenericError("hash_digest failed"))?,
 
             ECALL_DERIVE_HD_NODE => {
-                self.handle_derive_hd_node(
+                self.handle_derive_hd_node::<CommEcallError>(
                     cpu,
                     reg!(A0),
                     GPreg!(A1),
                     reg!(A2) as usize,
                     GPreg!(A3),
                     GPreg!(A4),
-                )
-                .map_err(|_| CommEcallError::GenericError("HD node derivation failed"))?;
+                )?;
 
                 reg!(A0) = 1;
             }
             ECALL_GET_MASTER_FINGERPRINT => {
-                reg!(A0) = self
-                    .handle_get_master_fingerprint(cpu, reg!(A0))
-                    .map_err(|_| CommEcallError::GenericError("get_master_fingerprint"))?;
+                reg!(A0) = self.handle_get_master_fingerprint::<CommEcallError>(cpu, reg!(A0))?;
             }
 
             ECALL_ECFP_ADD_POINT => {
-                reg!(A0) = self
-                    .handle_ecfp_add_point(cpu, reg!(A0), GPreg!(A1), GPreg!(A2), GPreg!(A3))
-                    .map_err(|_| CommEcallError::GenericError("ecfp_add_point failed"))?;
+                reg!(A0) = self.handle_ecfp_add_point::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    GPreg!(A3),
+                )?;
             }
             ECALL_ECFP_SCALAR_MULT => {
-                reg!(A0) = self
-                    .handle_ecfp_scalar_mult(
-                        cpu,
-                        reg!(A0),
-                        GPreg!(A1),
-                        GPreg!(A2),
-                        GPreg!(A3),
-                        reg!(A4) as usize,
-                    )
-                    .map_err(|_| CommEcallError::GenericError("ecfp_scalar_mult failed"))?;
+                reg!(A0) = self.handle_ecfp_scalar_mult::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    GPreg!(A3),
+                    reg!(A4) as usize,
+                )?;
             }
 
             ECALL_ECDSA_SIGN => {
-                reg!(A0) = self
-                    .handle_ecdsa_sign(
-                        cpu,
-                        reg!(A0),
-                        reg!(A1),
-                        reg!(A2),
-                        GPreg!(A3),
-                        GPreg!(A4),
-                        GPreg!(A5),
-                    )
-                    .map_err(|_| CommEcallError::GenericError("ecdsa_sign failed"))?
-                    as u32;
+                reg!(A0) = self.handle_ecdsa_sign::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    reg!(A1),
+                    reg!(A2),
+                    GPreg!(A3),
+                    GPreg!(A4),
+                    GPreg!(A5),
+                )? as u32;
             }
             ECALL_ECDSA_VERIFY => {
-                reg!(A0) = self
-                    .handle_ecdsa_verify(
-                        cpu,
-                        reg!(A0),
-                        GPreg!(A1),
-                        GPreg!(A2),
-                        GPreg!(A3),
-                        reg!(A4) as usize,
-                    )
-                    .map_err(|_| CommEcallError::GenericError("ecdsa_verify failed"))?;
+                reg!(A0) = self.handle_ecdsa_verify::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    GPreg!(A1),
+                    GPreg!(A2),
+                    GPreg!(A3),
+                    reg!(A4) as usize,
+                )?;
             }
             ECALL_SCHNORR_SIGN => {
-                reg!(A0) = self
-                    .handle_schnorr_sign(
-                        cpu,
-                        reg!(A0),
-                        reg!(A1),
-                        reg!(A2),
-                        GPreg!(A3),
-                        GPreg!(A4),
-                        reg!(A5) as usize,
-                        GPreg!(A6),
-                    )
-                    .map_err(|_| CommEcallError::GenericError("schnorr_sign failed"))?
-                    as u32;
+                reg!(A0) = self.handle_schnorr_sign::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    reg!(A1),
+                    reg!(A2),
+                    GPreg!(A3),
+                    GPreg!(A4),
+                    reg!(A5) as usize,
+                    GPreg!(A6),
+                )? as u32;
             }
             ECALL_SCHNORR_VERIFY => {
-                reg!(A0) = self
-                    .handle_schnorr_verify(
-                        cpu,
-                        reg!(A0),
-                        reg!(A1),
-                        reg!(A2),
-                        GPreg!(A3),
-                        GPreg!(A4),
-                        reg!(A5) as usize,
-                        GPreg!(A6),
-                        reg!(A7) as usize,
-                    )
-                    .map_err(|_| CommEcallError::GenericError("schnorr_verify failed"))?;
+                reg!(A0) = self.handle_schnorr_verify::<CommEcallError>(
+                    cpu,
+                    reg!(A0),
+                    reg!(A1),
+                    reg!(A2),
+                    GPreg!(A3),
+                    GPreg!(A4),
+                    reg!(A5) as usize,
+                    GPreg!(A6),
+                    reg!(A7) as usize,
+                )?;
             }
 
             // Any other ecall is unhandled and will case the CPU to abort
