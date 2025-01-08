@@ -103,7 +103,7 @@ impl<M: PagedMemory> MemorySegment<M> {
     /// Creates a new `MemorySegment`.
     pub fn new(start_address: u32, size: u32, paged_memory: M) -> Result<Self, MemoryError> {
         if size == 0 {
-            MemoryError::ZeroSize;
+            return Err(MemoryError::ZeroSize);
         }
 
         if start_address & 3 != 0 {
