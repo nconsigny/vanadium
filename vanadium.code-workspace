@@ -16,16 +16,20 @@
       "path": "docs",
     },
     {
+      "path": "apps/bitcoin/docs",
+      "name": "₿ vnd-bitcoin documentation"
+    },
+    {
       "path": "apps/bitcoin/app",
-      "name": "vnd-bitcoin"
+      "name": "₿ vnd-bitcoin"
     },
     {
       "path": "apps/bitcoin/common",
-      "name": "vnd-bitcoin-common"
+      "name": "₿ vnd-bitcoin-common"
     },
     {
       "path": "apps/bitcoin/client",
-      "name": "vnd-bitcoin-client"
+      "name": "₿ vnd-bitcoin-client"
     },
     {
       "path": "apps/test/app",
