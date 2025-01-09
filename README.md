@@ -27,7 +27,7 @@ This repository is organized in a monorepo structure.
 * [client-sdk](client-sdk) <small>[<tt>native</tt>]</small> - Vanadium V-App client SDK. V-App Clients use it as a base for their own client crates.
 * [common](common) <small>[<tt>arm|riscv|native</tt>], no_std</small> - Any code that is shared among two or more of the above crates.
 * [apps](apps) - Complete V-Apps, and their clients
-  * [test](apps/test) - Simple V-App to test the Vanadium.
+  * [test](apps/test) - Simple V-App to test the Vanadium VM, implementing various computational tasks.
   * [sadik](apps/sadik) - A V-App specifically designed to test the various functionality of the Vanadium V-App SDK, and particularly the ECALLs.
   * [bitcoin](apps/bitcoin) - Grandiose things will happen here, but it's mostly empty at this stage.
 
