@@ -53,26 +53,26 @@ fn handle_req_<'a>(buffer: &'a [u8]) -> Result<Response<'a>, &'static str> {
     let request: Request =
         Request::from_reader(&mut reader, buffer).map_err(|_| "Failed to parse request")?; // TODO: proper error handling
 
-    let response = Response {
-        response: match request.request {
-            OneOfrequest::get_version(_) => OneOfresponse::get_version(todo!()),
-            OneOfrequest::exit(_) => {
-                sdk::exit(0);
-            }
-            OneOfrequest::get_master_fingerprint(_) => {
-                OneOfresponse::get_master_fingerprint(handle_get_master_fingerprint()?)
-            }
-            OneOfrequest::get_extended_pubkey(req) => OneOfresponse::get_extended_pubkey(todo!()),
-            OneOfrequest::register_wallet(req) => OneOfresponse::register_wallet(todo!()),
-            OneOfrequest::get_wallet_address(req) => OneOfresponse::get_wallet_address(todo!()),
-            OneOfrequest::sign_psbt(req) => OneOfresponse::sign_psbt(todo!()),
-            OneOfrequest::None => OneOfresponse::error(ResponseError {
-                error_msg: Cow::Borrowed("Invalid command"),
-            }),
-        },
+    let response = match request.request {
+        OneOfrequest::get_version(_) => OneOfresponse::get_version(todo!()),
+        OneOfrequest::exit(_) => {
+            sdk::exit(0);
+        }
+        OneOfrequest::get_master_fingerprint(_) => {
+            OneOfresponse::get_master_fingerprint(handle_get_master_fingerprint()?)
+        }
+        OneOfrequest::get_extended_pubkey(req) => {
+            OneOfresponse::get_extended_pubkey(handle_get_extended_pubkey(&req)?)
+        }
+        OneOfrequest::register_wallet(_req) => OneOfresponse::register_wallet(todo!()),
+        OneOfrequest::get_wallet_address(_req) => OneOfresponse::get_wallet_address(todo!()),
+        OneOfrequest::sign_psbt(_req) => OneOfresponse::sign_psbt(todo!()),
+        OneOfrequest::None => OneOfresponse::error(ResponseError {
+            error_msg: Cow::Borrowed("Invalid command"),
+        }),
     };
 
-    Ok(response)
+    Ok(Response { response })
 }
 
 fn handle_req(buffer: &[u8]) -> Vec<u8> {

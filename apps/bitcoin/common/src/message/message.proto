@@ -23,7 +23,7 @@ message RequestGetExtendedPubkey {
 }
 
 message ResponseGetExtendedPubkey {
-  string pubkey = 1;
+  bytes pubkey = 1;
 }
 
 message RequestRegisterWallet {
