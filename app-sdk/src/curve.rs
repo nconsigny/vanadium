@@ -229,6 +229,16 @@ where
     }
 }
 
+impl<C, const SCALAR_LENGTH: usize> AsRef<Point<C, SCALAR_LENGTH>>
+    for EcfpPublicKey<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn as_ref(&self) -> &Point<C, SCALAR_LENGTH> {
+        &self.public_key
+    }
+}
+
 pub struct EcfpPrivateKey<C, const SCALAR_LENGTH: usize>
 where
     C: Curve<SCALAR_LENGTH>,
@@ -546,10 +556,7 @@ mod tests {
 
         let signature = privkey.ecdsa_sign_hash(&msg_hash).unwrap();
 
-        println!("Signature: {:?}", signature);
-
         let pubkey = privkey.to_public_key();
-        println!("Public key: {:?}", pubkey.public_key.to_bytes());
         pubkey.ecdsa_verify_hash(&msg_hash, &signature).unwrap();
     }
 
@@ -564,11 +571,8 @@ mod tests {
         let msg = "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
 
         let signature = privkey.schnorr_sign(msg.as_bytes()).unwrap();
-        println!("Signature: {:?}", signature);
 
         let pubkey = privkey.to_public_key();
         pubkey.schnorr_verify(msg.as_bytes(), &signature).unwrap();
-
-        println!("pubkey: {:?}", pubkey.public_key.to_bytes());
     }
 }

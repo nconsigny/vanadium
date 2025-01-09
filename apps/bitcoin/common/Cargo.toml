@@ -6,4 +6,7 @@ edition = "2021"
 [dependencies]
 quick-protobuf = { version = "0.8.1", default-features = false }
 
+[build-dependencies]
+pb-rs = "0.10.0"
+
 [workspace]
