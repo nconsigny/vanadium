@@ -8,4 +8,7 @@ common = { package = "vnd-bitcoin-common", path = "../common"}
 quick-protobuf = { version = "0.8.1", default-features = false }
 sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk"}
 
+[dev-dependencies]
+bs58 = { version = "0.5.1"}
+
 [workspace]

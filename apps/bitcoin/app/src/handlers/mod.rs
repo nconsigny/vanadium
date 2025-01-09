@@ -1,19 +1,5 @@
-use common::message::ResponseGetMasterFingerprint;
-use sdk::curve::Curve;
+mod get_extended_pubkey;
+mod get_master_fingerprint;
 
-pub fn handle_get_master_fingerprint() -> Result<ResponseGetMasterFingerprint, &'static str> {
-    Ok(ResponseGetMasterFingerprint {
-        fingerprint: sdk::curve::Secp256k1::get_master_fingerprint(),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_handle_get_master_fingerprint() {
-        let response = handle_get_master_fingerprint().unwrap();
-        assert_eq!(response.fingerprint, 0xf5acc2fdu32);
-    }
-}
+pub use get_extended_pubkey::handle_get_extended_pubkey;
+pub use get_master_fingerprint::handle_get_master_fingerprint;
