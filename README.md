@@ -30,6 +30,9 @@ This repository is organized in a monorepo structure.
   * [test](apps/test) - Simple V-App to test the Vanadium VM, implementing various computational tasks.
   * [sadik](apps/sadik) - A V-App specifically designed to test the various functionality of the Vanadium V-App SDK, and particularly the ECALLs.
   * [bitcoin](apps/bitcoin) - Grandiose things will happen here, but it's mostly empty at this stage.
+* [libs](libs) - General purpos libraries that can be used by V-Apps
+  * [bitcoin](libs/bitcoin) - A custom clone of the [rust-bitcoin](https://github.com/rust-bitcoin/rust-bitcoin) library
+
 
 In VSCode, opening the [vanadium.code-workspace](vanadium.code-workspace) is the most convenient way to work with this repository.
 
