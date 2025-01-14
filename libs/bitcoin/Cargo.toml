@@ -7,11 +7,13 @@ repository = "https://github.com/rust-bitcoin/rust-bitcoin/"
 documentation = "https://docs.rs/bitcoin/"
 
 [features]
-default = []
+default = ["secp-lowmemory"]
 std = []
 rand-std = []
 rand = []
 serde = ["actual-serde", "hashes/serde", "secp256k1/serde", "internals/serde", "units/serde"]
+secp-lowmemory = ["secp256k1/lowmemory"]
+secp-recovery = ["secp256k1/recovery"]
 
 
 [lib]
