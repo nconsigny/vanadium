@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use alloc::{borrow::Cow, vec::Vec};
 
 use common::message::{RequestGetExtendedPubkey, ResponseGetExtendedPubkey};
 use sdk::{
