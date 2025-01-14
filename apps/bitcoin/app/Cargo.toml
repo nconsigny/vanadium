@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitcoin = { package = "vlib-bitcoin", path = "../../../libs/bitcoin", default-features = false}
+bitcoin = { package = "vlib-bitcoin", path = "../../../libs/bitcoin"}
 common = { package = "vnd-bitcoin-common", path = "../common"}
 quick-protobuf = { version = "0.8.1", default-features = false }
 sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk"}
