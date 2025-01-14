@@ -16,6 +16,10 @@
       "path": "docs",
     },
     {
+      "path": "libs/bitcoin",
+      "name": "₿ vlib-bitcoin"
+    },
+    {
       "path": "apps/bitcoin/docs",
       "name": "₿ vnd-bitcoin documentation"
     },
