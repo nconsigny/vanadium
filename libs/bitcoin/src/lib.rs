@@ -3,7 +3,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(bench, feature(test))]
 // Coding conventions.
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 // Instead of littering the codebase for non-fuzzing code just globally allow.
 #![cfg_attr(fuzzing, allow(dead_code, unused_imports))]
 // Exclude lints we don't think are valuable.
@@ -22,6 +22,15 @@
 
 // #[cfg(bench)]
 // extern crate test;
+
+#[cfg(feature = "std")]
+compile_error!("The `std` feature is not supported.");
+
+#[cfg(feature = "rand-std")]
+compile_error!("The `rand-std` feature is not supported.");
+
+#[cfg(feature = "rand")]
+compile_error!("The `rand` feature is not supported.");
 
 #[macro_use]
 extern crate alloc;
