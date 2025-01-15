@@ -62,16 +62,16 @@ pub extern crate ordered;
 /// for the SECG elliptic curve group secp256k1 and related utilities.
 pub extern crate secp256k1;
 
-// #[cfg(feature = "serde")]
-// #[macro_use]
-// extern crate actual_serde as serde;
+#[cfg(feature = "serde")]
+#[macro_use]
+extern crate actual_serde as serde;
 
 // #[cfg(test)]
 // #[macro_use]
 // mod test_macros;
 mod internal_macros;
-// #[cfg(feature = "serde")]
-// mod serde_utils;
+#[cfg(feature = "serde")]
+mod serde_utils;
 
 // #[macro_use]
 pub mod address;
