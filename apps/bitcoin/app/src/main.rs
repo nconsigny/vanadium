@@ -9,7 +9,12 @@ use sdk::fatal;
 extern crate alloc;
 extern crate quick_protobuf;
 
+mod accounts;
+mod constants;
 mod handlers;
+mod merkle;
+mod script;
+mod taproot;
 
 use handlers::*;
 
@@ -64,8 +69,8 @@ fn handle_req_<'a>(buffer: &'a [u8]) -> Result<Response<'a>, &'static str> {
         OneOfrequest::get_extended_pubkey(req) => {
             OneOfresponse::get_extended_pubkey(handle_get_extended_pubkey(&req)?)
         }
-        OneOfrequest::register_wallet(_req) => OneOfresponse::register_wallet(todo!()),
-        OneOfrequest::get_wallet_address(_req) => OneOfresponse::get_wallet_address(todo!()),
+        OneOfrequest::register_account(_req) => OneOfresponse::register_account(todo!()),
+        OneOfrequest::get_address(req) => OneOfresponse::get_address(handle_get_address(&req)?),
         OneOfrequest::sign_psbt(_req) => OneOfresponse::sign_psbt(todo!()),
         OneOfrequest::None => OneOfresponse::error(ResponseError {
             error_msg: Cow::Borrowed("Invalid command"),
