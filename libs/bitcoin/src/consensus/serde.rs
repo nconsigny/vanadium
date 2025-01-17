@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 // SPDX-License-Identifier: CC0-1.0
 
 //! Serde serialization via consensus encoding

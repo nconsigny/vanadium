@@ -26,37 +26,61 @@ message ResponseGetExtendedPubkey {
   bytes pubkey = 1;
 }
 
-message RequestRegisterWallet {
+message KeyOrigin {
+  uint32 fingerprint = 1;
+  repeated uint32 path = 2;
+}
+
+message KeyInformation {
+  bytes pubkey = 1;
+  optional KeyOrigin origin = 2;
+}
+
+message WalletPolicy {
+  string descriptor_template = 1;
+  repeated KeyInformation keys_info = 2;
+}
+
+message WalletPolicyCoordinates {
+  bool is_change = 1;
+  uint32 address_index = 2;
+}
+
+message Account {
+  oneof account {
+    WalletPolicy wallet_policy = 2;
+  }
+}
+
+message AccountCoordinates {
+  oneof account {
+    WalletPolicyCoordinates wallet_policy_coordinates = 1;
+  }
+}
+
+message RequestRegisterAccount {
   string name = 1;
-  string descriptor_template = 2;
-  repeated string keys_info = 3;
+  Account account = 2;
 }
 
-message ResponseRegisterWallet {
-  bytes wallet_id = 1;
-  bytes wallet_hmac = 2;
+message ResponseRegisterAccount {
+  bytes account_id = 1;
+  bytes hmac = 2;
 }
 
-message RequestGetWalletAddress {
+message RequestGetAddress {
   bool display = 1;
   string name = 2;
-  string descriptor_template = 3;
-  repeated string keys_info = 4;
-  optional bytes wallet_hmac = 5;
-  bool change = 6;
-  uint32 address_index = 7;
+  Account account = 3;
+  AccountCoordinates account_coordinates = 4;
 }
 
-message ResponseGetWalletAddress {
+message ResponseGetAddress {
   string address = 1;
 }
 
 message RequestSignPsbt {
   bytes psbt = 1;
-  string name = 2;
-  string descriptor_template = 3;
-  repeated string keys_info = 4;
-  optional bytes wallet_hmac = 5;
 }
 
 message PartialSignature {
@@ -66,26 +90,8 @@ message PartialSignature {
   bytes leaf_hash = 4; // Optional. If it's not set, it will have the default value (empty).
 }
 
-message MusigPublicNonce {
-  uint32 input_index = 1;
-  bytes pubnonce = 2;  // 66 bytes, concatenation of two pubkeys
-  bytes participant_public_key = 3;
-  bytes xonly_key = 4;
-  bytes leaf_hash = 5; // Optional. If it's not set, it will have the default value (empty).
-}
-
-message MusigPartialSignature {
-  uint32 input_index = 1;
-  bytes signature = 2;  // 32-bytes partial signature
-  bytes participant_public_key = 3;
-  bytes xonly_key = 4;
-  bytes leaf_hash = 5; // Optional. If it's not set, it will have the default value (empty).
-}
-
 message ResponseSignPsbt {
   repeated PartialSignature partial_signatures = 1;
-  repeated MusigPublicNonce musig_public_nonces = 2;
-  repeated MusigPartialSignature musig_partial_signatures = 3;
 }
 
 
@@ -99,8 +105,8 @@ message Request {
     RequestExit exit = 2;
     RequestGetMasterFingerprint get_master_fingerprint = 3;
     RequestGetExtendedPubkey get_extended_pubkey = 4;
-    RequestRegisterWallet register_wallet = 5;
-    RequestGetWalletAddress get_wallet_address = 6;
+    RequestRegisterAccount register_account = 5;
+    RequestGetAddress get_address = 6;
     RequestSignPsbt sign_psbt = 7;
   }
 }
@@ -110,8 +116,8 @@ message Response {
     ResponseGetVersion get_version = 1;
     ResponseGetMasterFingerprint get_master_fingerprint = 2;
     ResponseGetExtendedPubkey get_extended_pubkey = 3;
-    ResponseRegisterWallet register_wallet = 4;
-    ResponseGetWalletAddress get_wallet_address = 5;
+    ResponseRegisterAccount register_account = 4;
+    ResponseGetAddress get_address = 5;
     ResponseSignPsbt sign_psbt = 6;
     ResponseError error = 7;
   }

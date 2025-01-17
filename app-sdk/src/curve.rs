@@ -5,6 +5,7 @@ use core::{
 };
 
 use hex_literal::hex;
+use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
 use common::ecall_constants::{CurveKind, EcdsaSignMode, HashId, SchnorrSignMode};
@@ -257,6 +258,24 @@ where
             private_key: Zeroizing::new(private_key),
         }
     }
+}
+
+impl<C, const SCALAR_LENGTH: usize> PartialEq for EcfpPrivateKey<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.private_key
+            .deref()
+            .ct_eq(other.private_key.deref())
+            .unwrap_u8()
+            == 1
+    }
+}
+
+impl<C, const SCALAR_LENGTH: usize> Eq for EcfpPrivateKey<C, SCALAR_LENGTH> where
+    C: Curve<SCALAR_LENGTH>
+{
 }
 
 pub trait ToPublicKey<C, const SCALAR_LENGTH: usize>
