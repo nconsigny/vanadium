@@ -14,7 +14,7 @@ numtoa = "0.2.4"
 postcard = { version = "1.0.8", features = ["alloc"] }
 ledger_secure_sdk_sys = "1.6.1"
 zeroize = "1.8.1"
-ledger_device_sdk = "1.19.1"
+ledger_device_sdk = { version = "1.19.1", features = ["debug"] }
 
 [profile.release]
 opt-level = 3
