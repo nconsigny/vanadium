@@ -282,6 +282,24 @@ pub fn main() {
                     }
                 }
             },
+            Command::Sleep { n_ticks } => {
+                let mut count = 0;
+                loop {
+                    match sdk::ux::get_event() {
+                        sdk::ux::Event::Ticker => {
+                            count += 1;
+                            if count == n_ticks {
+                                break;
+                            }
+                        }
+                        sdk::ux::Event::Unknown(data) => {
+                            panic!("Unknown event: {:?}", data);
+                        }
+                    }
+                }
+
+                vec![]
+            }
         };
 
         sdk::comm::send_message(&response);
