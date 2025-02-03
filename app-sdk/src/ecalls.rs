@@ -4,6 +4,26 @@ use crate::ecalls_riscv as ecalls_module;
 #[cfg(not(target_arch = "riscv32"))]
 use crate::ecalls_native as ecalls_module;
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub(crate) union EventData {
+    pub ticker: TickerEvent,
+    // Reserve space for future expansions. Each event's raw data is exactly 16 bytes.
+    // For events that do not define the meaning of the raw data, the value of those bytes is undefined
+    // and could change in future versions.
+    pub raw: [u8; 16],
+}
+
+impl Default for EventData {
+    fn default() -> Self {
+        EventData { raw: [0; 16] }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct TickerEvent {}
+
 /// Trait defining the interface for all the ecalls.
 pub(crate) trait EcallsInterface {
     /// Displays the idle screen of the V-App.
@@ -44,6 +64,14 @@ pub(crate) trait EcallsInterface {
     /// # Returns
     /// The number of bytes received.
     fn xrecv(buffer: *mut u8, max_size: usize) -> usize;
+
+    /// Waits for the next event.
+    ///
+    /// # Parameters
+    /// - `data`: Pointer to a 16-byte buffer to receive the event data (if any).
+    /// # Returns
+    /// The event code.
+    fn get_event(data: *mut EventData) -> u32;
 
     /// Computes the remainder of dividing `n` by `m`, storing the result in `r`.
     ///
@@ -280,3 +308,14 @@ pub(crate) trait EcallsInterface {
 }
 
 pub(crate) use ecalls_module::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_event_data_size() {
+        // make sure that the size of the EventData union is exactly 16 bytes
+        assert_eq!(core::mem::size_of::<EventData>(), 16);
+    }
+}

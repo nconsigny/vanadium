@@ -1,8 +1,9 @@
+use core::panic;
 use std::io;
 use std::io::Write;
 
-use crate::ecalls::EcallsInterface;
-use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
+use crate::ecalls::{EcallsInterface, EventData};
+use common::ecall_constants::{CurveKind, EventCode, MAX_BIGNUMBER_SIZE};
 
 use bip32::{ChildNumber, XPrv};
 use hex_literal::hex;
@@ -21,6 +22,8 @@ use k256::{
 
 use num_bigint::BigUint;
 use num_traits::Zero;
+
+const TICKER_MS: u64 = 100;
 
 unsafe fn to_bigint(bytes: *const u8, len: usize) -> BigUint {
     let bytes = std::slice::from_raw_parts(bytes, len);
@@ -94,6 +97,17 @@ impl EcallsInterface for Ecall {
         }
 
         return n_bytes_to_copy;
+    }
+
+    fn get_event(data: *mut EventData) -> u32 {
+        if data.is_null() {
+            panic!("The EventData pointer must not be null");
+        }
+
+        // for now there is no other type of event than the ticker.
+        // We wait for TICKER_MS milliseconds and return a Ticker event.
+        std::thread::sleep(std::time::Duration::from_millis(TICKER_MS));
+        return EventCode::Ticker as u32;
     }
 
     fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> u32 {

@@ -1,4 +1,8 @@
-use core::{cell::RefCell, cmp::min, fmt};
+use core::{
+    cell::{RefCell, RefMut},
+    cmp::min,
+    fmt,
+};
 
 use alloc::{format, rc::Rc, string::String, vec};
 use common::{
@@ -14,6 +18,8 @@ use ledger_device_sdk::hash::HashInit;
 use ledger_secure_sdk_sys::{
     cx_ripemd160_t, cx_sha256_t, cx_sha512_t, CX_OK, CX_RIPEMD160, CX_SHA256, CX_SHA512,
 };
+
+use ledger_secure_sdk_sys::seph as sys_seph;
 
 use crate::{AppSW, Instruction};
 
@@ -1255,6 +1261,49 @@ impl<'a> CommEcallHandler<'a> {
     }
 }
 
+// Processes all events until a ticker is received, then returns
+fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
+    loop {
+        let mut spi_buffer = [0u8; 256];
+
+        let event: ledger_device_sdk::io::Event<crate::ApduHeader> = loop {
+            // Signal end of command stream from SE to MCU
+            // And prepare reception
+            if !sys_seph::is_status_sent() {
+                sys_seph::send_general_status();
+            }
+
+            // Fetch the next message from the MCU
+            let _rx = sys_seph::seph_recv(&mut spi_buffer, 0);
+
+            // decode and process event
+            if let Some(e) = comm.process_event(&mut spi_buffer) {
+                break e;
+            }
+        };
+
+        match event {
+            ledger_device_sdk::io::Event::Command(_e) => {
+                // TODO: how to avoid receiving APDUs is we're not expecting it?
+                panic!("We actually don't want to receive commands here.");
+            }
+            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+            ledger_device_sdk::io::Event::Button(_button) => {
+                // nothing to do, we don't yet handle buttons
+                crate::println!("Button event. Unhandled");
+            }
+            #[cfg(any(target_os = "stax", target_os = "flex"))]
+            ledger_device_sdk::io::Event::TouchEvent => {
+                crate::println!("Touch event. Unhandled");
+                // nothing to do, we don't yet know how to handle them
+            }
+            ledger_device_sdk::io::Event::Ticker => {
+                return;
+            }
+        }
+    }
+}
+
 impl<'a> EcallHandler for CommEcallHandler<'a> {
     type Memory = OutsourcedMemory<'a>;
     type Error = CommEcallError;
@@ -1318,6 +1367,14 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                         )
                         .show_and_return();
                 }
+            }
+            ECALL_GET_EVENT => {
+                // for now, the only supported event is the ticker. So we wait for a ticker event,
+                // and return it. Once UX functionalities are added, button presses would also be
+                // returned here.
+                let mut comm = self.comm.borrow_mut();
+                wait_for_ticker(&mut comm);
+                reg!(A0) = ecall_constants::EventCode::Ticker as u32;
             }
             ECALL_MODM => {
                 self.handle_bn_modm::<CommEcallError>(
