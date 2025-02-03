@@ -1,4 +1,3 @@
-#![feature(start)]
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
 #[cfg(target_arch = "riscv32")]
@@ -35,12 +34,16 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
-pub fn _start(_argc: isize, _argv: *const *const u8) -> isize {
-    main(_argc, _argv)
+pub fn _start() {
+    app_main()
 }
 
-#[start]
-pub fn main(_: isize, _: *const *const u8) -> isize {
+#[cfg(not(target_arch = "riscv32"))]
+fn main() {
+    app_main();
+}
+
+pub fn app_main() {
     sdk::rust_init_heap();
 
     sdk::ux::ux_idle();

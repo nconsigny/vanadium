@@ -1,4 +1,3 @@
-#![feature(start)]
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
 use alloc::borrow::Cow;
@@ -49,8 +48,8 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
-pub fn _start(_argc: isize, _argv: *const *const u8) -> isize {
-    main(_argc, _argv)
+pub fn _start() {
+    main()
 }
 
 fn handle_req_<'a>(buffer: &'a [u8]) -> Result<Response<'a>, &'static str> {
@@ -102,8 +101,7 @@ fn handle_req(buffer: &[u8]) -> Vec<u8> {
     out.to_vec()
 }
 
-#[start]
-pub fn main(_: isize, _: *const *const u8) -> isize {
+pub fn main() {
     sdk::rust_init_heap();
 
     sdk::ux::ux_idle();
