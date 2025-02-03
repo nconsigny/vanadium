@@ -1,4 +1,3 @@
-#![feature(start)]
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
 #[cfg(target_arch = "riscv32")]
@@ -38,8 +37,8 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
-pub fn _start(_argc: isize, _argv: *const *const u8) -> isize {
-    main(_argc, _argv)
+pub fn _start() {
+    main()
 }
 
 // parses a 65-byte uncompressed pubkey into an EcfpPublicKey
@@ -56,8 +55,7 @@ fn parse_pubkey(pubkey: &[u8]) -> EcfpPublicKey<sdk::curve::Secp256k1, 32> {
     )
 }
 
-#[start]
-pub fn main(_: isize, _: *const *const u8) -> isize {
+pub fn main() {
     sdk::rust_init_heap();
 
     sdk::ux::ux_idle();
