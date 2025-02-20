@@ -46,25 +46,10 @@ fn main() {
 pub fn app_main() {
     sdk::rust_init_heap();
 
-    // sdk::ux::ux_idle();
-
-    let res = sdk::ux::show_confirm_reject("Title", "Text", "Confirm", "Reject");
-
-    if res {
-        sdk::ux::show_info(sdk::ux::Icon::Success, "Oh yeah!");
-    } else {
-        sdk::ux::show_info(sdk::ux::Icon::Failure, "Oh no!");
-    }
-    // for _ in 0..10 {
-    //     // wait about 1 seconds
-    //     sdk::ux::get_event();
-    // }
-
-    // sdk::ux::show_info(sdk::ux::Icon::Success, "Oh yes!");
+    sdk::ux::ux_idle();
 
     loop {
         let msg = sdk::xrecv(256);
-
         if msg.is_empty() {
             sdk::exit(0);
         }
@@ -94,6 +79,7 @@ pub fn app_main() {
             Command::Base58Encode => handle_base58_encode(&msg[1..]),
             Command::Sha256 => handle_sha256(&msg[1..]),
             Command::CountPrimes => handle_count_primes(&msg[1..]),
+            Command::ShowUxScreen => handle_show_ux_screen(&msg[1..]),
             Command::Panic => {
                 let panic_msg = core::str::from_utf8(&msg[1..]).unwrap();
                 panic!("{}", panic_msg);
