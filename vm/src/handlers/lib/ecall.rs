@@ -1318,10 +1318,8 @@ impl<'a> CommEcallHandler<'a> {
         cpu.get_segment::<E>(page_ptr.0)?
             .read_buffer(page_ptr.0, &mut page_local[0..page_len])?;
 
-        let page = common::ux::Page::deserialize_full(&page_local[0..page_len]).map_err(|e| {
-            crate::println!("Failed to deserialize page: {:?}", e);
-            CommEcallError::InvalidParameters("Failed to deserialize page")
-        })?;
+        let page = common::ux::Page::deserialize_full(&page_local[0..page_len])
+            .map_err(|e| CommEcallError::InvalidParameters("Failed to deserialize page"))?;
 
         self.ux_handler.show_page(&page)?;
         Ok(1)
@@ -1351,8 +1349,7 @@ fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
 
         match event {
             ledger_device_sdk::io::Event::Command(_e) => {
-                // TODO: how to avoid receiving APDUs is we're not expecting it?
-                panic!("We actually don't want to receive commands here.");
+                panic!("We don't expecte to receive APDUs here.");
             }
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             ledger_device_sdk::io::Event::Button(_button) => {

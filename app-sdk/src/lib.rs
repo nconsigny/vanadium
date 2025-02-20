@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[cfg(not(target_arch = "riscv32"))]
+extern crate lazy_static;
+
 use alloc::vec::Vec;
 
 pub mod bignum;
