@@ -1,3 +1,5 @@
+#![allow(unused_macros)]
+
 use core::arch::asm;
 
 use crate::ecalls::EcallsInterface;
