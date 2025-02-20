@@ -35,6 +35,7 @@ static HEAP: Heap = Heap::empty();
 
 fn init_heap() {
     unsafe {
+        #[allow(static_mut_refs)] // we will be running in single-threaded environments
         HEAP.init(HEAP_ALLOC.as_ptr() as usize, HEAP_SIZE);
     }
 }
