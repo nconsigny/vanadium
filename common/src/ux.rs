@@ -10,7 +10,7 @@ pub enum Action {
     Skip = 3,
     PreviousPage = 4, // TODO: page index is part of the event data
     NextPage = 5,
-    Title = 6,
+    TitleBack = 6,
 }
 
 #[repr(u32)]

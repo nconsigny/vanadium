@@ -45,72 +45,35 @@ unsafe extern "C" fn layout_touch_callback(token: core::ffi::c_int, index: u8) {
         index
     );
 
-    match (token as u8, index) {
-        (TOKEN_CONFIRM_REJECT, 0) => {
-            crate::println!("Confirm button pressed");
-            store_new_event(
-                common::ux::EventCode::Action,
-                common::ux::EventData {
-                    action: common::ux::Action::Confirm,
-                },
-            );
-        }
-        (TOKEN_CONFIRM_REJECT, 1) => {
-            crate::println!("Reject button pressed");
-            store_new_event(
-                common::ux::EventCode::Action,
-                common::ux::EventData {
-                    action: common::ux::Action::Reject,
-                },
-            );
-        }
-        (TOKEN_QUIT, _) => {
-            crate::println!("Quit button pressed");
-            store_new_event(
-                common::ux::EventCode::Action,
-                common::ux::EventData {
-                    action: common::ux::Action::Quit,
-                },
-            );
-        }
-        (TOKEN_SKIP, _) => {
-            crate::println!("Skip button pressed");
-            store_new_event(
-                common::ux::EventCode::Action,
-                common::ux::EventData {
-                    action: common::ux::Action::Skip,
-                },
-            );
-        }
+    let action = match (token as u8, index) {
+        (TOKEN_CONFIRM_REJECT, 0) => common::ux::Action::Confirm,
+        (TOKEN_CONFIRM_REJECT, 1) => common::ux::Action::Reject,
+        (TOKEN_QUIT, _) => common::ux::Action::Quit,
+        (TOKEN_SKIP, _) => common::ux::Action::Skip,
         (TOKEN_NAVIGATION, idx) => {
-            crate::println!("Navigation button; index={}", idx);
             let cur_page = get_ux_handler().cur_page;
 
             let diff = idx as isize - cur_page as isize;
-            let action = match diff {
+            match diff {
                 -1 => common::ux::Action::PreviousPage,
                 1 => common::ux::Action::NextPage,
                 _ => {
                     crate::println!("Unexpected index, cur_page is {}", cur_page);
                     return;
                 }
-            };
-            store_new_event(
-                common::ux::EventCode::Action,
-                common::ux::EventData { action },
-            );
+            }
         }
-        (TOKEN_TITLE, _) => {
-            crate::println!("Title pressed");
-            store_new_event(
-                common::ux::EventCode::Action,
-                common::ux::EventData {
-                    action: common::ux::Action::Title,
-                },
-            );
+        (TOKEN_TITLE, _) => common::ux::Action::TitleBack,
+        _ => {
+            crate::println!("Event unhandled");
+            return;
         }
-        _ => crate::println!("Event unhandled",),
-    }
+    };
+
+    store_new_event(
+        common::ux::EventCode::Action,
+        common::ux::EventData { action },
+    );
 }
 
 // encapsulates all the global state related to Events and UX handling
@@ -283,7 +246,7 @@ impl UxHandler {
 
                         let common::ux::NavInfo::NavWithButtons {
                             has_back_button,
-                            has_page_indicator: _,
+                            has_page_indicator,
                             quit_text,
                         } = &ni.nav_info;
 
@@ -309,7 +272,7 @@ impl UxHandler {
                                 navWithButtons: ledger_secure_sdk_sys::nbgl_pageNavWithButtons_s {
                                     quitButton: quit_text.is_some(),
                                     backButton: *has_back_button,
-                                    visiblePageIndicator: false,
+                                    visiblePageIndicator: *has_page_indicator, // only has any effect on Flex
                                     navToken: TOKEN_NAVIGATION,
                                     quitText: self.alloc_cstring(quit_text.as_ref())?,
                                 }
