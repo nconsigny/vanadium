@@ -121,7 +121,7 @@ impl Register {
 struct GuestPointer(pub u32);
 
 #[derive(Debug, Clone, Copy)]
-enum LedgerHashContextError {
+pub enum LedgerHashContextError {
     InvalidHashId,
     UnsupportedHashId,
 }
@@ -1319,7 +1319,7 @@ impl<'a> CommEcallHandler<'a> {
             .read_buffer(page_ptr.0, &mut page_local[0..page_len])?;
 
         let page = common::ux::Page::deserialize_full(&page_local[0..page_len])
-            .map_err(|e| CommEcallError::InvalidParameters("Failed to deserialize page"))?;
+            .map_err(|_| CommEcallError::InvalidParameters("Failed to deserialize page"))?;
 
         self.ux_handler.show_page(&page)?;
         Ok(1)

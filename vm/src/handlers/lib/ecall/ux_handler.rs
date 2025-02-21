@@ -1,5 +1,5 @@
 use alloc::{ffi::CString, string::String, vec::Vec};
-use core::{cell::UnsafeCell, mem::MaybeUninit, ptr};
+use spin::Mutex;
 
 use ledger_secure_sdk_sys as sys;
 
@@ -16,24 +16,19 @@ const TOKEN_SKIP: u8 = 2;
 const TOKEN_NAVIGATION: u8 = 3;
 const TOKEN_TITLE: u8 = 4;
 
-// we use a static variable to store the event, so we can set it from the callback
-static mut LAST_EVENT: Option<(common::ux::EventCode, common::ux::EventData)> = None;
+static LAST_EVENT: Mutex<Option<(common::ux::EventCode, common::ux::EventData)>> = Mutex::new(None);
 
 pub fn get_last_event() -> Option<(common::ux::EventCode, common::ux::EventData)> {
-    #[allow(static_mut_refs)] // only safe in single-threaded mode
-    unsafe {
-        LAST_EVENT.take()
-    }
+    let mut lock = LAST_EVENT.lock();
+    lock.take()
 }
 
 fn store_new_event(event_code: common::ux::EventCode, event_data: common::ux::EventData) {
-    unsafe {
-        // We store the new event if there was no stored event, or there is just a ticker
-        // Otherwise we drop the new event
-        if LAST_EVENT.is_none_or(|e| e.0 == common::ux::EventCode::Ticker) {
-            crate::println!("Storing new event: {:?}", event_code);
-            LAST_EVENT = Some((event_code, event_data));
-        }
+    // We store the new event if there was no stored event, or there is just a ticker
+    // Otherwise we drop the new event
+    let mut lock = LAST_EVENT.lock();
+    if lock.is_none() || lock.as_ref().unwrap().0 == common::ux::EventCode::Ticker {
+        *lock = Some((event_code, event_data));
     }
 }
 
@@ -84,7 +79,7 @@ pub struct UxHandler {
 }
 
 // Global static variable to hold the singleton instance
-static mut UX_HANDLER: MaybeUninit<UxHandler> = MaybeUninit::uninit();
+static mut UX_HANDLER: core::mem::MaybeUninit<UxHandler> = core::mem::MaybeUninit::uninit();
 static mut UX_HANDLER_INITIALIZED: bool = false;
 
 pub fn init_ux_handler() -> &'static mut UxHandler {
@@ -93,9 +88,11 @@ pub fn init_ux_handler() -> &'static mut UxHandler {
             panic!("UxHandler already initialized");
         }
 
+        #[allow(static_mut_refs)] // it's safe as we are in single-threaded mode
         UX_HANDLER.write(UxHandler::new());
         UX_HANDLER_INITIALIZED = true;
 
+        #[allow(static_mut_refs)] // it's safe as we are in single-threaded mode
         UX_HANDLER.assume_init_mut()
     }
 }
@@ -105,6 +102,8 @@ pub fn get_ux_handler() -> &'static mut UxHandler {
         if !UX_HANDLER_INITIALIZED {
             panic!("UxHandler not initialized");
         }
+
+        #[allow(static_mut_refs)] // it's safe as we are in single-threaded mode
         UX_HANDLER.assume_init_mut()
     }
 }
