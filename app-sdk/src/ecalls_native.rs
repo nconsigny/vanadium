@@ -1,8 +1,12 @@
+use core::panic;
+use lazy_static::lazy_static;
 use std::io;
 use std::io::Write;
+use std::sync::Mutex;
 
 use crate::ecalls::EcallsInterface;
 use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
+use common::ux::{EventCode, EventData, Serializable};
 
 use bip32::{ChildNumber, XPrv};
 use hex_literal::hex;
@@ -22,6 +26,8 @@ use k256::{
 use num_bigint::BigUint;
 use num_traits::Zero;
 
+const TICKER_MS: u64 = 100;
+
 unsafe fn to_bigint(bytes: *const u8, len: usize) -> BigUint {
     let bytes = std::slice::from_raw_parts(bytes, len);
     BigUint::from_bytes_be(bytes)
@@ -38,11 +44,59 @@ unsafe fn copy_result(r: *mut u8, result_bytes: &[u8], len: usize) -> () {
     );
 }
 
+fn prompt_for_action(actions: &[(char, String)]) -> char {
+    let mut seen = std::collections::HashSet::new();
+    for (ch, _) in actions {
+        if !seen.insert(ch) {
+            panic!("Duplicate action: {}", ch);
+        }
+    }
+
+    loop {
+        println!("Actions:");
+        for (c, desc) in actions {
+            println!(" - {} : {}", desc, c);
+        }
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+        let trimmed = input.trim();
+        if trimmed.len() == 1 {
+            let ch = trimmed.chars().next().unwrap();
+            if actions.iter().any(|(c, _)| *c == ch) {
+                return ch;
+            }
+        }
+    }
+}
+
 pub struct Ecall;
 
-impl EcallsInterface for Ecall {
-    fn ux_idle() {}
+lazy_static! {
+    static ref LAST_EVENT: Mutex<Option<(common::ux::EventCode, common::ux::EventData)>> =
+        Mutex::new(None);
+}
 
+pub fn get_last_event() -> Option<(common::ux::EventCode, common::ux::EventData)> {
+    let mut last_event = LAST_EVENT.lock().expect("Mutex poisoned");
+    last_event.take()
+}
+
+fn store_new_event(event_code: common::ux::EventCode, event_data: common::ux::EventData) {
+    let mut last_event = LAST_EVENT.lock().expect("Mutex poisoned");
+    // Store the new event if there is no stored event,
+    // or if the currently stored event is a ticker.
+    if last_event.is_none()
+        || last_event
+            .as_ref()
+            .map_or(false, |e| e.0 == common::ux::EventCode::Ticker)
+    {
+        *last_event = Some((event_code, event_data));
+    }
+}
+
+impl EcallsInterface for Ecall {
     fn exit(status: i32) -> ! {
         std::process::exit(status);
     }
@@ -94,6 +148,145 @@ impl EcallsInterface for Ecall {
         }
 
         return n_bytes_to_copy;
+    }
+
+    fn get_event(data: *mut EventData) -> u32 {
+        if data.is_null() {
+            panic!("The EventData pointer must not be null");
+        }
+
+        unsafe {
+            if let Some((event_code, event_data)) = get_last_event() {
+                std::ptr::write(data, event_data);
+                return event_code as u32;
+            }
+        }
+
+        // for now there is no other type of event than the ticker.
+        // We wait for TICKER_MS milliseconds and return a Ticker event.
+        std::thread::sleep(std::time::Duration::from_millis(TICKER_MS));
+        return EventCode::Ticker as u32;
+    }
+
+    fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32 {
+        // make a slice from page_desc and page_desc_len
+        let page_desc_slice = unsafe { std::slice::from_raw_parts(page_desc, page_desc_len) };
+
+        let Ok(page_desc) = common::ux::Page::deserialize_full(page_desc_slice) else {
+            return 0;
+        };
+
+        println!("\n+=========================================+");
+        match page_desc {
+            common::ux::Page::Spinner { text } => {
+                println!("{}...", text);
+            }
+            common::ux::Page::Info { icon, text } => match icon {
+                common::ux::Icon::None => println!("{}", text),
+                common::ux::Icon::Success => println!("✓ {}", text),
+                common::ux::Icon::Failure => println!("❌ {}", text),
+            },
+            common::ux::Page::ConfirmReject {
+                title,
+                text,
+                confirm,
+                reject,
+            } => {
+                println!("{}\n{}", title, text);
+
+                let actions = vec![('C', confirm.to_string()), ('R', reject.to_string())];
+                store_new_event(
+                    common::ux::EventCode::Action,
+                    common::ux::EventData {
+                        action: match prompt_for_action(&actions) {
+                            'C' => common::ux::Action::Confirm,
+                            'R' => common::ux::Action::Reject,
+                            _ => panic!("Unexpected action"),
+                        },
+                    },
+                );
+            }
+            common::ux::Page::GenericPage {
+                navigation_info,
+                page_content_info,
+            } => {
+                let mut actions: Vec<(char, String)> = vec![];
+
+                if let Some(title_text) = page_content_info.title {
+                    actions.push(('B', "Back".into()));
+                    println!("{}", title_text);
+                }
+
+                match page_content_info.page_content {
+                    common::ux::PageContent::TextSubtext { text, subtext } => {
+                        println!("{}\n{}", text, subtext);
+                    }
+                    common::ux::PageContent::TagValueList(tag_values) => {
+                        for tag_value in tag_values {
+                            println!("{}: {}", tag_value.tag, tag_value.value);
+                        }
+                    }
+                    common::ux::PageContent::ConfirmationButton { text, button_text } => {
+                        println!("{}", text);
+                        actions.push(('C', button_text.into()));
+                    }
+                    common::ux::PageContent::ConfirmationLongPress {
+                        text,
+                        long_press_text,
+                    } => {
+                        println!("{}", text);
+                        actions.push(('C', long_press_text.into()));
+                    }
+                }
+
+                if let Some(navigation_info) = navigation_info {
+                    let mut can_go_back = false;
+                    match navigation_info.nav_info {
+                        common::ux::NavInfo::NavWithButtons {
+                            has_back_button,
+                            has_page_indicator: _,
+                            quit_text,
+                        } => {
+                            if !has_back_button {
+                                can_go_back = false;
+                            }
+                            if let Some(quit_text) = quit_text {
+                                actions.push(('Q', quit_text.into()));
+                            }
+                        }
+                    }
+
+                    println!(
+                        "Page {} of {}",
+                        navigation_info.active_page + 1,
+                        navigation_info.n_pages
+                    );
+                    if can_go_back && navigation_info.active_page > 0 {
+                        actions.push(('P', "Previous page".into()));
+                    }
+                    if navigation_info.active_page < navigation_info.n_pages - 1 {
+                        actions.push(('N', "Next page".into()));
+                    }
+                }
+
+                if actions.len() > 0 {
+                    store_new_event(
+                        common::ux::EventCode::Action,
+                        common::ux::EventData {
+                            action: match prompt_for_action(&actions) {
+                                'P' => common::ux::Action::PreviousPage,
+                                'N' => common::ux::Action::NextPage,
+                                'C' => common::ux::Action::Confirm,
+                                'Q' => common::ux::Action::Quit,
+                                _ => panic!("Unexpected action"),
+                            },
+                        },
+                    );
+                }
+            }
+        }
+
+        1
     }
 
     fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> u32 {

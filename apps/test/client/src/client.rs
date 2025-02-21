@@ -96,6 +96,19 @@ impl TestClient {
         Ok(u32::from_be_bytes(result_raw.try_into().unwrap()))
     }
 
+    pub async fn ux(&mut self, n: u8) -> Result<(), TestClientError> {
+        let mut msg: Vec<u8> = Vec::new();
+        msg.extend_from_slice(&[Command::ShowUxScreen as u8]);
+        msg.extend_from_slice(&n.to_be_bytes());
+
+        let result_raw = self.app_client.send_message(&msg).await?;
+
+        if result_raw.len() != 0 {
+            return Err("Invalid response length".into());
+        }
+        Ok(())
+    }
+
     pub async fn panic(&mut self, panic_msg: &str) -> Result<(), TestClientError> {
         let mut msg: Vec<u8> = Vec::new();
         msg.extend_from_slice(&[Command::Panic as u8]);

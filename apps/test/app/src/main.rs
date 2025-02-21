@@ -47,9 +47,9 @@ pub fn app_main() {
     sdk::rust_init_heap();
 
     sdk::ux::ux_idle();
+
     loop {
         let msg = sdk::xrecv(256);
-
         if msg.is_empty() {
             sdk::exit(0);
         }
@@ -79,6 +79,7 @@ pub fn app_main() {
             Command::Base58Encode => handle_base58_encode(&msg[1..]),
             Command::Sha256 => handle_sha256(&msg[1..]),
             Command::CountPrimes => handle_count_primes(&msg[1..]),
+            Command::ShowUxScreen => handle_show_ux_screen(&msg[1..]),
             Command::Panic => {
                 let panic_msg = core::str::from_utf8(&msg[1..]).unwrap();
                 panic!("{}", panic_msg);

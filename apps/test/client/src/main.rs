@@ -34,6 +34,7 @@ enum CliCommand {
     Sha256(Vec<u8>),
     B58Enc(Vec<u8>),
     NPrimes(u32),
+    Ux(u8),
     Panic(String),
     Exit,
 }
@@ -50,6 +51,12 @@ fn parse_hex_buffer(s: &str) -> Result<Vec<u8>, String> {
                 .map_err(|_| format!("Invalid hex character at position {}", i))
         })
         .collect()
+}
+
+/// Parses a string into a u8 integer.
+fn parse_u8(s: &str) -> Result<u8, String> {
+    s.parse::<u8>()
+        .map_err(|_| "Invalid u8 integer".to_string())
 }
 
 /// Parses a string into a u32 integer.
@@ -82,6 +89,13 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
                     "nprimes" => Ok(CliCommand::NPrimes(number)),
                     _ => unreachable!(),
                 }
+            }
+            "ux" => {
+                let arg = tokens
+                    .next()
+                    .ok_or_else(|| format!("'{}' requires a u8 integer argument", command))?;
+                let id = parse_u8(arg).map_err(|e| e.to_string())?;
+                Ok(CliCommand::Ux(id))
             }
             "panic" => {
                 // find where the word "panic" ends and the message starts
@@ -167,6 +181,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 CliCommand::NPrimes(n) => {
                     println!("{}", test_client.nprimes(n).await?);
+                }
+                CliCommand::Ux(id) => {
+                    test_client.ux(id).await?;
                 }
                 CliCommand::Panic(msg) => {
                     test_client.panic(&msg).await?;
