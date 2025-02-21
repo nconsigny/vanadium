@@ -76,6 +76,8 @@ unsafe extern "C" fn layout_touch_callback(token: core::ffi::c_int, index: u8) {
 pub struct UxHandler {
     cstrings: Vec<CString>,
     cur_page: u8,
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    page_handle: *mut sys::nbgl_page_t, // handle returned by nbgl when drawing a page; should be freed before drawing a new page
 }
 
 // Global static variable to hold the singleton instance
@@ -111,10 +113,17 @@ pub fn get_ux_handler() -> &'static mut UxHandler {
 impl UxHandler {
     // We keep the constructor private in order to manage the singleton instance
     fn new() -> Self {
-        Self {
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        return Self {
             cstrings: Vec::new(),
             cur_page: 0,
-        }
+        };
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        return Self {
+            cstrings: Vec::new(),
+            cur_page: 0,
+            page_handle: core::ptr::null_mut(),
+        };
     }
 
     pub fn clear_cstrings(&mut self) {
@@ -133,6 +142,18 @@ impl UxHandler {
         Ok(core::ptr::null())
     }
 
+    // This should always be called before drawing a new page, in order to
+    // make sure that the resources of the previous page are released
+    fn release_page(&mut self) {
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        unsafe {
+            if !self.page_handle.is_null() {
+                sys::nbgl_pageRelease(self.page_handle);
+                self.page_handle = core::ptr::null_mut();
+            }
+        }
+    }
+
     pub fn show_page(&mut self, page: &Page) -> Result<(), CommEcallError> {
         match page {
             common::ux::Page::Spinner { text } => unsafe {
@@ -140,7 +161,11 @@ impl UxHandler {
                 todo!(); // TODO: implement for NanoS+/X
 
                 #[cfg(any(target_os = "stax", target_os = "flex"))]
-                sys::nbgl_pageDrawSpinner(self.alloc_cstring(Some(text))?, 0);
+                {
+                    self.release_page();
+                    self.page_handle =
+                        sys::nbgl_pageDrawSpinner(self.alloc_cstring(Some(text))?, 0);
+                }
             },
             common::ux::Page::Info { icon, text } => unsafe {
                 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
@@ -149,6 +174,7 @@ impl UxHandler {
                 #[cfg(any(target_os = "stax", target_os = "flex"))]
                 {
                     self.clear_cstrings();
+                    self.release_page();
 
                     let ticker_config = sys::nbgl_screenTickerConfiguration_t {
                         tickerCallback: None, // we could put a callback here if we had a timer
@@ -185,7 +211,7 @@ impl UxHandler {
                         tuneId: sys::TUNE_TAP_CASUAL,
                     };
 
-                    sys::nbgl_pageDrawInfo(
+                    self.page_handle = sys::nbgl_pageDrawInfo(
                         None,
                         &ticker_config, // or core::ptr::null()
                         &page_info,
@@ -204,6 +230,7 @@ impl UxHandler {
                 #[cfg(any(target_os = "stax", target_os = "flex"))]
                 {
                     self.clear_cstrings();
+                    self.release_page();
 
                     let page_confirmation_description =
                         ledger_secure_sdk_sys::nbgl_pageConfirmationDescription_s {
@@ -223,7 +250,7 @@ impl UxHandler {
                             tuneId: ledger_secure_sdk_sys::TUNE_TAP_CASUAL,
                             modal: false,
                         };
-                    ledger_secure_sdk_sys::nbgl_pageDrawConfirmation(
+                    self.page_handle = ledger_secure_sdk_sys::nbgl_pageDrawConfirmation(
                         Some(layout_touch_callback),
                         &page_confirmation_description,
                     );
@@ -239,6 +266,7 @@ impl UxHandler {
                 #[cfg(any(target_os = "stax", target_os = "flex"))]
                 {
                     self.clear_cstrings();
+                    self.release_page();
 
                     let nav_info = navigation_info.as_ref().map(|ni| {
                         get_ux_handler().cur_page = ni.active_page as u8;
@@ -285,7 +313,7 @@ impl UxHandler {
 
                     match &page_content_info.page_content {
                         common::ux::PageContent::TextSubtext { text, subtext } => {
-                            ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
+                            self.page_handle = ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
                                 Some(layout_touch_callback),
                                 navigation_info,
                                 &mut ledger_secure_sdk_sys::nbgl_pageContent_t {
@@ -324,7 +352,7 @@ impl UxHandler {
                                 })
                                 .collect::<Result<Vec<_>, CommEcallError>>()?;
 
-                            ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
+                            self.page_handle = ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
                                 Some(layout_touch_callback),
                                 navigation_info,
                                 &mut ledger_secure_sdk_sys::nbgl_pageContent_t {
@@ -354,7 +382,7 @@ impl UxHandler {
                             );
                         }
                         common::ux::PageContent::ConfirmationButton { text, button_text } => {
-                            ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
+                            self.page_handle = ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
                                 Some(layout_touch_callback),
                                 navigation_info,
                                 &mut ledger_secure_sdk_sys::nbgl_pageContent_t {
@@ -384,7 +412,7 @@ impl UxHandler {
                             text,
                             long_press_text,
                         } => {
-                            ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
+                            self.page_handle = ledger_secure_sdk_sys::nbgl_pageDrawGenericContent(
                                 Some(layout_touch_callback),
                                 navigation_info,
                                 &mut ledger_secure_sdk_sys::nbgl_pageContent_t {
