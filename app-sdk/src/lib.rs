@@ -21,6 +21,8 @@ mod ecalls_riscv;
 #[cfg(not(target_arch = "riscv32"))]
 mod ecalls_native;
 
+mod ux_generated;
+
 use ecalls::{Ecall, EcallsInterface};
 use embedded_alloc::Heap;
 
