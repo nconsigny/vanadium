@@ -2,6 +2,9 @@
 
 extern crate alloc;
 
+#[cfg(not(target_arch = "riscv32"))]
+extern crate lazy_static;
+
 use alloc::vec::Vec;
 
 pub mod bignum;
@@ -25,14 +28,14 @@ use embedded_alloc::Heap;
 use ctor;
 
 const HEAP_SIZE: usize = 65536;
-static mut HEAP_ALLOC: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+static mut HEAP_MEM: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
 fn init_heap() {
     unsafe {
-        HEAP.init(HEAP_ALLOC.as_ptr() as usize, HEAP_SIZE);
+        HEAP.init(&raw mut HEAP_MEM as usize, HEAP_SIZE);
     }
 }
 

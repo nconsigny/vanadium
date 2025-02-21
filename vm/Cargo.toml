@@ -12,9 +12,10 @@ serde-json-core = { git = "https://github.com/rust-embedded-community/serde-json
 hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
 numtoa = "0.2.4"
 postcard = { version = "1.0.8", features = ["alloc"] }
-ledger_secure_sdk_sys = "1.6.1"
+ledger_secure_sdk_sys = "1.7.0"
 zeroize = "1.8.1"
-ledger_device_sdk = { version = "1.19.1", features = ["debug"] }
+ledger_device_sdk = { version = "1.21.0", features = ["debug"] }
+spin = "0.9.8"
 
 [profile.release]
 opt-level = 3
