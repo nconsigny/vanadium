@@ -442,6 +442,12 @@ impl UxHandler {
                 }
             },
         }
+
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        unsafe {
+            ledger_secure_sdk_sys::nbgl_refresh();
+        }
+
         Ok(())
     }
 }
