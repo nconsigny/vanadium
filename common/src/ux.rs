@@ -547,10 +547,12 @@ macro_rules! define_serializable_struct {
         }
 
         impl Serializable for $name {
+            #[inline(always)]
             fn get_serialized_length(&self) -> usize {
                 0 $( + self.$field.get_serialized_length() )*
             }
 
+            #[inline(always)]
             fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
                 $( self.$field.serialize(buf, pos); )*
             }
@@ -605,6 +607,7 @@ macro_rules! define_serializable_enum {
         }
 
         impl Serializable for $name {
+            #[inline(always)]
             fn get_serialized_length(&self) -> usize {
                 match self {
                     $(
@@ -613,6 +616,7 @@ macro_rules! define_serializable_enum {
                 }
             }
 
+            #[inline(always)]
             fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
                 match self {
                     $(
