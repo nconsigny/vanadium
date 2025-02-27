@@ -340,8 +340,8 @@ impl UxHandler {
                                 },
                             );
                         }
-                        common::ux::PageContent::TagValueList(tvl) => {
-                            let tag_value_list = tvl
+                        common::ux::PageContent::TagValueList { list } => {
+                            let tag_value_list = list
                                 .iter()
                                 .map(|t| {
                                     let mut res =
@@ -442,6 +442,12 @@ impl UxHandler {
                 }
             },
         }
+
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        unsafe {
+            ledger_secure_sdk_sys::nbgl_refresh();
+        }
+
         Ok(())
     }
 }

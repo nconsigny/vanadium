@@ -12,6 +12,9 @@ subtle = { version="2.6.1", default-features = false }
 hex-literal = "0.4.1"
 zeroize = "1.8.1"
 
+[build-dependencies]
+common = { path = "../common", features = ["wrapped_serializable"] }
+
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 bip32 = "0.5.2"
 hex = "0.4.3"
