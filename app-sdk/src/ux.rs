@@ -77,12 +77,20 @@ pub fn review_pairs(
     final_button_text: &str,
     long_press: bool,
 ) -> bool {
-    let n_pair_pages = ((pairs.len() + 1) / 2) as u32;
-    let n_pages = 1 + n_pair_pages + 1; // intro page + pair pages + final page
+    // As this is still too slow to compute everything at once, we use a 'streaming' approach where we compute
+    // the next page only after showing the current one.
+    // While we're computing the page, we're not able to listen to touch events, so it will currently miss
+    // user touches something before the precomputation of the next page is completed.
+    // TODO: improve this
 
+    // Calculate total number of pages
+    let n_pair_pages = ((pairs.len() + 1) / 2) as u32;
+    let n_pages = 2 + n_pair_pages; // intro + pair pages + final
+
+    // Initialize with capacity, but start empty
     let mut serialized_pages = Vec::with_capacity(n_pages as usize);
 
-    // create intro page
+    // Compute and add the first page (intro)
     serialized_pages.push(make_review_pairs_intro(
         0,
         n_pages,
@@ -90,39 +98,51 @@ pub fn review_pairs(
         intro_subtext,
     ));
 
-    // create a page for each pair of tag-value; the last page might possible have a single tag-value
-    for (i, pair_chunk) in pairs.chunks(2).enumerate() {
-        serialized_pages.push(make_review_pairs_content(1 + i as u32, n_pages, pair_chunk));
-    }
-
-    // create final page
-
-    if long_press {
-        serialized_pages.push(make_review_pairs_final_longpress(
-            n_pages - 1,
-            n_pages,
-            final_text,
-            final_button_text,
-        ));
-    } else {
-        serialized_pages.push(make_review_pairs_final_confirmationbutton(
-            n_pages - 1,
-            n_pages,
-            final_text,
-            final_button_text,
-        ));
-    }
-
     let mut active_page = 0;
+
     loop {
+        // Show the current page
         show_page_raw(&serialized_pages[active_page]);
-        active_page = loop {
-            match get_event() {
-                Event::Action(Action::PreviousPage) => {
-                    break active_page - 1;
+
+        // Compute the next page if it exists and hasn't been computed
+        if active_page + 1 < n_pages as usize && serialized_pages.len() == active_page + 1 {
+            let next_page_index = active_page + 1;
+            let next_page = if next_page_index == (n_pages - 1) as usize {
+                // Final page
+                if long_press {
+                    make_review_pairs_final_longpress(
+                        next_page_index as u32,
+                        n_pages,
+                        final_text,
+                        final_button_text,
+                    )
+                } else {
+                    make_review_pairs_final_confirmationbutton(
+                        next_page_index as u32,
+                        n_pages,
+                        final_text,
+                        final_button_text,
+                    )
                 }
-                Event::Action(Action::NextPage) => {
-                    break active_page + 1;
+            } else {
+                // Pair page (indices 1 to n_pair_pages)
+                let chunk_index = next_page_index - 1;
+                let pair_chunk = pairs.chunks(2).nth(chunk_index as usize).unwrap();
+                make_review_pairs_content(next_page_index as u32, n_pages, pair_chunk)
+            };
+            serialized_pages.push(next_page);
+        }
+
+        // Process events
+        loop {
+            match get_event() {
+                Event::Action(Action::PreviousPage) if active_page > 0 => {
+                    active_page -= 1;
+                    break;
+                }
+                Event::Action(Action::NextPage) if active_page + 1 < n_pages as usize => {
+                    active_page += 1;
+                    break;
                 }
                 Event::Action(Action::Quit) => {
                     return false;
@@ -130,7 +150,7 @@ pub fn review_pairs(
                 Event::Action(Action::Confirm) => {
                     return true;
                 }
-                _ => {} // ignore other events for now
+                _ => {} // Ignore other events
             }
         }
     }
