@@ -185,7 +185,7 @@ pub enum SerializedPart {
     Runtime {
         arg_name: &'static str,
         arg_type: &'static str,
-    }, // TODO
+    },
 }
 
 #[cfg(feature = "wrapped_serializable")]
@@ -293,8 +293,6 @@ impl Serializable for u32 {
     }
 }
 
-// TODO: while we want strings for the final object (for example when deserializing), using a &str when/
-// serializing might help avoid allocations, especially when th strings are static.
 impl Serializable for String {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
@@ -789,31 +787,37 @@ define_serializable_enum! {
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::ToString;
-
     use super::*;
+    use alloc::{string::ToString, vec};
+
+    // Helper function for round-trip serialization/deserialization tests.
+    fn round_trip<T>(value: &T)
+    where
+        T: Serializable + PartialEq + core::fmt::Debug,
+    {
+        let serialized = value.serialized();
+        let (deserialized, rest) = T::deserialize(&serialized).unwrap();
+        assert!(rest.is_empty(), "There should be no remaining bytes");
+        assert_eq!(value, &deserialized);
+    }
 
     #[test]
     fn test_spinner_page() {
         let page = Page::Spinner {
             text: "Loading".to_string(),
         };
-        let serialized = page.serialized();
-        let (deserialized, rest) = Page::deserialize(&serialized).unwrap();
-        assert!(rest.is_empty());
-        assert_eq!(page, deserialized);
+        round_trip(&page);
     }
+
     #[test]
     fn test_icon_page() {
         let page = Page::Info {
             icon: Icon::Failure,
             text: "Error occurred".to_string(),
         };
-        let serialized = page.serialized();
-        let (deserialized, rest) = Page::deserialize(&serialized).unwrap();
-        assert!(rest.is_empty());
-        assert_eq!(page, deserialized);
+        round_trip(&page);
     }
+
     #[test]
     fn test_confirm_reject_page() {
         let page = Page::ConfirmReject {
@@ -822,16 +826,148 @@ mod tests {
             confirm: "Yes".to_string(),
             reject: "No".to_string(),
         };
-        let serialized = page.serialized();
-        let (deserialized, rest) = Page::deserialize(&serialized).unwrap();
-        assert!(rest.is_empty());
-        assert_eq!(page, deserialized);
+        round_trip(&page);
+    }
+
+    #[test]
+    fn test_generic_page() {
+        // Create a NavigationInfo with a NavWithButtons variant.
+        let nav_info = NavigationInfo {
+            active_page: 2,
+            n_pages: 5,
+            skip_text: Some("Skip".to_string()),
+            nav_info: NavInfo::NavWithButtons {
+                has_back_button: true,
+                has_page_indicator: false,
+                quit_text: Some("Quit".to_string()),
+            },
+        };
+        // Create a PageContentInfo using the TextSubtext variant.
+        let page_content_info = PageContentInfo {
+            title: Some("Generic Page".to_string()),
+            top_right_icon: Icon::Success,
+            page_content: PageContent::TextSubtext {
+                text: "Welcome".to_string(),
+                subtext: "to the generic page".to_string(),
+            },
+        };
+        let page = Page::GenericPage {
+            navigation_info: Some(nav_info),
+            page_content_info,
+        };
+        round_trip(&page);
+    }
+
+    #[test]
+    fn test_page_content_text_subtext() {
+        let content = PageContent::TextSubtext {
+            text: "Main text".to_string(),
+            subtext: "Additional info".to_string(),
+        };
+        round_trip(&content);
+    }
+
+    #[test]
+    fn test_page_content_tag_value_list() {
+        let tag_value1 = TagValue {
+            tag: "tag1".to_string(),
+            value: "value1".to_string(),
+        };
+        let tag_value2 = TagValue {
+            tag: "tag2".to_string(),
+            value: "value2".to_string(),
+        };
+        let content = PageContent::TagValueList {
+            list: vec![tag_value1, tag_value2],
+        };
+        round_trip(&content);
+    }
+
+    #[test]
+    fn test_page_content_confirmation_button() {
+        let content = PageContent::ConfirmationButton {
+            text: "Confirm?".to_string(),
+            button_text: "OK".to_string(),
+        };
+        round_trip(&content);
+    }
+
+    #[test]
+    fn test_page_content_confirmation_long_press() {
+        let content = PageContent::ConfirmationLongPress {
+            text: "Hold to confirm".to_string(),
+            long_press_text: "Long press here".to_string(),
+        };
+        round_trip(&content);
+    }
+
+    #[test]
+    fn test_navigation_info() {
+        let nav_info = NavigationInfo {
+            active_page: 1,
+            n_pages: 3,
+            skip_text: None,
+            nav_info: NavInfo::NavWithButtons {
+                has_back_button: false,
+                has_page_indicator: true,
+                quit_text: None,
+            },
+        };
+        round_trip(&nav_info);
+    }
+
+    #[test]
+    fn test_deserialize_full_extra_bytes() {
+        // Serialize a page and then append an extra byte.
+        let page = Page::Spinner {
+            text: "Loading".to_string(),
+        };
+        let mut serialized = page.serialized();
+        serialized.push(42); // Append extra data.
+        let result = Page::deserialize_full(&serialized);
+        assert!(
+            result.is_err(),
+            "deserialize_full should error if extra bytes remain"
+        );
+    }
+
+    #[test]
+    fn test_invalid_tag() {
+        // Serialize a valid page and then change its tag to an invalid value.
+        let mut serialized = Page::Spinner {
+            text: "Loading".to_string(),
+        }
+        .serialized();
+        serialized[0] = 0xFF; // 0xFF is not a valid tag.
+        let result = Page::deserialize(&serialized);
+        assert!(result.is_err(), "Invalid tag should result in an error");
+    }
+
+    #[test]
+    fn test_truncated_data() {
+        // Serialize a valid ConfirmReject page and then truncate the data.
+        let serialized = Page::ConfirmReject {
+            title: "Confirm".to_string(),
+            text: "Proceed?".to_string(),
+            confirm: "Yes".to_string(),
+            reject: "No".to_string(),
+        }
+        .serialized();
+        let truncated = &serialized[..serialized.len() - 2]; // Remove last 2 bytes.
+        let result = Page::deserialize(truncated);
+        assert!(
+            result.is_err(),
+            "Truncated data should fail deserialization"
+        );
     }
 
     #[test]
     fn test_too_short() {
         // An empty slice should fail.
         let empty: &[u8] = &[];
-        assert!(Page::deserialize(empty).is_err());
+        assert!(
+            Page::deserialize(empty).is_err(),
+            "Empty slice should return an error"
+        );
     }
 }
