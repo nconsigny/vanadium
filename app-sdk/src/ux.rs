@@ -1,10 +1,23 @@
-use crate::ecalls::{Ecall, EcallsInterface};
-use alloc::{string::ToString, vec::Vec};
+use crate::{
+    ecalls::{Ecall, EcallsInterface},
+    ux_generated::{
+        make_review_pairs_content, make_review_pairs_final_confirmationbutton,
+        make_review_pairs_final_longpress, make_review_pairs_intro,
+    },
+};
+use alloc::vec::Vec;
 
 pub use common::ux::{
     Action, Event, EventCode, EventData, Icon, NavInfo, NavigationInfo, Page, PageContent,
     PageContentInfo, Serializable, TagValue,
 };
+
+use crate::ux_generated;
+
+#[inline(always)]
+fn show_page_raw(page: &[u8]) {
+    Ecall::show_page(page.as_ptr(), page.len());
+}
 
 /// Blocks until an event is received, then returns it.
 pub fn get_event() -> Event {
@@ -28,6 +41,24 @@ pub fn get_event() -> Event {
     }
 }
 
+// waits for a number of ticker events
+pub fn wait(n: u32) {
+    let mut n_tickers = 0u32;
+    loop {
+        let mut event_data = EventData::default();
+        let event_code = EventCode::from(Ecall::get_event(&mut event_data));
+        match event_code {
+            EventCode::Ticker => {
+                n_tickers += 1;
+                if n_tickers >= n {
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 // Like get_event, but it ignores any event that is not an Action
 pub fn get_action() -> Action {
     loop {
@@ -46,128 +77,72 @@ pub fn review_pairs(
     final_button_text: &str,
     long_press: bool,
 ) -> bool {
-    let n_pair_pages = (pairs.len() + 1) / 2;
-    let n_pages = 1 + n_pair_pages + 1; // intro page + pair pages + final page
+    // As this is still too slow to compute everything at once, we use a 'streaming' approach where we compute
+    // the next page only after showing the current one.
+    // While we're computing the page, we're not able to listen to touch events, so it will currently miss
+    // user touches something before the precomputation of the next page is completed.
+    // TODO: improve this
 
-    let mut serialized_pages = Vec::with_capacity(n_pages);
+    // Calculate total number of pages
+    let n_pair_pages = ((pairs.len() + 1) / 2) as u32;
+    let n_pages = 2 + n_pair_pages; // intro + pair pages + final
 
-    // create intro page
-    serialized_pages.push(
-        Page::GenericPage {
-            navigation_info: Some(NavigationInfo {
-                active_page: 0,
-                n_pages,
-                skip_text: None,
-                nav_info: NavInfo::NavWithButtons {
-                    has_back_button: true,
-                    has_page_indicator: true,
-                    quit_text: Some("Reject".into()),
-                },
-            }),
-            page_content_info: PageContentInfo {
-                title: None,
-                top_right_icon: Icon::None, // TODO: support icons
-                page_content: PageContent::TextSubtext {
-                    text: intro_text.into(),
-                    subtext: intro_subtext.into(),
-                },
-            },
-        }
-        .serialized(),
-    );
+    // Initialize with capacity, but start empty
+    let mut serialized_pages = Vec::with_capacity(n_pages as usize);
 
-    // create a page for each pair of tag-value
-    for i in 0..n_pair_pages {
-        let mut pair_list = Vec::with_capacity(n_pair_pages);
-        pair_list.push(pairs[i * 2].clone());
-        if i * 2 + 1 < pairs.len() {
-            pair_list.push(pairs[i * 2 + 1].clone());
-        }
-
-        serialized_pages.push(
-            Page::GenericPage {
-                navigation_info: Some(NavigationInfo {
-                    active_page: 1 + i,
-                    n_pages,
-                    skip_text: None,
-                    nav_info: NavInfo::NavWithButtons {
-                        has_back_button: true,
-                        has_page_indicator: true,
-                        quit_text: Some("Reject".into()),
-                    },
-                }),
-                page_content_info: PageContentInfo {
-                    title: None,
-                    top_right_icon: Icon::None, // TODO: support icons
-                    page_content: PageContent::TagValueList(pair_list),
-                },
-            }
-            .serialized(),
-        );
-    }
-
-    // create final page
-
-    if long_press {
-        serialized_pages.push(
-            Page::GenericPage {
-                navigation_info: Some(NavigationInfo {
-                    active_page: n_pages - 1,
-                    n_pages,
-                    skip_text: None,
-                    nav_info: NavInfo::NavWithButtons {
-                        has_back_button: true,
-                        has_page_indicator: true,
-                        quit_text: Some("Reject".into()),
-                    },
-                }),
-                page_content_info: PageContentInfo {
-                    title: None,
-                    top_right_icon: Icon::None, // TODO: support icons
-                    page_content: PageContent::ConfirmationLongPress {
-                        text: final_text.into(),
-                        long_press_text: final_button_text.into(),
-                    },
-                },
-            }
-            .serialized(),
-        );
-    } else {
-        serialized_pages.push(
-            Page::GenericPage {
-                navigation_info: Some(NavigationInfo {
-                    active_page: n_pages - 1,
-                    n_pages,
-                    skip_text: None,
-                    nav_info: NavInfo::NavWithButtons {
-                        has_back_button: true,
-                        has_page_indicator: true,
-                        quit_text: Some("Reject".into()),
-                    },
-                }),
-                page_content_info: PageContentInfo {
-                    title: None,
-                    top_right_icon: Icon::None, // TODO: support icons
-                    page_content: PageContent::ConfirmationButton {
-                        text: final_text.into(),
-                        button_text: final_button_text.into(),
-                    },
-                },
-            }
-            .serialized(),
-        );
-    }
+    // Compute and add the first page (intro)
+    serialized_pages.push(make_review_pairs_intro(
+        0,
+        n_pages,
+        intro_text,
+        intro_subtext,
+    ));
 
     let mut active_page = 0;
+
     loop {
+        // Show the current page
         show_page_raw(&serialized_pages[active_page]);
-        active_page = loop {
-            match get_event() {
-                Event::Action(Action::PreviousPage) => {
-                    break active_page - 1;
+
+        // Compute the next page if it exists and hasn't been computed
+        if active_page + 1 < n_pages as usize && serialized_pages.len() == active_page + 1 {
+            let next_page_index = active_page + 1;
+            let next_page = if next_page_index == (n_pages - 1) as usize {
+                // Final page
+                if long_press {
+                    make_review_pairs_final_longpress(
+                        next_page_index as u32,
+                        n_pages,
+                        final_text,
+                        final_button_text,
+                    )
+                } else {
+                    make_review_pairs_final_confirmationbutton(
+                        next_page_index as u32,
+                        n_pages,
+                        final_text,
+                        final_button_text,
+                    )
                 }
-                Event::Action(Action::NextPage) => {
-                    break active_page + 1;
+            } else {
+                // Pair page (indices 1 to n_pair_pages)
+                let chunk_index = next_page_index - 1;
+                let pair_chunk = pairs.chunks(2).nth(chunk_index as usize).unwrap();
+                make_review_pairs_content(next_page_index as u32, n_pages, pair_chunk)
+            };
+            serialized_pages.push(next_page);
+        }
+
+        // Process events
+        loop {
+            match get_event() {
+                Event::Action(Action::PreviousPage) if active_page > 0 => {
+                    active_page -= 1;
+                    break;
+                }
+                Event::Action(Action::NextPage) if active_page + 1 < n_pages as usize => {
+                    active_page += 1;
+                    break;
                 }
                 Event::Action(Action::Quit) => {
                     return false;
@@ -175,43 +150,23 @@ pub fn review_pairs(
                 Event::Action(Action::Confirm) => {
                     return true;
                 }
-                _ => {} // ignore other events for now
+                _ => {} // Ignore other events
             }
         }
     }
 }
 
-// TODO: we might want to not make this public, and have different functions for different types of pages
-pub fn show_page(page: &Page) {
-    let mut serialized_page = Vec::new();
-    page.serialize(&mut serialized_page);
-    Ecall::show_page(serialized_page.as_ptr(), serialized_page.len());
-}
-
-pub fn show_page_raw(page: &[u8]) {
-    Ecall::show_page(page.as_ptr(), page.len());
-}
-
 pub fn show_spinner(text: &str) {
-    show_page(&Page::Spinner {
-        text: text.to_string(),
-    });
+    ux_generated::show_spinner(text);
 }
 
 pub fn show_info(icon: Icon, text: &str) {
-    show_page(&Page::Info {
-        icon,
-        text: text.to_string(),
-    });
+    ux_generated::show_info(icon, text);
 }
 
+#[inline(always)]
 pub fn show_confirm_reject(title: &str, text: &str, confirm: &str, reject: &str) -> bool {
-    show_page(&Page::ConfirmReject {
-        title: title.to_string(),
-        text: text.to_string(),
-        confirm: confirm.to_string(),
-        reject: reject.to_string(),
-    });
+    ux_generated::show_confirm_reject(title, text, confirm, reject);
 
     // wait until a button is pressed
     loop {
@@ -228,16 +183,7 @@ pub fn show_confirm_reject(title: &str, text: &str, confirm: &str, reject: &str)
     }
 }
 
+#[inline(always)]
 pub fn ux_idle() {
-    show_page(&Page::GenericPage {
-        navigation_info: None,
-        page_content_info: PageContentInfo {
-            title: None,
-            top_right_icon: Icon::None, // TODO: support icons
-            page_content: PageContent::TextSubtext {
-                text: "Application".into(),
-                subtext: "is ready".into(),
-            },
-        },
-    })
+    show_page_raw(&ux_generated::RAW_PAGE_APP_DASHBOARD);
 }

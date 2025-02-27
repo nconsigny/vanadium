@@ -7,9 +7,18 @@ pub fn handle_show_ux_screen(data: &[u8]) -> Vec<u8> {
 
     let screen_id = data[0];
     match screen_id {
-        0 => sdk::ux::show_info(sdk::ux::Icon::Success, "Oh yeah!"),
-        1 => sdk::ux::show_info(sdk::ux::Icon::Failure, "Oh no!"),
-        2 => sdk::ux::show_spinner("Loading..."),
+        0 => {
+            sdk::ux::show_info(sdk::ux::Icon::Success, "Oh yeah!");
+            sdk::ux::wait(10);
+        }
+        1 => {
+            sdk::ux::show_info(sdk::ux::Icon::Failure, "Oh no!");
+            sdk::ux::wait(10);
+        }
+        2 => {
+            sdk::ux::show_spinner("Loading...");
+            sdk::ux::wait(10);
+        }
         3 => {
             sdk::ux::show_confirm_reject("Confirm", "Do you want to confirm?", "Yes", "No");
         }
@@ -46,6 +55,8 @@ pub fn handle_show_ux_screen(data: &[u8]) -> Vec<u8> {
         }
         _ => panic!("Unknown screen id"),
     }
+
+    sdk::ux::ux_idle();
 
     vec![]
 }
