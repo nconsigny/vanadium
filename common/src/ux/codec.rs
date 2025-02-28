@@ -1,10 +1,24 @@
 use alloc::{string::String, vec::Vec};
 use core::convert::TryInto;
 
-pub trait Serializable: Sized {
+// a reduced-functionality version of Serializable, only used for &str
+// and its composite types, and slices of Serializable types.
+pub trait MiniSerializable {
     fn get_serialized_length(&self) -> usize;
-
     fn serialize(&self, buf: &mut [u8], pos: &mut usize);
+}
+
+impl<T: MiniSerializable + ?Sized> MiniSerializable for &T {
+    fn get_serialized_length(&self) -> usize {
+        T::get_serialized_length(self)
+    }
+
+    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+        T::serialize(self, buf, pos);
+    }
+}
+
+pub trait Serializable: MiniSerializable + Sized {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str>;
 
     #[inline(always)]
@@ -30,7 +44,7 @@ pub trait Serializable: Sized {
     }
 }
 
-impl Serializable for bool {
+impl MiniSerializable for bool {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         1
@@ -41,21 +55,20 @@ impl Serializable for bool {
         buf[*pos] = *self as u8;
         *pos += 1;
     }
+}
 
+impl Serializable for bool {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        if let Some((&byte, rest)) = slice.split_first() {
-            match byte {
-                0 => Ok((false, rest)),
-                1 => Ok((true, rest)),
-                _ => Err("invalid boolean value"),
-            }
-        } else {
-            Err("slice too short for bool")
+        match slice {
+            [0, rest @ ..] => Ok((false, rest)),
+            [1, rest @ ..] => Ok((true, rest)),
+            [_, ..] => Err("invalid boolean value"),
+            _ => Err("slice too short for bool"),
         }
     }
 }
 
-impl Serializable for u8 {
+impl MiniSerializable for u8 {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         1
@@ -66,17 +79,18 @@ impl Serializable for u8 {
         buf[*pos] = *self;
         *pos += 1;
     }
+}
 
+impl Serializable for u8 {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        if let Some((&byte, rest)) = slice.split_first() {
-            Ok((byte, rest))
-        } else {
-            Err("slice too short for u8")
+        match slice {
+            [byte, rest @ ..] => Ok((*byte, rest)),
+            _ => Err("slice too short for u8"),
         }
     }
 }
 
-impl Serializable for u16 {
+impl MiniSerializable for u16 {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         2
@@ -90,19 +104,21 @@ impl Serializable for u16 {
         buf[*pos + 1] = (*self & 0xFF) as u8;
         *pos += 2;
     }
+}
 
+impl Serializable for u16 {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        if slice.len() < 2 {
-            Err("slice too short for u16")
-        } else {
-            let (bytes, rest) = slice.split_at(2);
-            let arr: [u8; 2] = bytes.try_into().unwrap();
-            Ok((u16::from_be_bytes(arr), rest))
+        match slice {
+            [b1, b2, rest @ ..] => {
+                let value = u16::from_be_bytes([*b1, *b2]);
+                Ok((value, rest))
+            }
+            _ => Err("slice too short for u16"),
         }
     }
 }
 
-impl Serializable for u32 {
+impl MiniSerializable for u32 {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         4
@@ -118,37 +134,33 @@ impl Serializable for u32 {
         buf[*pos + 3] = (*self & 0xFF) as u8;
         *pos += 4;
     }
+}
 
+impl Serializable for u32 {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        if slice.len() < 4 {
-            Err("slice too short for u32")
-        } else {
-            let (bytes, rest) = slice.split_at(4);
-            let arr: [u8; 4] = bytes.try_into().unwrap();
-            Ok((u32::from_be_bytes(arr), rest))
+        match slice {
+            [b1, b2, b3, b4, rest @ ..] => {
+                let value = u32::from_be_bytes([*b1, *b2, *b3, *b4]);
+                Ok((value, rest))
+            }
+            _ => Err("slice too short for u32"),
         }
     }
 }
 
-impl Serializable for String {
+impl MiniSerializable for String {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
-        core::mem::size_of::<u16>() + self.len()
+        MiniSerializable::get_serialized_length(self.as_str())
     }
 
     #[inline(always)]
     fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        let bytes = self.as_bytes();
-        let len = bytes.len();
-        if len > u16::MAX as usize {
-            panic!("string too long");
-        }
-        (len as u16).serialize(buf, pos);
-
-        buf[*pos..*pos + len].copy_from_slice(bytes);
-        *pos += len;
+        MiniSerializable::serialize(self.as_str(), buf, pos);
     }
+}
 
+impl Serializable for String {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         let (len, rest) = u16::deserialize(slice)?;
         let len = len as usize;
@@ -158,127 +170,6 @@ impl Serializable for String {
         let (string_bytes, rest) = rest.split_at(len);
         let s = String::from_utf8(string_bytes.to_vec()).map_err(|_| "invalid utf8")?;
         Ok((s, rest))
-    }
-}
-
-impl<T: Serializable> Serializable for Option<T> {
-    #[inline(always)]
-    fn get_serialized_length(&self) -> usize {
-        1 + match self {
-            Some(value) => value.get_serialized_length(),
-            None => 0,
-        }
-    }
-
-    #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        match self {
-            Some(value) => {
-                buf[*pos] = 1;
-                *pos += 1;
-                value.serialize(buf, pos);
-            }
-            None => {
-                buf[*pos] = 0;
-                *pos += 1;
-            }
-        }
-    }
-
-    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        if let Some((&tag, rest)) = slice.split_first() {
-            match tag {
-                1 => {
-                    let (value, rest) = T::deserialize(rest)?;
-                    Ok((Some(value), rest))
-                }
-                0 => Ok((None, rest)),
-                _ => Err("invalid Option tag"),
-            }
-        } else {
-            Err("slice too short for Option tag")
-        }
-    }
-}
-
-impl<T: Serializable> Serializable for Vec<T> {
-    #[inline(always)]
-    fn get_serialized_length(&self) -> usize {
-        4 + self
-            .iter()
-            .map(Serializable::get_serialized_length)
-            .sum::<usize>()
-    }
-
-    #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        let len = self.len();
-        if len > (u32::MAX as usize) {
-            panic!("vector too long");
-        }
-        (len as u32).serialize(buf, pos);
-        for item in self {
-            item.serialize(buf, pos);
-        }
-    }
-
-    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        let (len, mut rem) = u32::deserialize(slice)?;
-        let mut vec = Vec::with_capacity(len as usize);
-        for _ in 0..len {
-            let (item, next) = T::deserialize(rem)?;
-            vec.push(item);
-            rem = next;
-        }
-        Ok((vec, rem))
-    }
-}
-
-// a reduced-functionality version of Serializable, only used for &str
-// and its composite types, and slices of Serializable types.
-pub trait MiniSerializable: Sized {
-    fn get_serialized_length(&self) -> usize;
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize);
-}
-
-impl MiniSerializable for &str {
-    #[inline(always)]
-    fn get_serialized_length(&self) -> usize {
-        core::mem::size_of::<u16>() + self.len()
-    }
-
-    #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        let bytes = self.as_bytes();
-        let len = bytes.len();
-        if len > u16::MAX as usize {
-            panic!("string too long");
-        }
-        (len as u16).serialize(buf, pos);
-        buf[*pos..*pos + len].copy_from_slice(bytes);
-        *pos += len;
-    }
-}
-
-impl<T: Serializable> MiniSerializable for &[T] {
-    #[inline(always)]
-    fn get_serialized_length(&self) -> usize {
-        4 + self
-            .iter()
-            .map(Serializable::get_serialized_length)
-            .sum::<usize>()
-    }
-
-    #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        let len = self.len();
-        if len > (u32::MAX as usize) {
-            panic!("slice too long");
-        }
-        (len as u32).serialize(buf, pos);
-        for item in self.iter() {
-            item.serialize(buf, pos);
-        }
     }
 }
 
@@ -307,7 +198,65 @@ impl<T: MiniSerializable> MiniSerializable for Option<T> {
     }
 }
 
+impl<T: Serializable> Serializable for Option<T> {
+    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
+        match slice {
+            [0, rest @ ..] => Ok((None, rest)),
+            [1, rest @ ..] => {
+                let (value, rest) = T::deserialize(rest)?;
+                Ok((Some(value), rest))
+            }
+            [] => Err("slice too short for Option tag"),
+            _ => Err("invalid Option tag"),
+        }
+    }
+}
+
 impl<T: MiniSerializable> MiniSerializable for Vec<T> {
+    #[inline(always)]
+    fn get_serialized_length(&self) -> usize {
+        MiniSerializable::get_serialized_length(self.as_slice())
+    }
+
+    #[inline(always)]
+    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+        MiniSerializable::serialize(self.as_slice(), buf, pos);
+    }
+}
+
+impl<T: Serializable> Serializable for Vec<T> {
+    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
+        let (len, mut rem) = u32::deserialize(slice)?;
+        let mut vec = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            let (item, next) = T::deserialize(rem)?;
+            vec.push(item);
+            rem = next;
+        }
+        Ok((vec, rem))
+    }
+}
+
+impl MiniSerializable for str {
+    #[inline(always)]
+    fn get_serialized_length(&self) -> usize {
+        core::mem::size_of::<u16>() + self.len()
+    }
+
+    #[inline(always)]
+    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+        let bytes = self.as_bytes();
+        let len = self.len();
+        let Ok(casted_len) = TryInto::<u16>::try_into(len) else {
+            panic!("slice too long");
+        };
+        MiniSerializable::serialize(&casted_len, buf, pos);
+        buf[*pos..][..len].copy_from_slice(bytes);
+        *pos += len;
+    }
+}
+
+impl<T: MiniSerializable> MiniSerializable for [T] {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         4 + self
@@ -318,13 +267,11 @@ impl<T: MiniSerializable> MiniSerializable for Vec<T> {
 
     #[inline(always)]
     fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        let len = self.len();
-        if len > (u32::MAX as usize) {
-            panic!("vector too long");
-        }
-
-        (len as u32).serialize(buf, pos);
-        for item in self {
+        let Ok(len) = TryInto::<u32>::try_into(self.len()) else {
+            panic!("slice too long");
+        };
+        MiniSerializable::serialize(&len, buf, pos);
+        for item in self.iter() {
             item.serialize(buf, pos);
         }
     }
@@ -543,193 +490,3 @@ impl<'a> Makeable<'a> for String {
 impl<'a, T: Makeable<'a>> Makeable<'a> for Option<T> {
     type ArgType = Option<T::ArgType>;
 }
-
-// MACROS
-
-macro_rules! define_serializable_struct {
-    (
-        $name:ident {
-            $($field:ident : $field_ty:ty),* $(,)?
-        },
-        wrapped: $wrapped_name:ident
-    ) => {
-        // Non-wrapped struct
-        #[derive(Debug, PartialEq, Eq, Clone)]
-        pub struct $name {
-            $(pub $field: $field_ty),*
-        }
-
-        impl Serializable for $name {
-            #[inline(always)]
-            fn get_serialized_length(&self) -> usize {
-                0 $( + self.$field.get_serialized_length() )*
-            }
-
-            #[inline(always)]
-            fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-                $( self.$field.serialize(buf, pos); )*
-            }
-
-            fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-                let mut slice = slice;
-                $(
-                    let ($field, new_slice) = <$field_ty>::deserialize(slice)?;
-                    slice = new_slice;
-                )*
-                Ok((Self { $($field),* }, slice))
-            }
-        }
-
-        // Wrapped struct (under feature flag)
-        #[cfg(feature = "wrapped_serializable")]
-        #[derive(Debug, PartialEq, Eq, Clone)]
-        pub struct $wrapped_name {
-            $(pub $field: <$field_ty as Wrappable>::Wrapped),*
-        }
-
-        #[cfg(feature = "wrapped_serializable")]
-        impl WrappedSerializable for $wrapped_name {
-            fn serialize_wrapped(&self) -> alloc::vec::Vec<SerializedPart> {
-                let mut parts = alloc::vec::Vec::new();
-                $(
-                    parts.extend(self.$field.serialize_wrapped());
-                )*
-                parts
-            }
-        }
-
-        #[cfg(feature = "wrapped_serializable")]
-        impl Wrappable for $name {
-            type Wrapped = $wrapped_name;
-        }
-
-        impl Makeable<'_> for $name {
-            type ArgType = $name;
-        }
-    };
-}
-
-macro_rules! define_serializable_enum {
-    (
-        $name:ident {
-            $(
-                $tag:expr => $variant:ident {
-                    $($field:ident : $enum_ty:ty),* $(,)?
-                } as ($fn_maker:ident, $fn_maker_wrapped:ident)
-            ),* $(,)?
-        },
-        wrapped: $wrapped_name:ident
-    ) => {
-        // Non-wrapped enum
-        #[derive(Debug, PartialEq, Eq, Clone)]
-        pub enum $name {
-            $(
-                $variant { $($field: $enum_ty),* },
-            )*
-        }
-
-        impl Serializable for $name {
-            #[inline(always)]
-            fn get_serialized_length(&self) -> usize {
-                match self {
-                    $(
-                        Self::$variant { $($field),* } => 1 $( + $field.get_serialized_length() )*
-                    ),*
-                }
-            }
-
-            #[inline(always)]
-            fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-                match self {
-                    $(
-                        Self::$variant { $($field),* } => {
-                            $tag.serialize(buf, pos);
-                            $(
-                                $field.serialize(buf, pos);
-                            )*
-                        }
-                    ),*
-                }
-            }
-
-            fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-                if slice.is_empty() {
-                    return Err(concat!(stringify!($name), " slice too short for tag"));
-                }
-                let (tag, rest) = slice.split_first().unwrap();
-                match tag {
-                    $(
-                        x if *x == $tag => {
-                            let mut r = rest;
-                            $(
-                                let ($field, new_r) = <$enum_ty>::deserialize(r)?;
-                                r = new_r;
-                            )*
-                            Ok((Self::$variant { $($field),* }, r))
-                        }
-                    ),*,
-                    _ => Err("unknown tag"),
-                }
-            }
-        }
-
-        // Maker functions
-        impl $name {
-            $(
-                #[inline(always)]
-                pub fn $fn_maker($($field: <$enum_ty as Makeable>::ArgType),*) -> alloc::vec::Vec<u8> {
-                    let len = {
-                        let mut len = $tag.get_serialized_length();
-                        $( len += $field.get_serialized_length(); )*
-                        len
-                    };
-                    let mut buf = alloc::vec::Vec::with_capacity(len);
-                    unsafe { buf.set_len(len); }
-                    let mut pos: usize = 0;
-                    $tag.serialize(&mut buf, &mut pos);
-                    $( $field.serialize(&mut buf, &mut pos); )*
-                    buf
-                }
-            )*
-        }
-
-        // Wrapped enum
-        #[cfg(feature = "wrapped_serializable")]
-        #[derive(Debug, PartialEq, Eq, Clone)]
-        pub enum $wrapped_name {
-            $(
-                $variant { $($field: <$enum_ty as Wrappable>::Wrapped),* },
-            )*
-        }
-
-        #[cfg(feature = "wrapped_serializable")]
-        impl WrappedSerializable for $wrapped_name {
-            fn serialize_wrapped(&self) -> alloc::vec::Vec<SerializedPart> {
-                let mut parts = alloc::vec::Vec::new();
-                match self {
-                    $(
-                        Self::$variant { $($field),* } => {
-                            parts.push(SerializedPart::Static(alloc::vec![$tag]));
-                            $(
-                                parts.extend($field.serialize_wrapped());
-                            )*
-                        }
-                    ),*
-                }
-                parts
-            }
-        }
-
-        #[cfg(feature = "wrapped_serializable")]
-        impl Wrappable for $name {
-            type Wrapped = $wrapped_name;
-        }
-
-        impl Makeable<'_> for $name {
-            type ArgType = $name;
-        }
-    };
-}
-
-pub(crate) use define_serializable_enum;
-pub(crate) use define_serializable_struct;

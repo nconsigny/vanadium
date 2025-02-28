@@ -1,5 +1,5 @@
 [workspace]
-members = [
-    "app-sdk",
-    "client-sdk"
-]
+members = ["app-sdk", "client-sdk", "macros", "common"]
+
+[workspace.dependencies]
+vanadium_macros = { path = "./macros" }
