@@ -194,7 +194,7 @@ fn derive_enum(
                     let fields = fields_names.clone();
                     quote! {
                         Self::#variant_ident { #(#fields_names,)* } => {
-                            __buff[0] = #discriminant;
+                            __buff[*__pos] = #discriminant;
                             *__pos += 1;
                             #(
                                 MiniSerializable::serialize(#fields, __buff, __pos);
@@ -212,7 +212,7 @@ fn derive_enum(
 
                     quote! {
                         Self::#variant_ident(#(#field_names),*) => {
-                            __buff[0] = #discriminant;
+                            __buff[*__pos] = #discriminant;
                             *__pos += 1;
                             #(
                                 MiniSerializable::serialize(#field_names, __buff, __pos);
@@ -222,7 +222,7 @@ fn derive_enum(
                 }
                 Fields::Unit => quote! {
                     Self::#variant_ident => {
-                        __buff[0] = #discriminant;
+                        __buff[*__pos] = #discriminant;
                         *__pos += 1;
                     }
                 },
@@ -272,7 +272,7 @@ fn derive_enum(
                             1 #( + #get_fields_len)*
                         }),
                         quote!({
-                            __buff[0] = #discriminant;
+                            __buff[__pos] = #discriminant;
                             __pos += 1;
                             #(
                                 #serialize_field;
@@ -302,7 +302,7 @@ fn derive_enum(
                             1 #( + #get_fields_len)*
                         }),
                         quote!({
-                            __buff[0] = #discriminant;
+                            __buff[__pos] = #discriminant;
                             __pos += 1;
                             #(
                                 #serialize_field;
@@ -314,7 +314,8 @@ fn derive_enum(
                     quote!(),
                     quote!(1usize),
                     quote! {
-                        __buff[0] = #discriminant;
+                        __buff[__pos] = #discriminant;
+                        __pos += 1;
                     },
                 ),
             };
