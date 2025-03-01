@@ -77,12 +77,7 @@ fn derive_enum(
 ) -> TokenStream {
 
     let wrapped = if cfg!(feature = "wrapped_serializable") {
-        if let Some(wrapped_ident) = wrapped_ident {
-
-            Some(wrappable_enum(vis, ident, data, wrapped_ident))
-        } else {
-            None
-        }
+        wrapped_ident.map(|wrapped_ident| wrappable_enum(vis, ident, data, wrapped_ident))
     } else {
         None
     };
@@ -129,7 +124,7 @@ fn derive_enum(
                         let ty = &field.ty;
                         // we could use the `?` operator, but it incrase compile times, and since nobody looks at macro code output... 
                         quote! {
-                            let (#field_name, rest) = match <#ty as Serializable>::deserialize(rest) {
+                            let (#field_name, __rest) = match <#ty as Serializable>::deserialize(__rest) {
                                 Ok(v) => v,
                                 Err(err) => return Err(err)
                             };
@@ -137,11 +132,11 @@ fn derive_enum(
                     });
                     let spread_fields = fields_named.named.iter().map(|field| field.ident.as_ref());
                     quote! {
-                        [#discriminant, rest @ ..] => {
+                        [#discriminant, __rest @ ..] => {
                             #(
                                 #deserialize_fields
                             )*
-                            Ok((Self::#variant_ident { #(#spread_fields,)* }, rest))
+                            Ok((Self::#variant_ident { #(#spread_fields,)* }, __rest))
                         }
                     }
                 }
@@ -156,7 +151,7 @@ fn derive_enum(
                         let deserialize_fields = fields.iter().map(|(field_name, ty)| {
                             // we could use the `?` operator, but it incrase compile times, and since nobody looks at macro code output... 
                             quote! {
-                                let (#field_name, rest) = match <#ty as Serializable>::deserialize(rest) {
+                                let (#field_name, __rest) = match <#ty as Serializable>::deserialize(__rest) {
                                     Ok(v) => v,
                                     Err(err) => return Err(err),
                                 };
@@ -166,16 +161,16 @@ fn derive_enum(
                     let spread_fields = fields.iter().map(|(ident, _)| ident);
 
                     quote! {
-                        [#discriminant, rest @ ..] => {
+                        [#discriminant, __rest @ ..] => {
                             #(
                                 #deserialize_fields
                             )*
-                            Ok((Self::#variant_ident(#(#spread_fields),*), rest))
+                            Ok((Self::#variant_ident(#(#spread_fields),*), __rest))
                         }
                     }
                 }
                 Fields::Unit => quote! {
-                    [#discriminant, rest @ ..] => Ok((Self::#variant_ident, rest))
+                    [#discriminant, __rest @ ..] => Ok((Self::#variant_ident, __rest))
                 },
             }
         });
@@ -322,8 +317,11 @@ fn derive_enum(
 
             quote! {
                 pub fn #fn_make_ident(#args) -> Vec<u8> {
-                    let len = #get_len;
-                    let mut __buff = alloc::vec![0; len];
+                    let __len = #get_len;
+                    let mut __buff = Vec::with_capacity(__len);
+                    unsafe {
+                        __buff.set_len(__len);
+                    }
                     let mut __pos = 0;
                     #serialize
                     __buff
@@ -567,8 +565,11 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
         quote! {
             impl #ident {
                 pub fn #make_fn_ident(#args) -> Vec<u8> {
-                    let len = #get_len;
-                    let mut __buff = alloc::vec![0; len];
+                    let __len = #get_len;
+                    let mut __buff = Vec::with_capacity(__len);
+                    unsafe {
+                        __buff.set_len(__len);
+                    }
                     let mut __pos = 0;
                     #serialize
                     __buff
@@ -578,11 +579,7 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
     });
 
     let wrapped = if cfg!(feature = "wrapped_serializable") {
-        if let Some(wrapped_ident) = wrapped_ident {
-            Some(wrappable_struct(vis, ident, &fields, wrapped_ident))
-        } else {
-            None
-        }
+        wrapped_ident.map(|wrapped_ident| wrappable_struct(vis, ident, &fields, wrapped_ident))
     } else {
         None
     };
