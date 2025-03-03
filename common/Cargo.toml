@@ -4,10 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0.204", default-features = false, features = ["derive", "alloc"] }
+serde = { version = "1.0.204", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+vanadium_macros = { path = "../macros" }
 
 # Optional dependencies
 ledger_device_sdk = { version = "1.15.4", optional = true }
+
 
 [dev-dependencies]
 sha2 = { version = "0.10.8", default-features = false }

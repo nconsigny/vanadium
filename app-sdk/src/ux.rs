@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 
 pub use common::ux::{
     Action, Event, EventCode, EventData, Icon, NavInfo, NavigationInfo, Page, PageContent,
-    PageContentInfo, Serializable, TagValue,
+    PageContentInfo, Deserializable, TagValue,
 };
 
 use crate::ux_generated;
