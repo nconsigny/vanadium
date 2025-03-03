@@ -12,7 +12,7 @@ use common::{
     },
     ecall_constants::{self, *},
     manifest::Manifest,
-    ux::Serializable,
+    ux::Deserializable,
     vm::{Cpu, CpuError, EcallHandler, MemoryError},
 };
 use ledger_device_sdk::hash::HashInit;
