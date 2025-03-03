@@ -23,4 +23,4 @@ default = []
 device_sdk = ["ledger_device_sdk"]
 
 # This feature should only be used in the build.rs script app-sdk crate
-wrapped_serializable = ["vanadium_macros/wrapped_serializable"]
+wrapped_serializable = []
