@@ -8,7 +8,7 @@ serde = { version = "1.0.204", default-features = false, features = [
     "derive",
     "alloc",
 ] }
-vanadium_macros = { workspace = true }
+vanadium_macros = { path = "../macros" }
 
 # Optional dependencies
 ledger_device_sdk = { version = "1.15.4", optional = true }
