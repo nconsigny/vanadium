@@ -63,7 +63,7 @@ pub enum Event {
 
 /// For the Icon page, define whether the icon indicates success or failure.
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(maybe_const)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(maybe_const))]
 pub enum Icon {
     None,
     Success,
@@ -73,7 +73,7 @@ pub enum Icon {
 // Structured types
 
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(name = WrappedNavInfo)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedNavInfo))]
 pub enum NavInfo {
     #[maker(make_nav_with_buttons)]
     NavWithButtons {
@@ -84,7 +84,7 @@ pub enum NavInfo {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(name = WrappedNavigationInfo)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedNavigationInfo))]
 pub struct NavigationInfo {
     pub active_page: u32,
     pub n_pages: u32,
@@ -93,14 +93,14 @@ pub struct NavigationInfo {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(name = WrappedTagValue)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedTagValue))]
 pub struct TagValue {
     pub tag: String,
     pub value: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(name = WrappedPageContent)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPageContent))]
 pub enum PageContent {
     #[maker(make_text_subtext)]
     TextSubtext { text: String, subtext: String },
@@ -117,7 +117,7 @@ pub enum PageContent {
 
 // nbgl_pageContent_t
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(name = WrappedPageContentInfo)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPageContentInfo))]
 pub struct PageContentInfo {
     pub title: Option<String>,
     pub top_right_icon: Icon,
@@ -125,12 +125,15 @@ pub struct PageContentInfo {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
-#[wrapped(name = WrappedPage)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPage))]
 pub enum Page {
+    /// A page showing a spinner and some text.
     #[maker(make_spinner)]
     Spinner { text: String },
+    /// A page showing an icon (either success or failure) and some text.
     #[maker(make_info)]
     Info { icon: Icon, text: String },
+    /// A page with a title, text, a "confirm" button, and a "reject" button.
     #[maker(make_confirm_reject)]
     ConfirmReject {
         title: String,
@@ -138,6 +141,7 @@ pub enum Page {
         confirm: String,
         reject: String,
     },
+    /// A generic page with navigation, implementing a subset of the pages supported by nbgl_pageDrawGenericContent
     #[maker(make_generic_page)]
     GenericPage {
         navigation_info: Option<NavigationInfo>,

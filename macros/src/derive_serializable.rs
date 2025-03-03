@@ -76,11 +76,7 @@ fn derive_enum(
     wrapped_ident: Option<&Wrapped>,
 ) -> TokenStream {
 
-    let wrapped = if cfg!(feature = "wrapped_serializable") {
-        wrapped_ident.map(|wrapped_ident| wrappable_enum(vis, ident, data, wrapped_ident))
-    } else {
-        None
-    };
+    let wrapped = wrapped_ident.map(|wrapped_ident| wrappable_enum(vis, ident, data, wrapped_ident));
 
     let serialized_length_match_arms = data.variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
@@ -578,11 +574,7 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
         }
     });
 
-    let wrapped = if cfg!(feature = "wrapped_serializable") {
-        wrapped_ident.map(|wrapped_ident| wrappable_struct(vis, ident, &fields, wrapped_ident))
-    } else {
-        None
-    };
+    let wrapped = wrapped_ident.map(|wrapped_ident| wrappable_struct(vis, ident, &fields, wrapped_ident));
 
 
 
