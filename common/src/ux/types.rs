@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+use vanadium_macros::Serializable;
 
 use super::codec::*;
 
@@ -61,139 +62,91 @@ pub enum Event {
 }
 
 /// For the Icon page, define whether the icon indicates success or failure.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(maybe_const))]
 pub enum Icon {
     None,
     Success,
     Failure,
 }
 
-impl Serializable for Icon {
-    #[inline(always)]
-    fn get_serialized_length(&self) -> usize {
-        1
-    }
-
-    #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        let tag: u8 = match self {
-            Icon::None => 0,
-            Icon::Success => 1,
-            Icon::Failure => 2,
-        };
-        tag.serialize(buf, pos);
-    }
-
-    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
-        if slice.len() < 1 {
-            return Err("slice too short for icon tag");
-        }
-        let (tag, rest) = slice.split_first().unwrap();
-        match tag {
-            0 => Ok((Icon::None, rest)),
-            1 => Ok((Icon::Success, rest)),
-            2 => Ok((Icon::Failure, rest)),
-            _ => Err("invalid icon tag"),
-        }
-    }
-}
-
-#[cfg(feature = "wrapped_serializable")]
-impl Wrappable for Icon {
-    type Wrapped = MaybeConst<Icon>;
-}
-
-impl Makeable<'_> for Icon {
-    type ArgType = Icon;
-}
-
 // Structured types
 
-define_serializable_enum! {
-    NavInfo {
-        0x01u8 => NavWithButtons {
-            has_back_button: bool,
-            has_page_indicator: bool,
-            quit_text: Option<String>,
-        } as (make_nav_with_buttons, make_nav_with_buttons_wrapped),
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedNavInfo))]
+pub enum NavInfo {
+    #[maker(make_nav_with_buttons)]
+    NavWithButtons {
+        has_back_button: bool,
+        has_page_indicator: bool,
+        quit_text: Option<String>,
     },
-    wrapped: WrappedNavInfo
 }
 
-define_serializable_struct! {
-    NavigationInfo {
-        active_page: u32,
-        n_pages: u32,
-        skip_text: Option<String>,
-        nav_info: NavInfo
-    },
-    wrapped: WrappedNavigationInfo
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedNavigationInfo))]
+pub struct NavigationInfo {
+    pub active_page: u32,
+    pub n_pages: u32,
+    pub skip_text: Option<String>,
+    pub nav_info: NavInfo,
 }
 
-define_serializable_struct! {
-    TagValue {
-        tag: String,
-        value: String,
-    },
-    wrapped: WrappedTagValue
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedTagValue))]
+pub struct TagValue {
+    pub tag: String,
+    pub value: String,
 }
 
-define_serializable_enum! {
-    PageContent {
-        0x01u8 => TextSubtext {
-            text: String,
-            subtext: String,
-        } as (make_text_subtext, make_text_subtext_wrapped),
-        0x02u8 => TagValueList {
-            list: Vec<TagValue>,
-        } as (make_tag_value_list, make_tag_value_list_wrapped),
-        0x03u8 => ConfirmationButton {
-            text: String,
-            button_text: String,
-        } as (make_confirmation_button, make_confirmation_button_wrapped),
-        0x04u8 => ConfirmationLongPress {
-            text: String,
-            long_press_text: String,
-        } as (make_confirmation_long_press, make_confirmation_long_press_wrapped),
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPageContent))]
+pub enum PageContent {
+    #[maker(make_text_subtext)]
+    TextSubtext { text: String, subtext: String },
+    #[maker(make_tag_value_list)]
+    TagValueList { list: Vec<TagValue> },
+    #[maker(make_confirmation_button)]
+    ConfirmationButton { text: String, button_text: String },
+    #[maker(make_confirmation_long_press)]
+    ConfirmationLongPress {
+        text: String,
+        long_press_text: String,
     },
-    wrapped: WrappedPageContent
 }
 
 // nbgl_pageContent_t
-define_serializable_struct! {
-    PageContentInfo {
-        title: Option<String>,
-        top_right_icon: Icon,
-        page_content: PageContent,
-    },
-    wrapped: WrappedPageContentInfo
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPageContentInfo))]
+pub struct PageContentInfo {
+    pub title: Option<String>,
+    pub top_right_icon: Icon,
+    pub page_content: PageContent,
 }
 
-define_serializable_enum! {
-    Page {
-        // A page showing a spinner and some text.
-        0x01u8 => Spinner {
-            text: String,
-        } as (make_spinner, make_spinner_wrapped),
-        // A page showing an icon (either success or failure) and some text.
-        0x02u8 => Info {
-            icon: Icon,
-            text: String,
-        } as (make_info, make_info_wrapped),
-        // A page with a title, text, a "confirm" button, and a "reject" button.
-        0x03u8 => ConfirmReject {
-            title: String,
-            text: String,
-            confirm: String,
-            reject: String,
-        } as (make_confirm_reject, make_confirm_reject_wrapped),
-        // A generic page with navigation, implementing a subset of the pages supported by nbgl_pageDrawGenericContent
-        0x04u8 => GenericPage {
-            navigation_info: Option<NavigationInfo>,
-            page_content_info: PageContentInfo }
-            as (make_generic_page, make_generic_page_wrapped),
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPage))]
+pub enum Page {
+    /// A page showing a spinner and some text.
+    #[maker(make_spinner)]
+    Spinner { text: String },
+    /// A page showing an icon (either success or failure) and some text.
+    #[maker(make_info)]
+    Info { icon: Icon, text: String },
+    /// A page with a title, text, a "confirm" button, and a "reject" button.
+    #[maker(make_confirm_reject)]
+    ConfirmReject {
+        title: String,
+        text: String,
+        confirm: String,
+        reject: String,
     },
-    wrapped: WrappedPage
+    /// A generic page with navigation, implementing a subset of the pages supported by nbgl_pageDrawGenericContent
+    #[maker(make_generic_page)]
+    GenericPage {
+        navigation_info: Option<NavigationInfo>,
+        page_content_info: PageContentInfo,
+    },
 }
 
 #[cfg(test)]
@@ -204,7 +157,7 @@ mod tests {
     // Helper function for round-trip serialization/deserialization tests.
     fn round_trip<T>(value: &T)
     where
-        T: Serializable + PartialEq + core::fmt::Debug,
+        T: Deserializable + Serializable + PartialEq + core::fmt::Debug,
     {
         let serialized = value.serialized();
         let (deserialized, rest) = T::deserialize(&serialized).unwrap();

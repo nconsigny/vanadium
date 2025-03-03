@@ -1,5 +1,3 @@
 [workspace]
-members = [
-    "app-sdk",
-    "client-sdk"
-]
+resolver = "2"
+members = ["app-sdk", "client-sdk", "macros", "common"]
