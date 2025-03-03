@@ -86,7 +86,7 @@ fn derive_enum(
                 let get_field_length = spread_fields.clone();
                 quote! {
                     Self::#variant_ident { #(#spread_fields,)* } => 1 #(
-                        + MiniSerializable::get_serialized_length(#get_field_length)
+                        + Serializable::get_serialized_length(#get_field_length)
                     )*
                 }
             }
@@ -99,7 +99,7 @@ fn derive_enum(
                     .collect::<Vec<_>>();
                 quote! {
                     Self::#variant_ident(#(#field_names),*) => 1 #(
-                        + MiniSerializable::get_serialized_length(#field_names)
+                        + Serializable::get_serialized_length(#field_names)
                     )*
                 }
             }
@@ -120,7 +120,7 @@ fn derive_enum(
                         let ty = &field.ty;
                         // we could use the `?` operator, but it incrase compile times, and since nobody looks at macro code output... 
                         quote! {
-                            let (#field_name, __rest) = match <#ty as Serializable>::deserialize(__rest) {
+                            let (#field_name, __rest) = match <#ty as Deserializable>::deserialize(__rest) {
                                 Ok(v) => v,
                                 Err(err) => return Err(err)
                             };
@@ -147,7 +147,7 @@ fn derive_enum(
                         let deserialize_fields = fields.iter().map(|(field_name, ty)| {
                             // we could use the `?` operator, but it incrase compile times, and since nobody looks at macro code output... 
                             quote! {
-                                let (#field_name, __rest) = match <#ty as Serializable>::deserialize(__rest) {
+                                let (#field_name, __rest) = match <#ty as Deserializable>::deserialize(__rest) {
                                     Ok(v) => v,
                                     Err(err) => return Err(err),
                                 };
@@ -188,7 +188,7 @@ fn derive_enum(
                             __buff[*__pos] = #discriminant;
                             *__pos += 1;
                             #(
-                                MiniSerializable::serialize(#fields, __buff, __pos);
+                                Serializable::serialize(#fields, __buff, __pos);
                             )*
                         }
                     }
@@ -206,7 +206,7 @@ fn derive_enum(
                             __buff[*__pos] = #discriminant;
                             *__pos += 1;
                             #(
-                                MiniSerializable::serialize(#field_names, __buff, __pos);
+                                Serializable::serialize(#field_names, __buff, __pos);
                             )*
                         }
                     }
@@ -251,11 +251,11 @@ fn derive_enum(
                     });
                     let get_fields_len = fields_named.named.iter().map(|field| {
                         let name = &field.ident;
-                        quote!(MiniSerializable::get_serialized_length(&#name))
+                        quote!(Serializable::get_serialized_length(&#name))
                     });
                     let serialize_field = fields_named.named.iter().map(|field| {
                         let name = &field.ident;
-                        quote!(MiniSerializable::serialize(&#name, &mut __buff, &mut __pos))
+                        quote!(Serializable::serialize(&#name, &mut __buff, &mut __pos))
                     });
                     (
                         quote!(#(#args),*),
@@ -283,10 +283,10 @@ fn derive_enum(
                         .map(|(name, ty)| quote!(#name: <#ty as Makeable>::ArgType));
                     let serialize_field = fields
                         .iter()
-                        .map(|(name, _)| quote!(MiniSerializable::serialize(&#name, &mut __buff, &mut __pos)));
+                        .map(|(name, _)| quote!(Serializable::serialize(&#name, &mut __buff, &mut __pos)));
                     let get_fields_len = fields
                         .iter()
-                        .map(|(name, _)| quote!(MiniSerializable::get_serialized_length(&#name)));
+                        .map(|(name, _)| quote!(Serializable::get_serialized_length(&#name)));
                     (
                         quote!(#(#args),*),
                         quote!({
@@ -327,7 +327,7 @@ fn derive_enum(
 
     quote! {
 
-        impl MiniSerializable for #ident {
+        impl Serializable for #ident {
             fn get_serialized_length(&self) -> usize {
                 match self {
                     #(
@@ -345,7 +345,7 @@ fn derive_enum(
             }
         }
 
-        impl Serializable for #ident {
+        impl Deserializable for #ident {
             fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
                 match slice {
                     [] => Err(#slice_too_short),
@@ -514,11 +514,11 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
                 });
                 let get_fields_len = fields_named.named.iter().map(|field| {
                     let name = &field.ident;
-                    quote!(MiniSerializable::get_serialized_length(&#name))
+                    quote!(Serializable::get_serialized_length(&#name))
                 });
                 let serialize_field = fields_named.named.iter().map(|field| {
                     let name = &field.ident;
-                    quote!(MiniSerializable::serialize(&#name, &mut __buff, &mut __pos))
+                    quote!(Serializable::serialize(&#name, &mut __buff, &mut __pos))
                 });
                 (
                     quote!(#(#args),*),
@@ -542,10 +542,10 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
                         .map(|(name, ty)| quote!(#name: <#ty as Makeable>::ArgType));
                     let serialize_field = fields
                         .iter()
-                        .map(|(name, _)| quote!(MiniSerializable::serialize(&#name, &mut __buff, &mut __pos)));
+                        .map(|(name, _)| quote!(Serializable::serialize(&#name, &mut __buff, &mut __pos)));
                     let get_fields_len = fields
                         .iter()
-                        .map(|(name, _)| quote!(MiniSerializable::get_serialized_length(&#name)));
+                        .map(|(name, _)| quote!(Serializable::get_serialized_length(&#name)));
                     (quote!(#(#args),*),
                     quote!({
                         0 #( + #get_fields_len)*
@@ -582,14 +582,14 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
     let serialized_fields = fields.iter().map(|field| {
         let ty = &field.field.ty;
         quote! {
-            <#ty as MiniSerializable>::serialize(&self.#field, __buff, __pos)
+            <#ty as Serializable>::serialize(&self.#field, __buff, __pos)
         }
     });
 
     let deserialized_fields = fields.iter().map(|field| {
         let ty = &field.field.ty;
         quote! {
-            #field: match <#ty as Serializable>::deserialize(__rest) {
+            #field: match <#ty as Deserializable>::deserialize(__rest) {
                 Ok((v, rest)) => {
                     __rest = rest;
                     v
@@ -601,9 +601,9 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
 
 
     quote! {
-        impl MiniSerializable for #ident {
+        impl Serializable for #ident {
             fn get_serialized_length(&self) -> usize {
-                0 #(+ MiniSerializable::get_serialized_length(&self.#fields))*
+                0 #(+ Serializable::get_serialized_length(&self.#fields))*
             }
 
             fn serialize(&self, __buff: &mut [u8], __pos: &mut usize) {
@@ -613,7 +613,7 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
             }
         }
 
-        impl Serializable for #ident {
+        impl Deserializable for #ident {
             fn deserialize(mut __rest: &[u8]) -> Result<(Self, &[u8]), &'static str> {
                 let this = Self {
                     #(

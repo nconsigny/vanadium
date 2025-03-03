@@ -1,25 +1,9 @@
 use alloc::{string::String, vec::Vec};
 use core::convert::TryInto;
 
-// a reduced-functionality version of Serializable, only used for &str
-// and its composite types, and slices of Serializable types.
-pub trait MiniSerializable {
+pub trait Serializable {
     fn get_serialized_length(&self) -> usize;
     fn serialize(&self, buf: &mut [u8], pos: &mut usize);
-}
-
-impl<T: MiniSerializable + ?Sized> MiniSerializable for &T {
-    fn get_serialized_length(&self) -> usize {
-        T::get_serialized_length(self)
-    }
-
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        T::serialize(self, buf, pos);
-    }
-}
-
-pub trait Serializable: MiniSerializable + Sized {
-    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str>;
 
     #[inline(always)]
     fn serialized(&self) -> Vec<u8> {
@@ -33,6 +17,22 @@ pub trait Serializable: MiniSerializable + Sized {
         self.serialize(&mut buf, &mut pos);
         buf
     }
+}
+
+impl<T: Serializable + ?Sized> Serializable for &T {
+    #[inline(always)]
+    fn get_serialized_length(&self) -> usize {
+        T::get_serialized_length(self)
+    }
+
+    #[inline(always)]
+    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+        T::serialize(self, buf, pos);
+    }
+}
+
+pub trait Deserializable: Sized {
+    fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str>;
 
     fn deserialize_full(slice: &[u8]) -> Result<Self, &'static str> {
         let (value, rest) = Self::deserialize(slice)?;
@@ -44,7 +44,7 @@ pub trait Serializable: MiniSerializable + Sized {
     }
 }
 
-impl MiniSerializable for bool {
+impl Serializable for bool {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         1
@@ -57,7 +57,7 @@ impl MiniSerializable for bool {
     }
 }
 
-impl Serializable for bool {
+impl Deserializable for bool {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         match slice {
             [0, rest @ ..] => Ok((false, rest)),
@@ -68,7 +68,7 @@ impl Serializable for bool {
     }
 }
 
-impl MiniSerializable for u8 {
+impl Serializable for u8 {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         1
@@ -81,7 +81,7 @@ impl MiniSerializable for u8 {
     }
 }
 
-impl Serializable for u8 {
+impl Deserializable for u8 {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         match slice {
             [byte, rest @ ..] => Ok((*byte, rest)),
@@ -90,7 +90,7 @@ impl Serializable for u8 {
     }
 }
 
-impl MiniSerializable for u16 {
+impl Serializable for u16 {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         2
@@ -106,7 +106,7 @@ impl MiniSerializable for u16 {
     }
 }
 
-impl Serializable for u16 {
+impl Deserializable for u16 {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         match slice {
             [b1, b2, rest @ ..] => {
@@ -118,7 +118,7 @@ impl Serializable for u16 {
     }
 }
 
-impl MiniSerializable for u32 {
+impl Serializable for u32 {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         4
@@ -136,7 +136,7 @@ impl MiniSerializable for u32 {
     }
 }
 
-impl Serializable for u32 {
+impl Deserializable for u32 {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         match slice {
             [b1, b2, b3, b4, rest @ ..] => {
@@ -148,19 +148,19 @@ impl Serializable for u32 {
     }
 }
 
-impl MiniSerializable for String {
+impl Serializable for String {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
-        MiniSerializable::get_serialized_length(self.as_str())
+        Serializable::get_serialized_length(self.as_str())
     }
 
     #[inline(always)]
     fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        MiniSerializable::serialize(self.as_str(), buf, pos);
+        Serializable::serialize(self.as_str(), buf, pos);
     }
 }
 
-impl Serializable for String {
+impl Deserializable for String {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         let (len, rest) = u16::deserialize(slice)?;
         let len = len as usize;
@@ -173,7 +173,7 @@ impl Serializable for String {
     }
 }
 
-impl<T: MiniSerializable> MiniSerializable for Option<T> {
+impl<T: Serializable> Serializable for Option<T> {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         1 + match self {
@@ -198,7 +198,7 @@ impl<T: MiniSerializable> MiniSerializable for Option<T> {
     }
 }
 
-impl<T: Serializable> Serializable for Option<T> {
+impl<T: Deserializable> Deserializable for Option<T> {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         match slice {
             [0, rest @ ..] => Ok((None, rest)),
@@ -212,19 +212,19 @@ impl<T: Serializable> Serializable for Option<T> {
     }
 }
 
-impl<T: MiniSerializable> MiniSerializable for Vec<T> {
+impl<T: Serializable> Serializable for Vec<T> {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
-        MiniSerializable::get_serialized_length(self.as_slice())
+        Serializable::get_serialized_length(self.as_slice())
     }
 
     #[inline(always)]
     fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        MiniSerializable::serialize(self.as_slice(), buf, pos);
+        Serializable::serialize(self.as_slice(), buf, pos);
     }
 }
 
-impl<T: Serializable> Serializable for Vec<T> {
+impl<T: Deserializable> Deserializable for Vec<T> {
     fn deserialize(slice: &[u8]) -> Result<(Self, &[u8]), &'static str> {
         let (len, mut rem) = u32::deserialize(slice)?;
         let mut vec = Vec::with_capacity(len as usize);
@@ -237,7 +237,7 @@ impl<T: Serializable> Serializable for Vec<T> {
     }
 }
 
-impl MiniSerializable for str {
+impl Serializable for str {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         core::mem::size_of::<u16>() + self.len()
@@ -250,18 +250,18 @@ impl MiniSerializable for str {
         let Ok(casted_len) = TryInto::<u16>::try_into(len) else {
             panic!("slice too long");
         };
-        MiniSerializable::serialize(&casted_len, buf, pos);
+        Serializable::serialize(&casted_len, buf, pos);
         buf[*pos..][..len].copy_from_slice(bytes);
         *pos += len;
     }
 }
 
-impl<T: MiniSerializable> MiniSerializable for [T] {
+impl<T: Serializable> Serializable for [T] {
     #[inline(always)]
     fn get_serialized_length(&self) -> usize {
         4 + self
             .iter()
-            .map(MiniSerializable::get_serialized_length)
+            .map(Serializable::get_serialized_length)
             .sum::<usize>()
     }
 
@@ -270,7 +270,7 @@ impl<T: MiniSerializable> MiniSerializable for [T] {
         let Ok(len) = TryInto::<u32>::try_into(self.len()) else {
             panic!("slice too long");
         };
-        MiniSerializable::serialize(&len, buf, pos);
+        Serializable::serialize(&len, buf, pos);
         for item in self.iter() {
             item.serialize(buf, pos);
         }
@@ -310,7 +310,7 @@ impl<T: MiniSerializable> MiniSerializable for [T] {
 
 #[cfg(feature = "wrapped_serializable")]
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum MaybeConst<T: Serializable> {
+pub enum MaybeConst<T> {
     Const(T),
     Runtime {
         arg_name: &'static str,
@@ -379,12 +379,15 @@ impl<T: WrappedSerializable> WrappedSerializable for Option<T> {
 }
 
 #[cfg(feature = "wrapped_serializable")]
-pub const fn ct<T: Serializable>(value: T) -> MaybeConst<T> {
+pub const fn ct<T: Deserializable>(value: T) -> MaybeConst<T> {
     MaybeConst::Const(value)
 }
 
 #[cfg(feature = "wrapped_serializable")]
-pub const fn rt<T: Serializable>(arg_name: &'static str, arg_type: &'static str) -> MaybeConst<T> {
+pub const fn rt<T: Deserializable>(
+    arg_name: &'static str,
+    arg_type: &'static str,
+) -> MaybeConst<T> {
     MaybeConst::Runtime { arg_name, arg_type }
 }
 
@@ -445,7 +448,7 @@ impl<T: Wrappable> Wrappable for Option<T> {
 }
 
 #[cfg(feature = "wrapped_serializable")]
-impl<T: Serializable> Wrappable for Vec<T> {
+impl<T: Deserializable> Wrappable for Vec<T> {
     // for vectors, we can't really wrap individual elements,
     // as the length of the vector is not statically known
     type Wrapped = MaybeConst<Vec<T>>;

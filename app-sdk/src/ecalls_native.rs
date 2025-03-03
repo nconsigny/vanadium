@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use crate::ecalls::EcallsInterface;
 use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
-use common::ux::{EventCode, EventData, Serializable};
+use common::ux::{EventCode, EventData, Deserializable};
 
 use bip32::{ChildNumber, XPrv};
 use hex_literal::hex;
