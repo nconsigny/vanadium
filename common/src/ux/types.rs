@@ -157,7 +157,7 @@ mod tests {
     // Helper function for round-trip serialization/deserialization tests.
     fn round_trip<T>(value: &T)
     where
-        T: Serializable + PartialEq + core::fmt::Debug,
+        T: Deserializable + Serializable + PartialEq + core::fmt::Debug,
     {
         let serialized = value.serialized();
         let (deserialized, rest) = T::deserialize(&serialized).unwrap();
