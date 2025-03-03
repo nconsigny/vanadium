@@ -1,8 +1,12 @@
+use common::message::mod_Account::OneOfaccount;
 use common::message::{
     mod_Request::OneOfrequest, mod_Response::OneOfresponse, Request, RequestGetMasterFingerprint,
     Response,
 };
-use common::message::{RequestExit, RequestGetVersion};
+use common::message::{
+    Account, AccountCoordinates, KeyInformation, KeyOrigin, RequestExit, RequestGetAddress,
+    RequestGetVersion, WalletPolicy, WalletPolicyCoordinates,
+};
 use quick_protobuf::{BytesReader, BytesWriter, MessageRead, MessageWrite, Writer};
 use sdk::vanadium_client::{VAppClient, VAppExecutionError};
 
@@ -114,9 +118,12 @@ impl<'a> BitcoinClient {
                 BitcoinClientError::VAppExecutionError(VAppExecutionError::AppExited(status)) => {
                     Ok(status)
                 }
-                _ => Err(BitcoinClientError::InvalidResponse(
-                    "Unexpected error on exit",
-                )),
+                e => {
+                    println!("Unexpected error on exit: {:?}", e);
+                    Err(BitcoinClientError::InvalidResponse(
+                        "Unexpected error on exit",
+                    ))
+                }
             },
         }
     }
@@ -130,6 +137,46 @@ impl<'a> BitcoinClient {
         let response: Response = Self::parse_response(&response_raw).await?;
         match response.response {
             OneOfresponse::get_master_fingerprint(resp) => Ok(resp.fingerprint),
+            _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
+        }
+    }
+
+    pub async fn get_address(&mut self) -> Result<String, BitcoinClientError> {
+        // TODO: actually add params
+        let pubkey_str ="tpubDDKYE6BREvDsSWMazgHoyQWiJwYaDDYPbCFjYxN3HFXJP5fokeiK4hwK5tTLBNEDBwrDXn8cQ4v9b2xdW62Xr5yxoQdMu1v6c7UDXYVH27U";
+        let pubkey = bitcoin::base58::decode_check(pubkey_str).unwrap();
+
+        let out = Self::create_request::<RequestGetAddress>(OneOfrequest::get_address(
+            RequestGetAddress {
+                display: true,
+                name: "".into(),
+                account: Some(Account {
+                    account: OneOfaccount::wallet_policy(WalletPolicy {
+                        descriptor_template: "tr(@0/**)".into(),
+                        keys_info: vec![
+                            KeyInformation {
+                                pubkey: std::borrow::Cow::Borrowed(&pubkey),
+                                origin: Some(KeyOrigin {
+                                    fingerprint: 0xf5acc2fd,
+                                    path: vec![0x80000056, 0x80000001, 0x80000000]
+                                }),
+                            },
+                        ],
+                    }),
+                }),
+                account_coordinates: Some(AccountCoordinates {
+                    account: common::message::mod_AccountCoordinates::OneOfaccount::wallet_policy_coordinates(WalletPolicyCoordinates {
+                        is_change: false,
+                        address_index: 0,
+                    }),
+                }),
+            },
+        ))
+        .await?;
+        let response_raw = self.send_message(out).await?;
+        let response: Response = Self::parse_response(&response_raw).await?;
+        match response.response {
+            OneOfresponse::get_address(resp) => Ok(resp.address.into()),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }

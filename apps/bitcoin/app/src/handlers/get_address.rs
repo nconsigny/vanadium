@@ -3,6 +3,26 @@ use common::message;
 
 use crate::accounts::{Account, AccountType, Coordinates};
 
+#[cfg(not(test))]
+fn display_address(addr: &str) -> bool {
+    sdk::ux::review_pairs(
+        "Verify Bitcoin\naddress",
+        "",
+        &alloc::vec![sdk::ux::TagValue {
+            tag: "Address".into(),
+            value: addr.into(),
+        }],
+        "",
+        "Confirm",
+        false,
+    )
+}
+
+#[cfg(test)]
+fn display_address(_addr: &str) -> bool {
+    true
+}
+
 pub fn handle_get_address<'a, 'b>(
     req: &message::RequestGetAddress<'a>,
 ) -> Result<message::ResponseGetAddress<'b>, &'static str> {
@@ -22,8 +42,11 @@ pub fn handle_get_address<'a, 'b>(
     };
 
     let address = wallet_policy.get_address(&wpc)?;
-
-    // TODO: display to the user if needed
+    if req.display {
+        if !display_address(&address) {
+            return Err("Rejected by the user");
+        }
+    }
 
     Ok(message::ResponseGetAddress {
         address: Cow::Owned(address),
