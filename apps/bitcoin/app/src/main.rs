@@ -8,12 +8,9 @@ use sdk::fatal;
 extern crate alloc;
 extern crate quick_protobuf;
 
-mod accounts;
 mod constants;
 mod handlers;
 mod merkle;
-mod script;
-mod taproot;
 
 use handlers::*;
 
