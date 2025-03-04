@@ -1,7 +1,8 @@
 use alloc::borrow::Cow;
-use common::message;
-
-use crate::accounts::{Account, AccountType, Coordinates};
+use common::{
+    account::{Account, AccountType, Coordinates},
+    message,
+};
 
 #[cfg(not(test))]
 fn display_address(addr: &str) -> bool {
@@ -55,7 +56,7 @@ pub fn handle_get_address<'a, 'b>(
 
 #[cfg(test)]
 mod tests {
-    use crate::accounts::KeyInformation;
+    use common::account::KeyInformation;
 
     use super::*;
 

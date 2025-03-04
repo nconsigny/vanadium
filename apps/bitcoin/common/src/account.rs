@@ -1,10 +1,7 @@
 use alloc::string::{String, ToString};
 
-mod bip388;
-mod conversions;
-
-pub use bip388::{
-    DescriptorTemplate, KeyInformation, KeyOrigin, KeyPlaceholder, TapTree, WalletPolicy,
+pub use crate::bip388::{
+    DescriptorTemplate, KeyInformation, KeyPlaceholder, TapTree, WalletPolicy,
 };
 use bitcoin::{params::Params, Address};
 

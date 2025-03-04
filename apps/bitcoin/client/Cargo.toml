@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitcoin = "0.32.5"
+bitcoin = { package = "vlib-bitcoin", path = "../../../libs/bitcoin" }
 common = { package = "vnd-bitcoin-common", path = "../common"}
 hex = "0.4.3"
 hidapi = "2.6.3"
