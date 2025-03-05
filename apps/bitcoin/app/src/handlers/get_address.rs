@@ -1,50 +1,60 @@
 use alloc::borrow::Cow;
-use common::{
-    account::{Account, AccountType, Coordinates},
-    message,
-};
+use common::{account::Account, message};
 
 #[cfg(not(test))]
-fn display_address(addr: &str) -> bool {
+fn display_address(account_name: Option<&str>, addr: &str) -> bool {
+    use alloc::vec;
+    use sdk::ux::TagValue;
+
+    let pairs = match account_name {
+        Some(account_name) => {
+            vec![TagValue {
+                tag: "Account".into(),
+                value: account_name.into(),
+            }]
+        }
+        None => {
+            vec![]
+        }
+    };
     sdk::ux::review_pairs(
         "Verify Bitcoin\naddress",
         "",
-        &alloc::vec![sdk::ux::TagValue {
-            tag: "Address".into(),
-            value: addr.into(),
-        }],
-        "",
+        &pairs,
+        addr,
         "Confirm",
         false,
     )
 }
 
 #[cfg(test)]
-fn display_address(_addr: &str) -> bool {
+fn display_address(_account_name: Option<&str>, _addr: &str) -> bool {
     true
 }
 
 pub fn handle_get_address<'a, 'b>(
     req: &message::RequestGetAddress<'a>,
 ) -> Result<message::ResponseGetAddress<'b>, &'static str> {
-    let account: Account = req.account.as_ref().ok_or("Missing account")?.try_into()?;
+    let wallet_policy: common::bip388::WalletPolicy =
+        req.account.as_ref().ok_or("Missing account")?.try_into()?;
 
-    // TODO: necessary checks, for now we're accepting any policy
-
-    let Account::WalletPolicy(wallet_policy) = account;
-    let coords: Coordinates = req
+    let coords: common::account::WalletPolicyCoordinates = req
         .account_coordinates
         .as_ref()
         .ok_or("Missing coordinates")?
         .try_into()?;
 
-    let wpc = match coords {
-        Coordinates::WalletPolicy(wpc) => wpc,
+    let address = wallet_policy.get_address(&coords)?;
+
+    let account_name = req.name.as_ref();
+    let account_name = if account_name.is_empty() {
+        None
+    } else {
+        Some(account_name)
     };
 
-    let address = wallet_policy.get_address(&wpc)?;
     if req.display {
-        if !display_address(&address) {
+        if !display_address(account_name, &address) {
             return Err("Rejected by the user");
         }
     }
