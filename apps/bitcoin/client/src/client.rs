@@ -1,11 +1,13 @@
-use common::message::mod_Account::OneOfaccount;
+use std::str::FromStr;
+
+use bitcoin::bip32::DerivationPath;
 use common::message::{
     mod_Request::OneOfrequest, mod_Response::OneOfresponse, Request, RequestGetMasterFingerprint,
     Response,
 };
 use common::message::{
-    Account, AccountCoordinates, KeyInformation, KeyOrigin, RequestExit, RequestGetAddress,
-    RequestGetVersion, WalletPolicy, WalletPolicyCoordinates,
+    Account, AccountCoordinates, RequestExit, RequestGetAddress, RequestGetExtendedPubkey,
+    RequestGetVersion,
 };
 use quick_protobuf::{BytesReader, BytesWriter, MessageRead, MessageWrite, Writer};
 use sdk::vanadium_client::{VAppClient, VAppExecutionError};
@@ -141,35 +143,53 @@ impl<'a> BitcoinClient {
         }
     }
 
-    pub async fn get_address(&mut self) -> Result<String, BitcoinClientError> {
-        // TODO: actually add params
-        let pubkey_str ="tpubDDKYE6BREvDsSWMazgHoyQWiJwYaDDYPbCFjYxN3HFXJP5fokeiK4hwK5tTLBNEDBwrDXn8cQ4v9b2xdW62Xr5yxoQdMu1v6c7UDXYVH27U";
-        let pubkey = bitcoin::base58::decode_check(pubkey_str).unwrap();
+    pub async fn get_extended_pubkey(
+        &mut self,
+        bip32_path: &str,
+        display: bool,
+    ) -> Result<[u8; 78], BitcoinClientError> {
+        let path =
+            DerivationPath::from_str(bip32_path).map_err(|_| "Failed to convert bip32_path")?;
 
+        let out = Self::create_request::<RequestGetExtendedPubkey>(
+            OneOfrequest::get_extended_pubkey(RequestGetExtendedPubkey {
+                display,
+                bip32_path: path.into_iter().map(|step| (*step).into()).collect(),
+            }),
+        )
+        .await?;
+        let response_raw = self.send_message(out).await?;
+        let response: Response = Self::parse_response(&response_raw).await?;
+        match response.response {
+            OneOfresponse::get_extended_pubkey(resp) => resp
+                .pubkey
+                .as_ref()
+                .try_into()
+                .map_err(|_| BitcoinClientError::InvalidResponse("Invalid pubkey length")),
+            _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
+        }
+    }
+
+    pub async fn get_address<'b, T: common::account::Account + 'static>(
+        &mut self,
+        account: &'b T,
+        name: &str,
+        coords: &'b T::Coordinates,
+        display: bool,
+    ) -> Result<String, BitcoinClientError>
+    where
+        Account<'b>: From<&'b T>,
+        AccountCoordinates: From<&'b T::Coordinates>,
+    {
         let out = Self::create_request::<RequestGetAddress>(OneOfrequest::get_address(
             RequestGetAddress {
-                display: true,
-                name: "".into(),
-                account: Some(Account {
-                    account: OneOfaccount::wallet_policy(WalletPolicy {
-                        descriptor_template: "tr(@0/**)".into(),
-                        keys_info: vec![
-                            KeyInformation {
-                                pubkey: std::borrow::Cow::Borrowed(&pubkey),
-                                origin: Some(KeyOrigin {
-                                    fingerprint: 0xf5acc2fd,
-                                    path: vec![0x80000056, 0x80000001, 0x80000000]
-                                }),
-                            },
-                        ],
-                    }),
-                }),
-                account_coordinates: Some(AccountCoordinates {
-                    account: common::message::mod_AccountCoordinates::OneOfaccount::wallet_policy_coordinates(WalletPolicyCoordinates {
-                        is_change: false,
-                        address_index: 0,
-                    }),
-                }),
+                display,
+                name: name.into(),
+                account: Some(Account::try_from(account).map_err(|_| "Failed to convert account")?),
+                account_coordinates: Some(
+                    AccountCoordinates::try_from(coords)
+                        .map_err(|_| "Failed to convert coordinates")?,
+                ),
             },
         ))
         .await?;

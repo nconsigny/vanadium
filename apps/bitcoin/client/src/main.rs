@@ -29,6 +29,12 @@ struct Cli {
 #[clap(rename_all = "snake_case")]
 enum CliCommand {
     GetFingerprint,
+    GetPubkey {
+        #[clap(long)]
+        path: String,
+        #[clap(long, default_missing_value = "true", num_args = 0..=1)]
+        display: bool,
+    },
     RegisterAccount {
         #[clap(long)]
         name: Option<String>,
@@ -191,6 +197,17 @@ fn prepare_prompt_for_clap(line: &str) -> Result<Vec<String>, String> {
     Ok(clap_args)
 }
 
+// parse the keys_info arg in the format "key_info1, key_info2, ..."
+fn parse_keys_info(keys_info: &str) -> Result<Vec<common::bip388::KeyInformation>, &'static str> {
+    let keys_info = keys_info[1..keys_info.len() - 1]
+        .split(',')
+        .map(|ki| ki.trim()) // tolerate extra spaces
+        .map(|ki| common::bip388::KeyInformation::try_from(ki))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(keys_info)
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -251,7 +268,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let clap_args = match prepare_prompt_for_clap(&line) {
                     Ok(args) => args,
                     Err(e) => {
-                        eprintln!("Error: {}", e);
+                        println!("Error: {}", e);
                         continue;
                     }
                 };
@@ -262,6 +279,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         CliCommand::GetFingerprint => {
                             let fpr = bitcoin_client.get_master_fingerprint().await?;
                             println!("{:08x}", fpr);
+                        }
+                        CliCommand::GetPubkey { path, display } => {
+                            let xpub = bitcoin_client.get_extended_pubkey(&path, display).await?;
+
+                            match bitcoin::bip32::Xpub::decode(&xpub) {
+                                Ok(xpub) => println!("{}", xpub),
+                                Err(_) => println!("Invalid xpub returned"),
+                            }
                         }
                         CliCommand::RegisterAccount {
                             name,
@@ -282,11 +307,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             descriptor_template,
                             keys_info,
                         } => {
-                            println!(
-                                "Executing get_address. Params: display={}, is_change={}, address_index={:?}, name={:?}, descriptor_template={:?}, keys_info={:?}",
-                                display, is_change, address_index, name, descriptor_template, keys_info
-                            );
-                            let addr = bitcoin_client.get_address().await?;
+                            // parse keys_info in the format "key_info1, key_info2, ..."
+                            let keys_info = parse_keys_info(&keys_info)?;
+                            let wallet_policy =
+                                common::bip388::WalletPolicy::new(&descriptor_template, keys_info)?;
+                            let wallet_policy_coords = common::account::WalletPolicyCoordinates {
+                                is_change,
+                                address_index,
+                            };
+                            let addr = bitcoin_client
+                                .get_address(
+                                    &wallet_policy,
+                                    name.as_deref().unwrap_or(""),
+                                    &wallet_policy_coords,
+                                    display,
+                                )
+                                .await?;
                             println!("{}", addr);
                         }
                     },
