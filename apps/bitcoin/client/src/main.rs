@@ -199,13 +199,73 @@ fn prepare_prompt_for_clap(line: &str) -> Result<Vec<String>, String> {
 
 // parse the keys_info arg in the format "key_info1, key_info2, ..."
 fn parse_keys_info(keys_info: &str) -> Result<Vec<common::bip388::KeyInformation>, &'static str> {
-    let keys_info = keys_info[1..keys_info.len() - 1]
+    let keys_info = keys_info
         .split(',')
         .map(|ki| ki.trim()) // tolerate extra spaces
         .map(|ki| common::bip388::KeyInformation::try_from(ki))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(keys_info)
+}
+
+async fn handle_cli_command(
+    bitcoin_client: &mut BitcoinClient,
+    cli: &Cli,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match &cli.command {
+        CliCommand::GetFingerprint => {
+            let fpr = bitcoin_client.get_master_fingerprint().await?;
+            println!("{:08x}", fpr);
+        }
+        CliCommand::GetPubkey { path, display } => {
+            let xpub = bitcoin_client.get_extended_pubkey(&path, *display).await?;
+
+            match bitcoin::bip32::Xpub::decode(&xpub) {
+                Ok(xpub) => println!("{}", xpub),
+                Err(_) => println!("Invalid xpub returned"),
+            }
+        }
+        CliCommand::RegisterAccount {
+            name,
+            descriptor_template,
+            keys_info,
+        } => {
+            println!(
+                "Executing register_account for {:?} account: {:?} {:?}",
+                name, descriptor_template, keys_info
+            );
+            println!("(Not implemented)");
+        }
+        CliCommand::GetAddress {
+            display,
+            is_change,
+            address_index,
+            name,
+            descriptor_template,
+            keys_info,
+        } => {
+            // parse keys_info in the format "key_info1, key_info2, ..."
+            let keys_info = parse_keys_info(&keys_info)?;
+            let wallet_policy = common::bip388::WalletPolicy::new(&descriptor_template, keys_info)?;
+            let wallet_policy_coords = common::account::WalletPolicyCoordinates {
+                is_change: *is_change,
+                address_index: *address_index,
+            };
+            let addr = bitcoin_client
+                .get_address(
+                    &wallet_policy,
+                    name.as_deref().unwrap_or(""),
+                    &wallet_policy_coords,
+                    *display,
+                )
+                .await?;
+            println!("{}", addr);
+        }
+        CliCommand::Exit => {
+            return Err("Exiting".into());
+        }
+    }
+    Ok(())
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -274,58 +334,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 match Cli::try_parse_from(clap_args) {
-                    Ok(cli) => match cli.command {
-                        CliCommand::Exit => break,
-                        CliCommand::GetFingerprint => {
-                            let fpr = bitcoin_client.get_master_fingerprint().await?;
-                            println!("{:08x}", fpr);
+                    Ok(cli) => {
+                        if let Err(e) = handle_cli_command(&mut bitcoin_client, &cli).await {
+                            println!("Error: {}", e);
                         }
-                        CliCommand::GetPubkey { path, display } => {
-                            let xpub = bitcoin_client.get_extended_pubkey(&path, display).await?;
-
-                            match bitcoin::bip32::Xpub::decode(&xpub) {
-                                Ok(xpub) => println!("{}", xpub),
-                                Err(_) => println!("Invalid xpub returned"),
-                            }
-                        }
-                        CliCommand::RegisterAccount {
-                            name,
-                            descriptor_template,
-                            keys_info,
-                        } => {
-                            println!(
-                                "Executing register_account for {:?} account: {:?} {:?}",
-                                name, descriptor_template, keys_info
-                            );
-                            println!("(Not implemented)");
-                        }
-                        CliCommand::GetAddress {
-                            display,
-                            is_change,
-                            address_index,
-                            name,
-                            descriptor_template,
-                            keys_info,
-                        } => {
-                            // parse keys_info in the format "key_info1, key_info2, ..."
-                            let keys_info = parse_keys_info(&keys_info)?;
-                            let wallet_policy =
-                                common::bip388::WalletPolicy::new(&descriptor_template, keys_info)?;
-                            let wallet_policy_coords = common::account::WalletPolicyCoordinates {
-                                is_change,
-                                address_index,
-                            };
-                            let addr = bitcoin_client
-                                .get_address(
-                                    &wallet_policy,
-                                    name.as_deref().unwrap_or(""),
-                                    &wallet_policy_coords,
-                                    display,
-                                )
-                                .await?;
-                            println!("{}", addr);
-                        }
-                    },
+                    }
                     Err(e) => println!("Invalid command: {}", e),
                 }
             }
