@@ -21,15 +21,38 @@ fn get_pubkey_fingerprint(pubkey: &EcfpPublicKey<Secp256k1, 32>) -> u32 {
     u32::from_be_bytes([hash[0], hash[1], hash[2], hash[3]])
 }
 
+#[cfg(not(test))]
+fn display_xpub(xpub: &str, path: &[u32]) -> bool {
+    use alloc::string::ToString;
+    use alloc::vec;
+    use sdk::ux::TagValue;
+
+    let path =
+        bitcoin::bip32::DerivationPath::from(path.iter().map(|&x| x.into()).collect::<Vec<_>>());
+
+    sdk::ux::review_pairs(
+        "Verify Bitcoin\nextended public key",
+        "",
+        &vec![TagValue {
+            tag: "Path".into(),
+            value: path.to_string(),
+        }],
+        xpub,
+        "Confirm",
+        false,
+    )
+}
+
+#[cfg(test)]
+fn display_xpub(_xpub: &str, _path: &[u32]) -> bool {
+    true
+}
+
 pub fn handle_get_extended_pubkey<'a, 'b>(
     req: &'a RequestGetExtendedPubkey,
 ) -> Result<ResponseGetExtendedPubkey<'b>, &'static str> {
     if req.bip32_path.len() > 256 {
         return Err("Derivation path is too long");
-    }
-
-    if req.display {
-        todo!("Display is not yet implemented")
     }
 
     let hd_node = sdk::curve::Secp256k1::derive_hd_node(&req.bip32_path)?;
@@ -63,6 +86,13 @@ pub fn handle_get_extended_pubkey<'a, 'b>(
     xpub.extend_from_slice(&hd_node.chaincode);
     xpub.push(pubkey_bytes[64] % 2 + 0x02);
     xpub.extend_from_slice(&pubkey_bytes[1..33]);
+
+    if req.display {
+        let xpub_base58 = bitcoin::base58::encode_check(&xpub);
+        if !display_xpub(&xpub_base58, &req.bip32_path) {
+            return Err("Rejected by the user");
+        }
+    }
 
     Ok(ResponseGetExtendedPubkey {
         pubkey: Cow::Owned(xpub),
