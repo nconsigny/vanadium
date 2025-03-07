@@ -25,18 +25,9 @@ use nom::{
     IResult,
 };
 
-use bitcoin::{
-    bip32::{ChildNumber, Xpub},
-    consensus::encode::{self, VarInt},
-};
-
-use sdk::hash::{Hasher, Sha256};
-
-use crate::constants::{BIP44_COIN_TYPE, MAX_BIP44_ACCOUNT_RECOMMENDED};
-use crate::merkle::MerkleTree;
+use bitcoin::bip32::{ChildNumber, Xpub};
 
 const HARDENED_INDEX: u32 = 0x80000000u32;
-
 const MAX_OLDER_AFTER: u32 = 2147483647; // maximum allowed in older/after
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -836,43 +827,44 @@ impl WalletPolicy {
         &self.descriptor_template_raw
     }
 
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![2];
-        res.extend(encode::serialize(&VarInt(
-            self.descriptor_template_raw.as_bytes().len() as u64,
-        )));
+    // TODO: this will probably move elsewhere
+    // pub fn serialize(&self) -> Vec<u8> {
+    //     let mut res: Vec<u8> = vec![2];
+    //     res.extend(encode::serialize(&VarInt(
+    //         self.descriptor_template_raw.as_bytes().len() as u64,
+    //     )));
 
-        let desc_tmp_hash = Sha256::hash(&self.descriptor_template_raw.as_bytes());
+    //     let desc_tmp_hash = Sha256::hash(&self.descriptor_template_raw.as_bytes());
 
-        res.extend_from_slice(&desc_tmp_hash);
+    //     res.extend_from_slice(&desc_tmp_hash);
 
-        res.extend(encode::serialize(
-            &VarInt(self.key_information.len() as u64),
-        ));
+    //     res.extend(encode::serialize(
+    //         &VarInt(self.key_information.len() as u64),
+    //     ));
 
-        res.extend_from_slice(
-            MerkleTree::new(
-                self.key_information
-                    .iter()
-                    .map(|key| {
-                        let mut sha256hasher = Sha256::new();
-                        sha256hasher.update(&[0x00]);
-                        sha256hasher.update(&key.pubkey.encode());
-                        let mut res = [0u8; 32];
-                        sha256hasher.digest(&mut res);
-                        res
-                    })
-                    .collect(),
-            )
-            .root_hash(),
-        );
+    //     res.extend_from_slice(
+    //         MerkleTree::new(
+    //             self.key_information
+    //                 .iter()
+    //                 .map(|key| {
+    //                     let mut sha256hasher = Sha256::new();
+    //                     sha256hasher.update(&[0x00]);
+    //                     sha256hasher.update(&key.pubkey.encode());
+    //                     let mut res = [0u8; 32];
+    //                     sha256hasher.digest(&mut res);
+    //                     res
+    //                 })
+    //                 .collect(),
+    //         )
+    //         .root_hash(),
+    //     );
 
-        res
-    }
+    //     res
+    // }
 
-    pub fn id(&self) -> [u8; 32] {
-        Sha256::hash(&self.serialize())
-    }
+    // pub fn id(&self) -> [u8; 32] {
+    //     Sha256::hash(&self.serialize())
+    // }
 
     pub fn get_segwit_version(&self) -> Result<SegwitVersion, &'static str> {
         match &self.descriptor_template {
@@ -888,70 +880,71 @@ impl WalletPolicy {
         }
     }
 
-    /// Checks whether this policy is a single-sig policy where both the descriptor and the
-    /// single key path (which must be present) is according to BIP-44, BIP-49, BIP-84, or
-    /// BIP-86 specifications.
-    /// Default policies are the ones that can be used without registering them first.
-    ///
-    /// Note that this does not verify that the xpub is indeed derived as claimed; the
-    /// responsibility for this check is on the caller.
-    pub fn is_default(&self) -> bool {
-        if self.key_information.len() != 1 {
-            return false;
-        }
+    // TODO: move this to app code
+    //     /// Checks whether this policy is a single-sig policy where both the descriptor and the
+    //     /// single key path (which must be present) is according to BIP-44, BIP-49, BIP-84, or
+    //     /// BIP-86 specifications.
+    //     /// Default policies are the ones that can be used without registering them first.
+    //     ///
+    //     /// Note that this does not verify that the xpub is indeed derived as claimed; the
+    //     /// responsibility for this check is on the caller.
+    //     pub fn is_default(&self) -> bool {
+    //         if self.key_information.len() != 1 {
+    //             return false;
+    //         }
 
-        let key_origin = match &self.key_information[0].origin_info {
-            Some(ko) => ko,
-            None => return false,
-        };
+    //         let key_origin = match &self.key_information[0].origin_info {
+    //             Some(ko) => ko,
+    //             None => return false,
+    //         };
 
-        if key_origin.derivation_path.len() != 3 {
-            return false;
-        }
+    //         if key_origin.derivation_path.len() != 3 {
+    //             return false;
+    //         }
 
-        // checks if a key placeholder is canonical
-        fn check_kp(kp: &KeyPlaceholder) -> bool {
-            kp.key_index == 0 && kp.num1 == 0 && kp.num2 == 1
-        }
+    //         // checks if a key placeholder is canonical
+    //         fn check_kp(kp: &KeyPlaceholder) -> bool {
+    //             kp.key_index == 0 && kp.num1 == 0 && kp.num2 == 1
+    //         }
 
-        // checks if a derivation path is canonical according to the BIP-44 purpose
-        fn check_path(der_path: &[ChildNumber], purpose: u32) -> bool {
-            const H: u32 = 0x80000000u32;
+    //         // checks if a derivation path is canonical according to the BIP-44 purpose
+    //         fn check_path(der_path: &[ChildNumber], purpose: u32) -> bool {
+    //             const H: u32 = 0x80000000u32;
 
-            der_path.len() == 3
-                && der_path[..2]
-                    == vec![
-                        ChildNumber::from_hardened_idx(purpose).unwrap(),
-                        ChildNumber::from_hardened_idx(BIP44_COIN_TYPE).unwrap(),
-                    ]
-                && der_path[2].is_hardened()
-                && der_path[2]
-                    <= ChildNumber::from_hardened_idx(MAX_BIP44_ACCOUNT_RECOMMENDED).unwrap()
-        }
+    //             der_path.len() == 3
+    //                 && der_path[..2]
+    //                     == vec![
+    //                         ChildNumber::from_hardened_idx(purpose).unwrap(),
+    //                         ChildNumber::from_hardened_idx(BIP44_COIN_TYPE).unwrap(),
+    //                     ]
+    //                 && der_path[2].is_hardened()
+    //                 && der_path[2]
+    //                     <= ChildNumber::from_hardened_idx(MAX_BIP44_ACCOUNT_RECOMMENDED).unwrap()
+    //         }
 
-        match &self.descriptor_template {
-            DescriptorTemplate::Pkh(kp) => {
-                // BIP-44
-                check_kp(kp) && check_path(&key_origin.derivation_path, 44)
-            }
-            DescriptorTemplate::Wpkh(kp) => {
-                // BIP-84
-                check_kp(kp) && check_path(&key_origin.derivation_path, 84)
-            }
-            DescriptorTemplate::Sh(inner) => match inner.as_ref() {
-                DescriptorTemplate::Wpkh(kp) => {
-                    // BIP-49
-                    check_kp(kp) && check_path(&key_origin.derivation_path, 49)
-                }
-                _ => false,
-            },
-            DescriptorTemplate::Tr(kp, tree) => {
-                // BIP-86
-                tree.is_none() && check_kp(kp) && check_path(&key_origin.derivation_path, 86)
-            }
-            _ => false,
-        }
-    }
+    //         match &self.descriptor_template {
+    //             DescriptorTemplate::Pkh(kp) => {
+    //                 // BIP-44
+    //                 check_kp(kp) && check_path(&key_origin.derivation_path, 44)
+    //             }
+    //             DescriptorTemplate::Wpkh(kp) => {
+    //                 // BIP-84
+    //                 check_kp(kp) && check_path(&key_origin.derivation_path, 84)
+    //             }
+    //             DescriptorTemplate::Sh(inner) => match inner.as_ref() {
+    //                 DescriptorTemplate::Wpkh(kp) => {
+    //                     // BIP-49
+    //                     check_kp(kp) && check_path(&key_origin.derivation_path, 49)
+    //                 }
+    //                 _ => false,
+    //             },
+    //             DescriptorTemplate::Tr(kp, tree) => {
+    //                 // BIP-86
+    //                 tree.is_none() && check_kp(kp) && check_path(&key_origin.derivation_path, 86)
+    //             }
+    //             _ => false,
+    //         }
+    //     }
 }
 
 impl ToDescriptor for TapTree {
@@ -1235,7 +1228,6 @@ mod tests {
         ];
 
         for input in test_cases_err {
-            println!("Testing failure case: {}", input);
             assert!(KeyOrigin::try_from(input).is_err());
         }
     }
@@ -1461,133 +1453,134 @@ mod tests {
         assert!(wallet.is_ok());
     }
 
-    #[test]
-    fn test_wallet_policy_is_default() {
-        let valid_combos: Vec<(&str, u32)> = vec![
-            ("pkh(@0/**)", 44),
-            ("sh(wpkh(@0/**))", 49),
-            ("wpkh(@0/**)", 84),
-            ("tr(@0/**)", 86),
-        ];
+    // TODO" move elsewhere
+    // #[test]
+    // fn test_wallet_policy_is_default() {
+    //     let valid_combos: Vec<(&str, u32)> = vec![
+    //         ("pkh(@0/**)", 44),
+    //         ("sh(wpkh(@0/**))", 49),
+    //         ("wpkh(@0/**)", 84),
+    //         ("tr(@0/**)", 86),
+    //     ];
 
-        // we re-use the same dummy tpub for all tests - it's not checked anyway
-        let dummy_key = "tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P";
+    //     // we re-use the same dummy tpub for all tests - it's not checked anyway
+    //     let dummy_key = "tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P";
 
-        for (desc_tmp, purpose) in &valid_combos {
-            // test valid cases
-            for account in [0, 1, 50, MAX_BIP44_ACCOUNT_RECOMMENDED] {
-                assert_eq!(
-                    WalletPolicy::new(
-                        desc_tmp,
-                        vec![koi(&format!(
-                            "[f5acc2fd/{}'/{}'/{}']{}",
-                            purpose, BIP44_COIN_TYPE, account, dummy_key
-                        ))]
-                    )
-                    .unwrap()
-                    .is_default(),
-                    true
-                );
-            }
+    //     for (desc_tmp, purpose) in &valid_combos {
+    //         // test valid cases
+    //         for account in [0, 1, 50, MAX_BIP44_ACCOUNT_RECOMMENDED] {
+    //             assert_eq!(
+    //                 WalletPolicy::new(
+    //                     desc_tmp,
+    //                     vec![koi(&format!(
+    //                         "[f5acc2fd/{}'/{}'/{}']{}",
+    //                         purpose, BIP44_COIN_TYPE, account, dummy_key
+    //                     ))]
+    //                 )
+    //                 .unwrap()
+    //                 .is_default(),
+    //                 true
+    //             );
+    //         }
 
-            // test invalid purposes (using the "purpose" from the wrong BIP)
-            for (_, invalid_purpose) in valid_combos.iter().filter(|(_, p)| p != purpose) {
-                assert_eq!(
-                    WalletPolicy::new(
-                        desc_tmp,
-                        vec![koi(&format!(
-                            "[f5acc2fd/{}'/{}'/{}']{}",
-                            invalid_purpose, BIP44_COIN_TYPE, 0, dummy_key
-                        ))]
-                    )
-                    .unwrap()
-                    .is_default(),
-                    false
-                );
-            }
+    //         // test invalid purposes (using the "purpose" from the wrong BIP)
+    //         for (_, invalid_purpose) in valid_combos.iter().filter(|(_, p)| p != purpose) {
+    //             assert_eq!(
+    //                 WalletPolicy::new(
+    //                     desc_tmp,
+    //                     vec![koi(&format!(
+    //                         "[f5acc2fd/{}'/{}'/{}']{}",
+    //                         invalid_purpose, BIP44_COIN_TYPE, 0, dummy_key
+    //                     ))]
+    //                 )
+    //                 .unwrap()
+    //                 .is_default(),
+    //                 false
+    //             );
+    //         }
 
-            // test account too large
-            assert_eq!(
-                WalletPolicy::new(
-                    desc_tmp,
-                    vec![koi(&format!(
-                        "[f5acc2fd/{}'/{}'/{}']{}",
-                        purpose,
-                        BIP44_COIN_TYPE,
-                        MAX_BIP44_ACCOUNT_RECOMMENDED + 1,
-                        dummy_key
-                    ))]
-                )
-                .unwrap()
-                .is_default(),
-                false
-            );
+    //         // test account too large
+    //         assert_eq!(
+    //             WalletPolicy::new(
+    //                 desc_tmp,
+    //                 vec![koi(&format!(
+    //                     "[f5acc2fd/{}'/{}'/{}']{}",
+    //                     purpose,
+    //                     BIP44_COIN_TYPE,
+    //                     MAX_BIP44_ACCOUNT_RECOMMENDED + 1,
+    //                     dummy_key
+    //                 ))]
+    //             )
+    //             .unwrap()
+    //             .is_default(),
+    //             false
+    //         );
 
-            // test unhardened purpose
-            assert_eq!(
-                WalletPolicy::new(
-                    desc_tmp,
-                    vec![koi(&format!(
-                        "[f5acc2fd/{}/{}'/{}']{}",
-                        44, BIP44_COIN_TYPE, 0, dummy_key
-                    ))]
-                )
-                .unwrap()
-                .is_default(),
-                false
-            );
+    //         // test unhardened purpose
+    //         assert_eq!(
+    //             WalletPolicy::new(
+    //                 desc_tmp,
+    //                 vec![koi(&format!(
+    //                     "[f5acc2fd/{}/{}'/{}']{}",
+    //                     44, BIP44_COIN_TYPE, 0, dummy_key
+    //                 ))]
+    //             )
+    //             .unwrap()
+    //             .is_default(),
+    //             false
+    //         );
 
-            // test unhardened coin_type
-            assert_eq!(
-                WalletPolicy::new(
-                    desc_tmp,
-                    vec![koi(&format!(
-                        "[f5acc2fd/{}'/{}/{}']{}",
-                        44, BIP44_COIN_TYPE, 0, dummy_key
-                    ))]
-                )
-                .unwrap()
-                .is_default(),
-                false
-            );
+    //         // test unhardened coin_type
+    //         assert_eq!(
+    //             WalletPolicy::new(
+    //                 desc_tmp,
+    //                 vec![koi(&format!(
+    //                     "[f5acc2fd/{}'/{}/{}']{}",
+    //                     44, BIP44_COIN_TYPE, 0, dummy_key
+    //                 ))]
+    //             )
+    //             .unwrap()
+    //             .is_default(),
+    //             false
+    //         );
 
-            // test unhardened account
-            assert_eq!(
-                WalletPolicy::new(
-                    desc_tmp,
-                    vec![koi(&format!(
-                        "[f5acc2fd/{}'/{}/{}']{}",
-                        44, BIP44_COIN_TYPE, 0, dummy_key
-                    ))]
-                )
-                .unwrap()
-                .is_default(),
-                false
-            );
+    //         // test unhardened account
+    //         assert_eq!(
+    //             WalletPolicy::new(
+    //                 desc_tmp,
+    //                 vec![koi(&format!(
+    //                     "[f5acc2fd/{}'/{}/{}']{}",
+    //                     44, BIP44_COIN_TYPE, 0, dummy_key
+    //                 ))]
+    //             )
+    //             .unwrap()
+    //             .is_default(),
+    //             false
+    //         );
 
-            // test missing key origin
-            assert_eq!(
-                WalletPolicy::new(desc_tmp, vec![koi(&dummy_key)])
-                    .unwrap()
-                    .is_default(),
-                false
-            );
-        }
+    //         // test missing key origin
+    //         assert_eq!(
+    //             WalletPolicy::new(desc_tmp, vec![koi(&dummy_key)])
+    //                 .unwrap()
+    //                 .is_default(),
+    //             false
+    //         );
+    //     }
 
-        // tr with non-empty script is not standard
-        assert_eq!(
-            WalletPolicy::new(
-                "tr(@0/**,0)",
-                vec![koi(&format!(
-                    "[f5acc2fd/86'/{}'/{}']{}",
-                    BIP44_COIN_TYPE, 0, dummy_key
-                ))]
-            )
-            .unwrap()
-            .is_default(),
-            false
-        );
-    }
+    //     // tr with non-empty script is not standard
+    //     assert_eq!(
+    //         WalletPolicy::new(
+    //             "tr(@0/**,0)",
+    //             vec![koi(&format!(
+    //                 "[f5acc2fd/86'/{}'/{}']{}",
+    //                 BIP44_COIN_TYPE, 0, dummy_key
+    //             ))]
+    //         )
+    //         .unwrap()
+    //         .is_default(),
+    //         false
+    //     );
+    // }
 
     #[test]
     fn test_descriptortemplate_placeholders_iterator() {

@@ -1,8 +1,14 @@
+use std::str::FromStr;
+
+use bitcoin::bip32::DerivationPath;
 use common::message::{
     mod_Request::OneOfrequest, mod_Response::OneOfresponse, Request, RequestGetMasterFingerprint,
     Response,
 };
-use common::message::{RequestExit, RequestGetVersion};
+use common::message::{
+    Account, AccountCoordinates, RequestExit, RequestGetAddress, RequestGetExtendedPubkey,
+    RequestGetVersion,
+};
 use quick_protobuf::{BytesReader, BytesWriter, MessageRead, MessageWrite, Writer};
 use sdk::vanadium_client::{VAppClient, VAppExecutionError};
 
@@ -114,9 +120,12 @@ impl<'a> BitcoinClient {
                 BitcoinClientError::VAppExecutionError(VAppExecutionError::AppExited(status)) => {
                     Ok(status)
                 }
-                _ => Err(BitcoinClientError::InvalidResponse(
-                    "Unexpected error on exit",
-                )),
+                e => {
+                    println!("Unexpected error on exit: {:?}", e);
+                    Err(BitcoinClientError::InvalidResponse(
+                        "Unexpected error on exit",
+                    ))
+                }
             },
         }
     }
@@ -130,6 +139,64 @@ impl<'a> BitcoinClient {
         let response: Response = Self::parse_response(&response_raw).await?;
         match response.response {
             OneOfresponse::get_master_fingerprint(resp) => Ok(resp.fingerprint),
+            _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
+        }
+    }
+
+    pub async fn get_extended_pubkey(
+        &mut self,
+        bip32_path: &str,
+        display: bool,
+    ) -> Result<[u8; 78], BitcoinClientError> {
+        let path =
+            DerivationPath::from_str(bip32_path).map_err(|_| "Failed to convert bip32_path")?;
+
+        let out = Self::create_request::<RequestGetExtendedPubkey>(
+            OneOfrequest::get_extended_pubkey(RequestGetExtendedPubkey {
+                display,
+                bip32_path: path.into_iter().map(|step| (*step).into()).collect(),
+            }),
+        )
+        .await?;
+        let response_raw = self.send_message(out).await?;
+        let response: Response = Self::parse_response(&response_raw).await?;
+        match response.response {
+            OneOfresponse::get_extended_pubkey(resp) => resp
+                .pubkey
+                .as_ref()
+                .try_into()
+                .map_err(|_| BitcoinClientError::InvalidResponse("Invalid pubkey length")),
+            _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
+        }
+    }
+
+    pub async fn get_address<'b, T: common::account::Account + 'static>(
+        &mut self,
+        account: &'b T,
+        name: &str,
+        coords: &'b T::Coordinates,
+        display: bool,
+    ) -> Result<String, BitcoinClientError>
+    where
+        Account<'b>: From<&'b T>,
+        AccountCoordinates: From<&'b T::Coordinates>,
+    {
+        let out = Self::create_request::<RequestGetAddress>(OneOfrequest::get_address(
+            RequestGetAddress {
+                display,
+                name: name.into(),
+                account: Some(Account::try_from(account).map_err(|_| "Failed to convert account")?),
+                account_coordinates: Some(
+                    AccountCoordinates::try_from(coords)
+                        .map_err(|_| "Failed to convert coordinates")?,
+                ),
+            },
+        ))
+        .await?;
+        let response_raw = self.send_message(out).await?;
+        let response: Response = Self::parse_response(&response_raw).await?;
+        match response.response {
+            OneOfresponse::get_address(resp) => Ok(resp.address.into()),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }

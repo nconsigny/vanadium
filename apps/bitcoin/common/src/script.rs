@@ -1,28 +1,18 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use bitcoin::bip32::{ChildNumber, Xpub};
-use bitcoin::hashes::Hash;
+use bitcoin::hashes::{hash160, sha256, Hash};
 use bitcoin::key::{TapTweak, UntweakedPublicKey};
 use bitcoin::opcodes::{all::*, OP_0};
 use bitcoin::script::Builder;
 use bitcoin::{PubkeyHash, ScriptBuf, ScriptHash, TapNodeHash, WPubkeyHash, WScriptHash};
 
-use sdk::hash::{Hasher, Ripemd160, Sha256};
-
 use crate::taproot::GetTapTreeHash;
 
-use crate::accounts::{DescriptorTemplate, KeyInformation, KeyPlaceholder, WalletPolicy};
+use crate::account::{DescriptorTemplate, KeyInformation, KeyPlaceholder, WalletPolicy};
 
 const MAX_PUBKEYS_PER_MULTISIG: usize = 20;
 const MAX_PUBKEYS_PER_MULTI_A: usize = 999;
-
-fn sha256(data: &[u8]) -> [u8; 32] {
-    Sha256::hash(data)
-}
-
-fn hash160(data: &[u8]) -> [u8; 20] {
-    Ripemd160::hash(&Sha256::hash(data))
-}
 
 pub trait ToScript {
     fn to_script(&self, is_change: bool, address_index: u32) -> Result<ScriptBuf, &'static str>;
@@ -120,7 +110,9 @@ impl ToScriptWithKeyInfoInner for DescriptorTemplate {
                     inner_builder,
                     ScriptContext::Sh,
                 )?;
-                let script_hash = ScriptHash::from_byte_array(hash160(&inner_builder.as_bytes()));
+
+                let script_hash =
+                    ScriptHash::from_raw_hash(hash160::Hash::hash(&inner_builder.as_bytes()));
 
                 builder
                     .push_opcode(OP_HASH160)
@@ -140,7 +132,8 @@ impl ToScriptWithKeyInfoInner for DescriptorTemplate {
                     inner_builder,
                     ScriptContext::Wsh,
                 )?;
-                let script_hash = WScriptHash::from_byte_array(sha256(&inner_builder.as_bytes()));
+                let script_hash =
+                    WScriptHash::from_raw_hash(sha256::Hash::hash(&inner_builder.as_bytes()));
                 builder.push_int(0).push_slice(script_hash)
             }
             DescriptorTemplate::Pkh(kp) => {
@@ -151,7 +144,7 @@ impl ToScriptWithKeyInfoInner for DescriptorTemplate {
                     key.to_pub().to_bytes().to_vec()
                 };
 
-                let pubkey_hash = PubkeyHash::from_byte_array(hash160(&pubkey));
+                let pubkey_hash = PubkeyHash::from_raw_hash(hash160::Hash::hash(&pubkey));
 
                 builder
                     .push_opcode(OP_DUP)
@@ -166,8 +159,7 @@ impl ToScriptWithKeyInfoInner for DescriptorTemplate {
                 }
 
                 let pubkey = derive(kp)?.public_key.serialize();
-                let pubkey_hash = WPubkeyHash::from_byte_array(hash160(&pubkey));
-
+                let pubkey_hash = WPubkeyHash::from_raw_hash(hash160::Hash::hash(&pubkey));
                 builder.push_int(0).push_slice(pubkey_hash)
             }
             DescriptorTemplate::Sortedmulti(k, kps) | DescriptorTemplate::Multi(k, kps) => {
@@ -283,16 +275,16 @@ impl ToScriptWithKeyInfoInner for DescriptorTemplate {
             }
             DescriptorTemplate::Pk_h(kp) => {
                 let key = derive(kp)?;
-                let rip: [u8; 20] = if ctx == ScriptContext::Tr {
-                    hash160(&key.to_x_only_pub().serialize())
+                let rip = if ctx == ScriptContext::Tr {
+                    hash160::Hash::hash(&key.to_x_only_pub().serialize())
                 } else {
-                    hash160(&key.to_pub().to_bytes())
+                    hash160::Hash::hash(&key.to_pub().to_bytes())
                 };
 
                 builder
                     .push_opcode(OP_DUP)
                     .push_opcode(OP_HASH160)
-                    .push_slice(&rip)
+                    .push_slice(&rip.to_byte_array())
                     .push_opcode(OP_EQUALVERIFY)
             }
             DescriptorTemplate::Older(n) => builder.push_int(*n as i64).push_opcode(OP_CSV),

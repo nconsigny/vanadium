@@ -1,10 +1,7 @@
 use alloc::string::{String, ToString};
 
-mod bip388;
-mod conversions;
-
-pub use bip388::{
-    DescriptorTemplate, KeyInformation, KeyOrigin, KeyPlaceholder, TapTree, WalletPolicy,
+pub use crate::bip388::{
+    DescriptorTemplate, KeyInformation, KeyPlaceholder, TapTree, WalletPolicy,
 };
 use bitcoin::{params::Params, Address};
 
@@ -14,22 +11,10 @@ use crate::script::ToScript;
 ///
 /// Each implementer will define how to turn its coordinates into an address.
 ///
-pub trait AccountType<C> {
-    fn get_address(&self, coords: &C) -> Result<String, &'static str>;
-}
+pub trait Account {
+    type Coordinates;
 
-#[derive(Debug, Clone)]
-pub enum Account {
-    WalletPolicy(WalletPolicy),
-    // In the future, more account types will be here.
-}
-
-/// A single enum to hold all possible coordinate types.
-/// Currently, there’s only `WalletPolicyCoordinates`.
-#[derive(Debug, Clone, Copy)]
-pub enum Coordinates {
-    WalletPolicy(WalletPolicyCoordinates),
-    // In the future, more coordinate types will be here.
+    fn get_address(&self, coords: &Self::Coordinates) -> Result<String, &'static str>;
 }
 
 /// Coordinates for the `WalletPolicy` account type
@@ -40,7 +25,8 @@ pub struct WalletPolicyCoordinates {
 }
 
 // Implement the generic trait for `WalletPolicy` with its corresponding coordinates.
-impl AccountType<WalletPolicyCoordinates> for WalletPolicy {
+impl Account for WalletPolicy {
+    type Coordinates = WalletPolicyCoordinates;
     fn get_address(&self, coords: &WalletPolicyCoordinates) -> Result<String, &'static str> {
         let script = self
             .to_script(coords.is_change, coords.address_index)

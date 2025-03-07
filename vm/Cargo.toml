@@ -27,8 +27,8 @@ pending_review_screen = []
 
 [package.metadata.ledger]
 curve = ["secp256k1"]
-flags = "0"
-path = ["44'/1'"]
+flags = "0x10"  # DERIVE_MASTER
+path = [""]
 name = "Vanadium"
 
 [package.metadata.ledger.nanox]
