@@ -7,10 +7,10 @@
 // Coding conventions
 #![deny(non_upper_case_globals, non_camel_case_types, non_snake_case, unused_mut)]
 
-#![cfg_attr(all(not(test), not(feature = "std")), no_std)]
+#![cfg_attr(not(test), no_std)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(any(test, feature = "std"))]
+#[cfg(test)]
 extern crate core;
 
 #[cfg(feature = "alloc")]
@@ -22,8 +22,6 @@ const THIS_UNUSED_CONSTANT_IS_YOUR_WARNING_THAT_ALL_THE_CRYPTO_IN_THIS_LIB_IS_DI
 mod macros;
 pub mod types;
 
-#[cfg(feature = "recovery")]
-pub mod recovery;
 
 use core::{slice, ptr};
 use core::ptr::NonNull;
@@ -1138,8 +1136,6 @@ mod fuzz_dummy {
                 // Another thread is building, just busy-loop until they're done.
                 assert_eq!(have_ctx, HAVE_CONTEXT_WORKING);
                 have_ctx = HAVE_PREALLOCATED_CONTEXT.load(Ordering::Acquire);
-                #[cfg(feature = "std")]
-                std::thread::yield_now();
             }
         }
         ptr::copy_nonoverlapping(PREALLOCATED_CONTEXT[..].as_ptr(), prealloc.as_ptr() as *mut u8, CTX_SIZE);

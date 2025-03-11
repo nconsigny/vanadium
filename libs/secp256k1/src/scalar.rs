@@ -40,23 +40,6 @@ impl Scalar {
     /// Maximum valid value: `curve_order - 1`
     pub const MAX: Scalar = Scalar(MAX_RAW);
 
-    /// Generates a random scalar
-    #[cfg(feature = "rand-std")]
-    pub fn random() -> Self { Self::random_custom(rand::thread_rng()) }
-
-    /// Generates a random scalar using supplied RNG
-    #[cfg(feature = "rand")]
-    pub fn random_custom<R: rand::Rng>(mut rng: R) -> Self {
-        let mut bytes = [0u8; 32];
-        loop {
-            rng.fill_bytes(&mut bytes);
-            // unlikely to go past MAX
-            if let Ok(scalar) = Scalar::from_be_bytes(bytes) {
-                break scalar;
-            }
-        }
-    }
-
     /// Tries to deserialize from big endian bytes
     ///
     /// **Security warning:** this function is not constant time!
@@ -135,6 +118,3 @@ impl fmt::Display for OutOfRangeError {
         fmt::Display::fmt("the value is not a member of secp256k1 field", f)
     }
 }
-
-#[cfg(feature = "std")]
-impl std::error::Error for OutOfRangeError {}
