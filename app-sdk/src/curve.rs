@@ -136,6 +136,23 @@ where
     pub y: [u8; SCALAR_LENGTH],
 }
 
+impl<C, const SCALAR_LENGTH: usize> Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    const ZERO: [u8; SCALAR_LENGTH] = [0u8; SCALAR_LENGTH];
+
+    /// Checks if the point corresponds to the identity element by verifying
+    /// whether both x and y coordinates are zero.
+    ///
+    /// Guaranteed to run in constant time.
+    ///
+    /// Returns `true` if both coordinates are zero, otherwise `false`.
+    pub fn is_zero(&self) -> bool {
+        self.x.ct_eq(&Self::ZERO).unwrap_u8() == 1 && self.y.ct_eq(&Self::ZERO).unwrap_u8() == 1
+    }
+}
+
 impl<C, const SCALAR_LENGTH: usize> Default for Point<C, SCALAR_LENGTH>
 where
     C: Curve<SCALAR_LENGTH>,
