@@ -25,7 +25,6 @@ use crate::constants;
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Scalar([u8; 32]);
 impl_pretty_debug!(Scalar);
-impl_non_secure_erase!(Scalar, 0, [0u8; 32]);
 
 const MAX_RAW: [u8; 32] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
@@ -83,12 +82,6 @@ impl Scalar {
     // returns a reference to internal bytes
     // non-public to not leak the internal representation
     pub(crate) fn as_be_bytes(&self) -> &[u8; 32] { &self.0 }
-
-    pub(crate) fn as_c_ptr(&self) -> *const u8 {
-        use secp256k1_sys::CPtr;
-
-        self.as_be_bytes().as_c_ptr()
-    }
 }
 
 impl<I> ops::Index<I> for Scalar

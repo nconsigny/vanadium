@@ -13,7 +13,6 @@ rand-std = []
 rand = []
 serde = ["actual-serde", "hashes/serde", "secp256k1/serde", "internals/serde", "units/serde"]
 secp-lowmemory = ["secp256k1/lowmemory"]
-secp-recovery = ["secp256k1/recovery"]
 
 
 [lib]
