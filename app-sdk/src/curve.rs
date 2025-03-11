@@ -125,14 +125,15 @@ where
 /// * `C` - The curve type implementing `Curve<SCALAR_LENGTH>`.
 /// * `SCALAR_LENGTH` - The byte length of the scalar and coordinate elements.
 #[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Point<C, const SCALAR_LENGTH: usize>
 where
     C: Curve<SCALAR_LENGTH>,
 {
     curve_marker: PhantomData<C>,
     prefix: u8,
-    x: [u8; SCALAR_LENGTH],
-    y: [u8; SCALAR_LENGTH],
+    pub x: [u8; SCALAR_LENGTH],
+    pub y: [u8; SCALAR_LENGTH],
 }
 
 impl<C, const SCALAR_LENGTH: usize> Default for Point<C, SCALAR_LENGTH>
@@ -364,6 +365,7 @@ where
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Secp256k1;
 
 impl HasCurveKind<32> for Secp256k1 {
