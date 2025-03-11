@@ -6,6 +6,7 @@
 use core::ops::{self, BitXor};
 use core::{fmt, str};
 
+use sdk::bignum::{BigNum, BigNumMod, Modulus};
 use sdk::curve::Secp256k1Point;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeTuple;
@@ -322,7 +323,23 @@ impl PublicKey {
 
         let header = data[0];
         match header {
-            0x02 | 0x03 => todo!(), // TODO implement deserialization of compressed keys
+            0x02 | 0x03 => {
+                if data.len() != 33 {
+                    return Err(Error::InvalidPublicKey);
+                }
+                let mut x = [0u8; 32];
+                x.copy_from_slice(&data[1..33]);
+
+                // compute the y coordinate
+                let m = Modulus::from_be_bytes(crate::constants::FIELD_SIZE);
+                let x_bn = BigNumMod::from_be_bytes(x, &m);
+                let mut t = &x_bn * &x_bn;
+                t *= &x_bn;
+                t += BigNumMod::from_u32(7, &m);
+                let y_bn = t.pow(&BigNum::from_be_bytes(crate::constants::SQR_EXPONENT));
+                let y = y_bn.to_be_bytes();
+                Ok(PublicKey(Secp256k1Point::new(x, y)))
+            }
             0x04 => {
                 if data.len() != 65 {
                     return Err(Error::InvalidPublicKey);
@@ -405,10 +422,20 @@ impl PublicKey {
     #[inline]
     pub fn add_exp_tweak<C: Verification>(
         mut self,
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         tweak: &Scalar,
     ) -> Result<PublicKey, Error> {
-        todo!()
+        let g = sdk::curve::Secp256k1::get_generator();
+
+        let tweaked = &g * &tweak.as_be_bytes();
+        let result = &self.0 + &tweaked;
+
+        if result.is_zero() {
+            return Err(Error::InvalidTweak);
+        }
+
+        self.0 = result;
+        Ok(self)
     }
 
     /// Tweaks a [`PublicKey`] by multiplying by `tweak` modulo the curve order.
