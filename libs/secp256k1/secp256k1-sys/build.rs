@@ -57,8 +57,6 @@ fn main() {
         base_config.define("ECMULT_WINDOW_SIZE", Some("15")); // This is the default in the configure file (`auto`)
     }
     base_config.define("USE_EXTERNAL_DEFAULT_CALLBACKS", Some("1"));
-    #[cfg(feature = "recovery")]
-    base_config.define("ENABLE_MODULE_RECOVERY", Some("1"));
 
     // WASM headers and size/align defines.
     if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "wasm32" {

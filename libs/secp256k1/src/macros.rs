@@ -76,15 +76,7 @@ macro_rules! impl_non_secure_erase {
 macro_rules! write_err {
     ($writer:expr, $string:literal $(, $args:expr),*; $source:expr) => {
         {
-            #[cfg(feature = "std")]
-            {
-                let _ = &$source;   // Prevents clippy warnings.
-                write!($writer, $string $(, $args)*)
-            }
-            #[cfg(not(feature = "std"))]
-            {
-                write!($writer, concat!($string, ": {}") $(, $args)*, $source)
-            }
+            write!($writer, concat!($string, ": {}") $(, $args)*, $source)
         }
     }
 }

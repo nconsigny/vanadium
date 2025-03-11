@@ -3,18 +3,12 @@
 //! Structs and functionality related to the ECDSA signature algorithm.
 //!
 
-#[cfg(feature = "recovery")]
-mod recovery;
 pub mod serialized_signature;
 
 use core::{fmt, ptr, str};
 
-#[cfg(feature = "recovery")]
-pub use self::recovery::{RecoverableSignature, RecoveryId};
 pub use self::serialized_signature::SerializedSignature;
 use crate::ffi::CPtr;
-#[cfg(feature = "global-context")]
-use crate::SECP256K1;
 use crate::{
     ffi, from_hex, Error, Message, PublicKey, Secp256k1, SecretKey, Signing, Verification,
 };
@@ -188,14 +182,6 @@ impl Signature {
             debug_assert!(err == 1);
         }
         ret
-    }
-
-    /// Verifies an ECDSA signature for `msg` using `pk` and the global [`SECP256K1`] context.
-    /// The signature must be normalized or verification will fail (see [`Signature::normalize_s`]).
-    #[inline]
-    #[cfg(feature = "global-context")]
-    pub fn verify(&self, msg: &Message, pk: &PublicKey) -> Result<(), Error> {
-        SECP256K1.verify_ecdsa(msg, self, pk)
     }
 }
 

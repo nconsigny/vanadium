@@ -32,3 +32,7 @@ recovery = []
 lowmemory = []
 std = ["alloc"]
 alloc = []
+
+ [lints.rust]
+ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(secp256k1_fuzz)', 'cfg(bench)', 'cfg(rust_secp_no_symbol_renaming)'] }
+ 

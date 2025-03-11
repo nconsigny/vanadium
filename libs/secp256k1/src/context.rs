@@ -10,57 +10,6 @@ use crate::ffi::types::{c_uint, c_void, AlignedType};
 use crate::ffi::{self, CPtr};
 use crate::{Error, Secp256k1};
 
-#[cfg(all(feature = "global-context", feature = "std"))]
-/// Module implementing a singleton pattern for a global `Secp256k1` context.
-pub mod global {
-
-    use std::ops::Deref;
-    use std::sync::Once;
-
-    use crate::{All, Secp256k1};
-
-    /// Proxy struct for global `SECP256K1` context.
-    #[derive(Debug, Copy, Clone)]
-    pub struct GlobalContext {
-        __private: (),
-    }
-
-    /// A global static context to avoid repeatedly creating contexts.
-    ///
-    /// If `rand-std` feature is enabled, context will have been randomized using `thread_rng`.
-    ///
-    /// ```
-    /// # #[cfg(all(feature = "global-context", feature = "rand-std"))] {
-    /// use secp256k1::{PublicKey, SECP256K1};
-    /// let _ = SECP256K1.generate_keypair(&mut rand::thread_rng());
-    /// # }
-    /// ```
-    pub static SECP256K1: &GlobalContext = &GlobalContext { __private: () };
-
-    impl Deref for GlobalContext {
-        type Target = Secp256k1<All>;
-
-        #[allow(unused_mut)] // Unused when `rand-std` is not enabled.
-        fn deref(&self) -> &Self::Target {
-            static ONCE: Once = Once::new();
-            static mut CONTEXT: Option<Secp256k1<All>> = None;
-            ONCE.call_once(|| unsafe {
-                let mut ctx = Secp256k1::new();
-                #[cfg(all(
-                    not(target_arch = "wasm32"),
-                    feature = "rand-std",
-                    not(feature = "global-context-less-secure")
-                ))]
-                {
-                    ctx.randomize(&mut rand::thread_rng());
-                }
-                CONTEXT = Some(ctx);
-            });
-            unsafe { CONTEXT.as_ref().unwrap() }
-        }
-    }
-}
-
 /// A trait for all kinds of contexts that lets you define the exact flags and a function to
 /// deallocate memory. It isn't possible to implement this for types outside this crate.
 ///
@@ -195,7 +144,7 @@ mod alloc_only {
         /// ctx.seeded_randomize(&seed);
         /// # }
         /// ```
-        #[cfg_attr(not(feature = "rand-std"), allow(clippy::let_and_return, unused_mut))]
+        #[allow(clippy::let_and_return, unused_mut)]
         pub fn gen_new() -> Secp256k1<C> {
             #[cfg(target_arch = "wasm32")]
             ffi::types::sanity_checks_for_wasm();
@@ -211,15 +160,6 @@ mod alloc_only {
                 ctx: unsafe { ffi::secp256k1_context_preallocated_create(ptr, C::FLAGS) },
                 phantom: PhantomData,
             };
-
-            #[cfg(all(
-                not(target_arch = "wasm32"),
-                feature = "rand-std",
-                not(feature = "global-context-less-secure")
-            ))]
-            {
-                ctx.randomize(&mut rand::thread_rng());
-            }
 
             #[allow(clippy::let_and_return)] // as for unusted_mut
             ctx
