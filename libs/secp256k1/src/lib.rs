@@ -164,9 +164,7 @@ mod context;
 mod key;
 
 pub mod constants;
-pub mod ecdh;
 pub mod ecdsa;
-pub mod ellswift;
 pub mod scalar;
 pub mod schnorr;
 #[cfg(feature = "serde")]
