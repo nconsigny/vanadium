@@ -3,9 +3,8 @@
 //! Support for schnorr signatures.
 //!
 
-use core::{fmt, ptr, str};
+use core::{fmt, str};
 
-use crate::ffi::{self, CPtr};
 use crate::key::{Keypair, XOnlyPublicKey};
 use crate::{constants, from_hex, Error, Message, Secp256k1, Signing, Verification};
 
@@ -91,28 +90,14 @@ impl<C: Signing> Secp256k1<C> {
         &self,
         msg: &Message,
         keypair: &Keypair,
-        nonce_data: *const ffi::types::c_uchar,
+        nonce_data: &[u8],
     ) -> Signature {
-        unsafe {
-            let mut sig = [0u8; constants::SCHNORR_SIGNATURE_SIZE];
-            assert_eq!(
-                1,
-                ffi::secp256k1_schnorrsig_sign(
-                    self.ctx.as_ptr(),
-                    sig.as_mut_c_ptr(),
-                    msg.as_c_ptr(),
-                    keypair.as_c_ptr(),
-                    nonce_data,
-                )
-            );
-
-            Signature(sig)
-        }
+        todo!()
     }
 
     /// Creates a schnorr signature without using any auxiliary random data.
     pub fn sign_schnorr_no_aux_rand(&self, msg: &Message, keypair: &Keypair) -> Signature {
-        self.sign_schnorr_helper(msg, keypair, ptr::null())
+        self.sign_schnorr_helper(msg, keypair, &[])
     }
 
     /// Creates a schnorr signature using the given auxiliary random data.
@@ -122,7 +107,7 @@ impl<C: Signing> Secp256k1<C> {
         keypair: &Keypair,
         aux_rand: &[u8; 32],
     ) -> Signature {
-        self.sign_schnorr_helper(msg, keypair, aux_rand.as_c_ptr() as *const ffi::types::c_uchar)
+        self.sign_schnorr_helper(msg, keypair, aux_rand)
     }
 }
 
@@ -134,21 +119,22 @@ impl<C: Verification> Secp256k1<C> {
         msg: &Message,
         pubkey: &XOnlyPublicKey,
     ) -> Result<(), Error> {
-        unsafe {
-            let ret = ffi::secp256k1_schnorrsig_verify(
-                self.ctx.as_ptr(),
-                sig.as_c_ptr(),
-                msg.as_c_ptr(),
-                32,
-                pubkey.as_c_ptr(),
-            );
+        // unsafe {
+        //     let ret = ffi::secp256k1_schnorrsig_verify(
+        //         self.ctx.as_ptr(),
+        //         sig.as_c_ptr(),
+        //         msg.as_c_ptr(),
+        //         32,
+        //         pubkey.as_c_ptr(),
+        //     );
 
-            if ret == 1 {
-                Ok(())
-            } else {
-                Err(Error::IncorrectSignature)
-            }
-        }
+        //     if ret == 1 {
+        //         Ok(())
+        //     } else {
+        //         Err(Error::IncorrectSignature)
+        //     }
+        // }
+        todo!()
     }
 }
 

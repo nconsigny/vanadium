@@ -1,7 +1,4 @@
-# Eventually this shoud be: ignore = []
-ignore = [
-       "secp256k1-sys"
-]
+ignore = []
 
 hard_tabs = false
 tab_spaces = 4

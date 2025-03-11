@@ -4,13 +4,13 @@
 //!
 
 use core::ops::{self, BitXor};
-use core::{fmt, ptr, str};
+use core::{fmt, str};
 
+use sdk::curve::Secp256k1Point;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeTuple;
+use subtle::ConstantTimeEq;
 
-use crate::ffi::types::c_uint;
-use crate::ffi::{self, CPtr};
 use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
 #[cfg(feature = "hashes")]
 #[allow(deprecated)]
@@ -54,7 +54,6 @@ use crate::{
 #[derive(Copy, Clone)]
 pub struct SecretKey([u8; constants::SECRET_KEY_SIZE]);
 impl_display_secret!(SecretKey);
-impl_non_secure_erase!(SecretKey, 0, [1u8; constants::SECRET_KEY_SIZE]);
 
 impl PartialEq for SecretKey {
     /// This implementation is designed to be constant time to help prevent side channel attacks.
@@ -93,20 +92,6 @@ where
     fn index(&self, index: I) -> &Self::Output { &self.0[index] }
 }
 
-impl ffi::CPtr for SecretKey {
-    type Target = u8;
-
-    fn as_c_ptr(&self) -> *const Self::Target {
-        let SecretKey(dat) = self;
-        dat.as_ptr()
-    }
-
-    fn as_mut_c_ptr(&mut self) -> *mut Self::Target {
-        let &mut SecretKey(ref mut dat) = self;
-        dat.as_mut_ptr()
-    }
-}
-
 impl str::FromStr for SecretKey {
     type Err = Error;
     fn from_str(s: &str) -> Result<SecretKey, Error> {
@@ -143,8 +128,7 @@ impl str::FromStr for SecretKey {
 /// [`cbor`]: https://docs.rs/cbor
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct PublicKey(ffi::PublicKey);
-impl_fast_comparisons!(PublicKey);
+pub struct PublicKey(sdk::curve::Secp256k1Point);
 
 impl fmt::LowerHex for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -186,15 +170,14 @@ impl SecretKey {
     pub fn from_slice(data: &[u8]) -> Result<SecretKey, Error> {
         match <[u8; constants::SECRET_KEY_SIZE]>::try_from(data) {
             Ok(data) => {
-                unsafe {
-                    if ffi::secp256k1_ec_seckey_verify(
-                        ffi::secp256k1_context_no_precomp,
-                        data.as_c_ptr(),
-                    ) == 0
-                    {
-                        return Err(InvalidSecretKey);
-                    }
+                // check if the key is valid, like in the original implementation
+                // a key is valid if it is in the range [1, n - 1] where n is the order of the curve
+                if data.ct_eq(&crate::constants::ZERO).into()
+                    || !data.lt(&crate::constants::CURVE_ORDER)
+                {
+                    return Err(InvalidSecretKey);
                 }
+
                 Ok(SecretKey(data))
             }
             Err(_) => Err(InvalidSecretKey),
@@ -216,16 +199,8 @@ impl SecretKey {
     /// ```
     #[inline]
     pub fn from_keypair(keypair: &Keypair) -> Self {
-        let mut sk = [0u8; constants::SECRET_KEY_SIZE];
-        unsafe {
-            let ret = ffi::secp256k1_keypair_sec(
-                ffi::secp256k1_context_no_precomp,
-                sk.as_mut_c_ptr(),
-                keypair.as_c_ptr(),
-            );
-            debug_assert_eq!(ret, 1);
-        }
-        SecretKey(sk)
+        let (sk, _) = keypair.0;
+        sk
     }
 
     /// Returns the secret key as a byte value.
@@ -235,16 +210,7 @@ impl SecretKey {
     /// Negates the secret key.
     #[inline]
     #[must_use = "you forgot to use the negated secret key"]
-    pub fn negate(mut self) -> SecretKey {
-        unsafe {
-            let res = ffi::secp256k1_ec_seckey_negate(
-                ffi::secp256k1_context_no_precomp,
-                self.as_mut_c_ptr(),
-            );
-            debug_assert_eq!(res, 1);
-        }
-        self
-    }
+    pub fn negate(mut self) -> SecretKey { todo!() }
 
     /// Tweaks a [`SecretKey`] by adding `tweak` modulo the curve order.
     ///
@@ -252,20 +218,7 @@ impl SecretKey {
     ///
     /// Returns an error if the resulting key would be invalid.
     #[inline]
-    pub fn add_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> {
-        unsafe {
-            if ffi::secp256k1_ec_seckey_tweak_add(
-                ffi::secp256k1_context_no_precomp,
-                self.as_mut_c_ptr(),
-                tweak.as_c_ptr(),
-            ) != 1
-            {
-                Err(Error::InvalidTweak)
-            } else {
-                Ok(self)
-            }
-        }
-    }
+    pub fn add_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> { todo!() }
 
     /// Tweaks a [`SecretKey`] by multiplying by `tweak` modulo the curve order.
     ///
@@ -273,20 +226,7 @@ impl SecretKey {
     ///
     /// Returns an error if the resulting key would be invalid.
     #[inline]
-    pub fn mul_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> {
-        unsafe {
-            if ffi::secp256k1_ec_seckey_tweak_mul(
-                ffi::secp256k1_context_no_precomp,
-                self.as_mut_c_ptr(),
-                tweak.as_c_ptr(),
-            ) != 1
-            {
-                Err(Error::InvalidTweak)
-            } else {
-                Ok(self)
-            }
-        }
-    }
+    pub fn mul_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> { todo!() }
 
     /// Returns the [`Keypair`] for this [`SecretKey`].
     ///
@@ -357,19 +297,6 @@ impl<'de> serde::Deserialize<'de> for SecretKey {
 }
 
 impl PublicKey {
-    /// Obtains a raw const pointer suitable for use with FFI functions.
-    #[inline]
-    #[deprecated(since = "0.25.0", note = "Use Self::as_c_ptr if you need to access the FFI layer")]
-    pub fn as_ptr(&self) -> *const ffi::PublicKey { self.as_c_ptr() }
-
-    /// Obtains a raw mutable pointer suitable for use with FFI functions.
-    #[inline]
-    #[deprecated(
-        since = "0.25.0",
-        note = "Use Self::as_mut_c_ptr if you need to access the FFI layer"
-    )]
-    pub fn as_mut_ptr(&mut self) -> *mut ffi::PublicKey { self.as_mut_c_ptr() }
-
     /// Creates a new public key from a [`SecretKey`].
     ///
     /// # Examples
@@ -384,16 +311,7 @@ impl PublicKey {
     /// # }
     /// ```
     #[inline]
-    pub fn from_secret_key<C: Signing>(secp: &Secp256k1<C>, sk: &SecretKey) -> PublicKey {
-        unsafe {
-            let mut pk = ffi::PublicKey::new();
-            // We can assume the return value because it's not possible to construct
-            // an invalid `SecretKey` without transmute trickery or something.
-            let res = ffi::secp256k1_ec_pubkey_create(secp.ctx.as_ptr(), &mut pk, sk.as_c_ptr());
-            debug_assert_eq!(res, 1);
-            PublicKey(pk)
-        }
-    }
+    pub fn from_secret_key<C: Signing>(secp: &Secp256k1<C>, sk: &SecretKey) -> PublicKey { todo!() }
 
     /// Creates a public key directly from a slice.
     #[inline]
@@ -402,19 +320,22 @@ impl PublicKey {
             return Err(Error::InvalidPublicKey);
         }
 
-        unsafe {
-            let mut pk = ffi::PublicKey::new();
-            if ffi::secp256k1_ec_pubkey_parse(
-                ffi::secp256k1_context_no_precomp,
-                &mut pk,
-                data.as_c_ptr(),
-                data.len(),
-            ) == 1
-            {
-                Ok(PublicKey(pk))
-            } else {
-                Err(InvalidPublicKey)
+        let header = data[0];
+        match header {
+            0x02 | 0x03 => todo!(), // TODO implement deserialization of compressed keys
+            0x04 => {
+                if data.len() != 65 {
+                    return Err(Error::InvalidPublicKey);
+                }
+                let mut x = [0u8; 32];
+                x.copy_from_slice(&data[1..33]);
+                let mut y = [0u8; 32];
+                y.copy_from_slice(&data[33..65]);
+                let point = sdk::curve::Secp256k1Point::new(x, y);
+                Ok(PublicKey(point))
             }
+            0x06 | 0x07 => panic!("Hybrid keys are not implemented"),
+            _ => Err(Error::InvalidPublicKey),
         }
     }
 
@@ -433,16 +354,8 @@ impl PublicKey {
     /// ```
     #[inline]
     pub fn from_keypair(keypair: &Keypair) -> Self {
-        unsafe {
-            let mut pk = ffi::PublicKey::new();
-            let ret = ffi::secp256k1_keypair_pub(
-                ffi::secp256k1_context_no_precomp,
-                &mut pk,
-                keypair.as_c_ptr(),
-            );
-            debug_assert_eq!(ret, 1);
-            PublicKey(pk)
-        }
+        let (_, pk) = keypair.0;
+        pk
     }
 
     /// Creates a [`PublicKey`] using the key material from `pk` combined with the `parity`.
@@ -463,45 +376,26 @@ impl PublicKey {
     /// Serializes the key as a byte-encoded pair of values. In compressed form the y-coordinate is
     /// represented by only a single bit, as x determines it up to one bit.
     pub fn serialize(&self) -> [u8; constants::PUBLIC_KEY_SIZE] {
-        let mut ret = [0u8; constants::PUBLIC_KEY_SIZE];
-        self.serialize_internal(&mut ret, ffi::SECP256K1_SER_COMPRESSED);
-        ret
+        let mut res = [0u8; constants::PUBLIC_KEY_SIZE];
+        res[0] = 0x02 + (self.0.y[31] & 0x01);
+        res[1..33].copy_from_slice(&self.0.x);
+        res
     }
 
     #[inline]
     /// Serializes the key as a byte-encoded pair of values, in uncompressed form.
     pub fn serialize_uncompressed(&self) -> [u8; constants::UNCOMPRESSED_PUBLIC_KEY_SIZE] {
-        let mut ret = [0u8; constants::UNCOMPRESSED_PUBLIC_KEY_SIZE];
-        self.serialize_internal(&mut ret, ffi::SECP256K1_SER_UNCOMPRESSED);
-        ret
-    }
-
-    #[inline(always)]
-    fn serialize_internal(&self, ret: &mut [u8], flag: c_uint) {
-        let mut ret_len = ret.len();
-        let res = unsafe {
-            ffi::secp256k1_ec_pubkey_serialize(
-                ffi::secp256k1_context_no_precomp,
-                ret.as_mut_c_ptr(),
-                &mut ret_len,
-                self.as_c_ptr(),
-                flag,
-            )
-        };
-        debug_assert_eq!(res, 1);
-        debug_assert_eq!(ret_len, ret.len());
+        let mut res = [0u8; constants::UNCOMPRESSED_PUBLIC_KEY_SIZE];
+        res[0] = 0x04;
+        res[1..33].copy_from_slice(&self.0.x);
+        res[33..65].copy_from_slice(&self.0.y);
+        res
     }
 
     /// Negates the public key.
     #[inline]
     #[must_use = "you forgot to use the negated public key"]
-    pub fn negate<C: Verification>(mut self, secp: &Secp256k1<C>) -> PublicKey {
-        unsafe {
-            let res = ffi::secp256k1_ec_pubkey_negate(secp.ctx.as_ptr(), &mut self.0);
-            debug_assert_eq!(res, 1);
-        }
-        self
-    }
+    pub fn negate<C: Verification>(mut self, secp: &Secp256k1<C>) -> PublicKey { todo!() }
 
     /// Tweaks a [`PublicKey`] by adding `tweak * G` modulo the curve order.
     ///
@@ -514,15 +408,7 @@ impl PublicKey {
         secp: &Secp256k1<C>,
         tweak: &Scalar,
     ) -> Result<PublicKey, Error> {
-        unsafe {
-            if ffi::secp256k1_ec_pubkey_tweak_add(secp.ctx.as_ptr(), &mut self.0, tweak.as_c_ptr())
-                == 1
-            {
-                Ok(self)
-            } else {
-                Err(Error::InvalidTweak)
-            }
-        }
+        todo!()
     }
 
     /// Tweaks a [`PublicKey`] by multiplying by `tweak` modulo the curve order.
@@ -536,15 +422,7 @@ impl PublicKey {
         secp: &Secp256k1<C>,
         other: &Scalar,
     ) -> Result<PublicKey, Error> {
-        unsafe {
-            if ffi::secp256k1_ec_pubkey_tweak_mul(secp.ctx.as_ptr(), &mut self.0, other.as_c_ptr())
-                == 1
-            {
-                Ok(self)
-            } else {
-                Err(Error::InvalidTweak)
-            }
-        }
+        todo!()
     }
 
     /// Adds a second key to this one, returning the sum.
@@ -593,51 +471,11 @@ impl PublicKey {
     /// let sum = PublicKey::combine_keys(&[&pk1, &pk2, &pk3]).expect("It's improbable to fail for 3 random public keys");
     /// # }
     /// ```
-    pub fn combine_keys(keys: &[&PublicKey]) -> Result<PublicKey, Error> {
-        use core::i32::MAX;
-        use core::mem::transmute;
-
-        if keys.is_empty() || keys.len() > MAX as usize {
-            return Err(InvalidPublicKeySum);
-        }
-
-        unsafe {
-            let mut ret = ffi::PublicKey::new();
-            let ptrs: &[*const ffi::PublicKey] =
-                transmute::<&[&PublicKey], &[*const ffi::PublicKey]>(keys);
-            if ffi::secp256k1_ec_pubkey_combine(
-                ffi::secp256k1_context_no_precomp,
-                &mut ret,
-                ptrs.as_c_ptr(),
-                keys.len(),
-            ) == 1
-            {
-                Ok(PublicKey(ret))
-            } else {
-                Err(InvalidPublicKeySum)
-            }
-        }
-    }
+    pub fn combine_keys(keys: &[&PublicKey]) -> Result<PublicKey, Error> { todo!() }
 
     /// Returns the [`XOnlyPublicKey`] (and it's [`Parity`]) for this [`PublicKey`].
     #[inline]
-    pub fn x_only_public_key(&self) -> (XOnlyPublicKey, Parity) {
-        let mut pk_parity = 0;
-        unsafe {
-            let mut xonly_pk = ffi::XOnlyPublicKey::new();
-            let ret = ffi::secp256k1_xonly_pubkey_from_pubkey(
-                ffi::secp256k1_context_no_precomp,
-                &mut xonly_pk,
-                &mut pk_parity,
-                self.as_c_ptr(),
-            );
-            debug_assert_eq!(ret, 1);
-            let parity =
-                Parity::from_i32(pk_parity).expect("should not panic, pk_parity is 0 or 1");
-
-            (XOnlyPublicKey(xonly_pk), parity)
-        }
-    }
+    pub fn x_only_public_key(&self) -> (XOnlyPublicKey, Parity) { todo!() }
 
     /// Checks that `sig` is a valid ECDSA signature for `msg` using this public key.
     pub fn verify<C: Verification>(
@@ -650,24 +488,9 @@ impl PublicKey {
     }
 }
 
-/// This trait enables interaction with the FFI layer and even though it is part of the public API
-/// normal users should never need to directly interact with FFI types.
-impl CPtr for PublicKey {
-    type Target = ffi::PublicKey;
-
-    /// Obtains a const pointer suitable for use with FFI functions.
-    fn as_c_ptr(&self) -> *const Self::Target { &self.0 }
-
-    /// Obtains a mutable pointer suitable for use with FFI functions.
-    fn as_mut_c_ptr(&mut self) -> *mut Self::Target { &mut self.0 }
-}
-
-/// Creates a new public key from a FFI public key.
-///
-/// Note, normal users should never need to interact directly with FFI types.
-impl From<ffi::PublicKey> for PublicKey {
+impl From<Secp256k1Point> for PublicKey {
     #[inline]
-    fn from(pk: ffi::PublicKey) -> PublicKey { PublicKey(pk) }
+    fn from(pk: Secp256k1Point) -> PublicKey { PublicKey(pk) }
 }
 
 #[cfg(feature = "serde")]
@@ -727,36 +550,30 @@ impl<'de> serde::Deserialize<'de> for PublicKey {
 /// ```
 /// [`bincode`]: https://docs.rs/bincode
 /// [`cbor`]: https://docs.rs/cbor
-#[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct Keypair(ffi::Keypair);
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct Keypair((SecretKey, PublicKey));
+
+// implement PartialOrd, Ord and Hash by only using the PublicKey part
+impl PartialOrd for Keypair {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        self.public_key().partial_cmp(&other.public_key())
+    }
+}
+impl Ord for Keypair {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.public_key().cmp(&other.public_key())
+    }
+}
+impl core::hash::Hash for Keypair {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) { self.public_key().hash(state) }
+}
 impl_display_secret!(Keypair);
-impl_fast_comparisons!(Keypair);
 
 impl Keypair {
-    /// Obtains a raw const pointer suitable for use with FFI functions.
-    #[inline]
-    #[deprecated(since = "0.25.0", note = "Use Self::as_c_ptr if you need to access the FFI layer")]
-    pub fn as_ptr(&self) -> *const ffi::Keypair { self.as_c_ptr() }
-
-    /// Obtains a raw mutable pointer suitable for use with FFI functions.
-    #[inline]
-    #[deprecated(
-        since = "0.25.0",
-        note = "Use Self::as_mut_c_ptr if you need to access the FFI layer"
-    )]
-    pub fn as_mut_ptr(&mut self) -> *mut ffi::Keypair { self.as_mut_c_ptr() }
-
     /// Creates a [`Keypair`] directly from a Secp256k1 secret key.
     #[inline]
     pub fn from_secret_key<C: Signing>(secp: &Secp256k1<C>, sk: &SecretKey) -> Keypair {
-        unsafe {
-            let mut kp = ffi::Keypair::new();
-            if ffi::secp256k1_keypair_create(secp.ctx.as_ptr(), &mut kp, sk.as_c_ptr()) == 1 {
-                Keypair(kp)
-            } else {
-                panic!("the provided secret key is invalid: it is corrupted or was not produced by Secp256k1 library")
-            }
-        }
+        Keypair((sk.clone(), PublicKey::from_secret_key(secp, sk)))
     }
 
     /// Creates a [`Keypair`] directly from a secret key slice.
@@ -774,14 +591,8 @@ impl Keypair {
             return Err(Error::InvalidSecretKey);
         }
 
-        unsafe {
-            let mut kp = ffi::Keypair::new();
-            if ffi::secp256k1_keypair_create(secp.ctx.as_ptr(), &mut kp, data.as_c_ptr()) == 1 {
-                Ok(Keypair(kp))
-            } else {
-                Err(Error::InvalidSecretKey)
-            }
-        }
+        let sk = SecretKey::from_slice(data)?;
+        Ok(Keypair::from_secret_key(secp, &sk))
     }
 
     /// Creates a [`Keypair`] directly from a secret key string.
@@ -834,18 +645,7 @@ impl Keypair {
         secp: &Secp256k1<C>,
         tweak: &Scalar,
     ) -> Result<Keypair, Error> {
-        unsafe {
-            let err = ffi::secp256k1_keypair_xonly_tweak_add(
-                secp.ctx.as_ptr(),
-                &mut self.0,
-                tweak.as_c_ptr(),
-            );
-            if err != 1 {
-                return Err(Error::InvalidTweak);
-            }
-
-            Ok(self)
-        }
+        todo!()
     }
 
     /// Returns the [`SecretKey`] for this [`Keypair`].
@@ -867,15 +667,6 @@ impl Keypair {
     pub fn x_only_public_key(&self) -> (XOnlyPublicKey, Parity) {
         XOnlyPublicKey::from_keypair(self)
     }
-
-    /// Attempts to erase the secret within the underlying array.
-    ///
-    /// Note, however, that the compiler is allowed to freely copy or move the contents
-    /// of this array to other places in memory. Preventing this behavior is very subtle.
-    /// For more discussion on this, please see the documentation of the
-    /// [`zeroize`](https://docs.rs/zeroize) crate.
-    #[inline]
-    pub fn non_secure_erase(&mut self) { self.0.non_secure_erase(); }
 }
 
 impl From<Keypair> for SecretKey {
@@ -954,13 +745,6 @@ impl<'de> serde::Deserialize<'de> for Keypair {
     }
 }
 
-impl CPtr for Keypair {
-    type Target = ffi::Keypair;
-    fn as_c_ptr(&self) -> *const Self::Target { &self.0 }
-
-    fn as_mut_c_ptr(&mut self) -> *mut Self::Target { &mut self.0 }
-}
-
 /// An x-only public key, used for verification of Taproot signatures and serialized according to BIP-340.
 ///
 /// # Serde support
@@ -985,8 +769,7 @@ impl CPtr for Keypair {
 /// [`bincode`]: https://docs.rs/bincode
 /// [`cbor`]: https://docs.rs/cbor
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct XOnlyPublicKey(ffi::XOnlyPublicKey);
-impl_fast_comparisons!(XOnlyPublicKey);
+pub struct XOnlyPublicKey([u8; 32]); // TODO: use a better type
 
 impl fmt::LowerHex for XOnlyPublicKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -1015,38 +798,9 @@ impl str::FromStr for XOnlyPublicKey {
 }
 
 impl XOnlyPublicKey {
-    /// Obtains a raw const pointer suitable for use with FFI functions.
-    #[inline]
-    #[deprecated(since = "0.25.0", note = "Use Self::as_c_ptr if you need to access the FFI layer")]
-    pub fn as_ptr(&self) -> *const ffi::XOnlyPublicKey { self.as_c_ptr() }
-
-    /// Obtains a raw mutable pointer suitable for use with FFI functions.
-    #[inline]
-    #[deprecated(
-        since = "0.25.0",
-        note = "Use Self::as_mut_c_ptr if you need to access the FFI layer"
-    )]
-    pub fn as_mut_ptr(&mut self) -> *mut ffi::XOnlyPublicKey { self.as_mut_c_ptr() }
-
     /// Returns the [`XOnlyPublicKey`] (and it's [`Parity`]) for `keypair`.
     #[inline]
-    pub fn from_keypair(keypair: &Keypair) -> (XOnlyPublicKey, Parity) {
-        let mut pk_parity = 0;
-        unsafe {
-            let mut xonly_pk = ffi::XOnlyPublicKey::new();
-            let ret = ffi::secp256k1_keypair_xonly_pub(
-                ffi::secp256k1_context_no_precomp,
-                &mut xonly_pk,
-                &mut pk_parity,
-                keypair.as_c_ptr(),
-            );
-            debug_assert_eq!(ret, 1);
-            let parity =
-                Parity::from_i32(pk_parity).expect("should not panic, pk_parity is 0 or 1");
-
-            (XOnlyPublicKey(xonly_pk), parity)
-        }
-    }
+    pub fn from_keypair(keypair: &Keypair) -> (XOnlyPublicKey, Parity) { todo!() }
 
     /// Creates a schnorr public key directly from a slice.
     ///
@@ -1060,36 +814,12 @@ impl XOnlyPublicKey {
             return Err(Error::InvalidPublicKey);
         }
 
-        unsafe {
-            let mut pk = ffi::XOnlyPublicKey::new();
-            if ffi::secp256k1_xonly_pubkey_parse(
-                ffi::secp256k1_context_no_precomp,
-                &mut pk,
-                data.as_c_ptr(),
-            ) == 1
-            {
-                Ok(XOnlyPublicKey(pk))
-            } else {
-                Err(Error::InvalidPublicKey)
-            }
-        }
+        todo!()
     }
 
     #[inline]
     /// Serializes the key as a byte-encoded x coordinate value (32 bytes).
-    pub fn serialize(&self) -> [u8; constants::SCHNORR_PUBLIC_KEY_SIZE] {
-        let mut ret = [0u8; constants::SCHNORR_PUBLIC_KEY_SIZE];
-
-        unsafe {
-            let err = ffi::secp256k1_xonly_pubkey_serialize(
-                ffi::secp256k1_context_no_precomp,
-                ret.as_mut_c_ptr(),
-                self.as_c_ptr(),
-            );
-            debug_assert_eq!(err, 1);
-        }
-        ret
-    }
+    pub fn serialize(&self) -> [u8; constants::SCHNORR_PUBLIC_KEY_SIZE] { self.0 }
 
     /// Tweaks an [`XOnlyPublicKey`] by adding the generator multiplied with the given tweak to it.
     ///
@@ -1122,32 +852,7 @@ impl XOnlyPublicKey {
         secp: &Secp256k1<V>,
         tweak: &Scalar,
     ) -> Result<(XOnlyPublicKey, Parity), Error> {
-        let mut pk_parity = 0;
-        unsafe {
-            let mut pubkey = ffi::PublicKey::new();
-            let mut err = ffi::secp256k1_xonly_pubkey_tweak_add(
-                secp.ctx.as_ptr(),
-                &mut pubkey,
-                self.as_c_ptr(),
-                tweak.as_c_ptr(),
-            );
-            if err != 1 {
-                return Err(Error::InvalidTweak);
-            }
-
-            err = ffi::secp256k1_xonly_pubkey_from_pubkey(
-                secp.ctx.as_ptr(),
-                &mut self.0,
-                &mut pk_parity,
-                &pubkey,
-            );
-            if err == 0 {
-                return Err(Error::InvalidPublicKey);
-            }
-
-            let parity = Parity::from_i32(pk_parity)?;
-            Ok((self, parity))
-        }
+        todo!()
     }
 
     /// Verifies that a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed correctly.
@@ -1186,18 +891,7 @@ impl XOnlyPublicKey {
         tweaked_parity: Parity,
         tweak: Scalar,
     ) -> bool {
-        let tweaked_ser = tweaked_key.serialize();
-        unsafe {
-            let err = ffi::secp256k1_xonly_pubkey_tweak_add_check(
-                secp.ctx.as_ptr(),
-                tweaked_ser.as_c_ptr(),
-                tweaked_parity.to_i32(),
-                &self.0,
-                tweak.as_c_ptr(),
-            );
-
-            err == 1
-        }
+        todo!()
     }
 
     /// Returns the [`PublicKey`] for this [`XOnlyPublicKey`].
@@ -1352,34 +1046,9 @@ impl<'de> serde::Deserialize<'de> for Parity {
     }
 }
 
-impl CPtr for XOnlyPublicKey {
-    type Target = ffi::XOnlyPublicKey;
-    fn as_c_ptr(&self) -> *const Self::Target { &self.0 }
-
-    fn as_mut_c_ptr(&mut self) -> *mut Self::Target { &mut self.0 }
-}
-
-/// Creates a new schnorr public key from a FFI x-only public key.
-impl From<ffi::XOnlyPublicKey> for XOnlyPublicKey {
-    #[inline]
-    fn from(pk: ffi::XOnlyPublicKey) -> XOnlyPublicKey { XOnlyPublicKey(pk) }
-}
-
 impl From<PublicKey> for XOnlyPublicKey {
     fn from(src: PublicKey) -> XOnlyPublicKey {
-        unsafe {
-            let mut pk = ffi::XOnlyPublicKey::new();
-            assert_eq!(
-                1,
-                ffi::secp256k1_xonly_pubkey_from_pubkey(
-                    ffi::secp256k1_context_no_precomp,
-                    &mut pk,
-                    ptr::null_mut(),
-                    src.as_c_ptr(),
-                )
-            );
-            XOnlyPublicKey(pk)
-        }
+        XOnlyPublicKey::from_slice(&src.serialize()[1..]).expect("This should never fail")
     }
 }
 

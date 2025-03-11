@@ -170,21 +170,14 @@ pub mod schnorr;
 mod serde_util;
 
 use core::marker::PhantomData;
-use core::ptr::NonNull;
-use core::{fmt, mem, str};
+use core::{fmt, str};
 
-pub use secp256k1_sys as ffi;
 #[cfg(feature = "serde")]
 pub use serde;
 
 #[cfg(feature = "alloc")]
 pub use crate::context::{All, SignOnly, VerifyOnly};
-pub use crate::context::{
-    AllPreallocated, Context, PreallocatedContext, SignOnlyPreallocated, Signing, Verification,
-    VerifyOnlyPreallocated,
-};
-use crate::ffi::types::AlignedType;
-use crate::ffi::CPtr;
+pub use crate::context::{AllPreallocated, Context, Signing, Verification};
 pub use crate::key::{InvalidParityValue, Keypair, Parity, PublicKey, SecretKey, XOnlyPublicKey};
 pub use crate::scalar::Scalar;
 
@@ -325,7 +318,6 @@ impl fmt::Display for Error {
 
 /// The secp256k1 engine, used to execute all signature operations.
 pub struct Secp256k1<C: Context> {
-    ctx: NonNull<ffi::Context>,
     phantom: PhantomData<C>,
 }
 
@@ -340,54 +332,9 @@ impl<C: Context> PartialEq for Secp256k1<C> {
 
 impl<C: Context> Eq for Secp256k1<C> {}
 
-impl<C: Context> Drop for Secp256k1<C> {
-    fn drop(&mut self) {
-        unsafe {
-            let size = ffi::secp256k1_context_preallocated_clone_size(self.ctx.as_ptr());
-            ffi::secp256k1_context_preallocated_destroy(self.ctx);
-
-            C::deallocate(self.ctx.as_ptr() as _, size);
-        }
-    }
-}
-
 impl<C: Context> fmt::Debug for Secp256k1<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<secp256k1 context {:?}, {}>", self.ctx, C::DESCRIPTION)
-    }
-}
-
-impl<C: Context> Secp256k1<C> {
-    /// Getter for the raw pointer to the underlying secp256k1 context. This
-    /// shouldn't be needed with normal usage of the library. It enables
-    /// extending the Secp256k1 with more cryptographic algorithms outside of
-    /// this crate.
-    pub fn ctx(&self) -> NonNull<ffi::Context> { self.ctx }
-
-    /// Returns the required memory for a preallocated context buffer in a generic manner(sign/verify/all).
-    pub fn preallocate_size_gen() -> usize {
-        let word_size = mem::size_of::<AlignedType>();
-        let bytes = unsafe { ffi::secp256k1_context_preallocated_size(C::FLAGS) };
-
-        (bytes + word_size - 1) / word_size
-    }
-
-    /// (Re)randomizes the Secp256k1 context for extra sidechannel resistance given 32 bytes of
-    /// cryptographically-secure random data;
-    /// see comment in libsecp256k1 commit d2275795f by Gregory Maxwell.
-    pub fn seeded_randomize(&mut self, seed: &[u8; 32]) {
-        unsafe {
-            let err = ffi::secp256k1_context_randomize(self.ctx, seed.as_c_ptr());
-            // This function cannot fail; it has an error return for future-proofing.
-            // We do not expose this error since it is impossible to hit, and we have
-            // precedent for not exposing impossible errors (for example in
-            // `PublicKey::from_secret_key` where it is impossible to create an invalid
-            // secret key through the API.)
-            // However, if this DOES fail, the result is potentially weaker side-channel
-            // resistance, which is deadly and undetectable, so we take out the entire
-            // thread to be on the safe side.
-            assert_eq!(err, 1);
-        }
+        write!(f, "<secp256k1 context, {}>", C::DESCRIPTION)
     }
 }
 
@@ -463,7 +410,7 @@ mod tests {
     #[cfg(feature = "alloc")]
     fn test_panic_raw_ctx_should_terminate_abnormally() {
         // Trying to use an all-zeros public key should cause an ARG_CHECK to trigger.
-        let pk = PublicKey::from(unsafe { ffi::PublicKey::new() });
+        let pk = PublicKey::from(sdk::curve::Secp256k1Point::new([0u8; 32], [0u8; 32]));
         pk.serialize();
     }
 
