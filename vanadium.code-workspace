@@ -13,7 +13,14 @@
       "path": "app-sdk"
     },
     {
+      "path": "macros"
+    },
+    {
       "path": "docs",
+    },
+    {
+      "path": "libs/secp256k1",
+      "name": "₿ vlib-secp256k1"
     },
     {
       "path": "libs/bitcoin",
