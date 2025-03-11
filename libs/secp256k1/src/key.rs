@@ -9,7 +9,6 @@ use core::{fmt, ptr, str};
 #[cfg(feature = "serde")]
 use serde::ser::SerializeTuple;
 
-use crate::ellswift::ElligatorSwift;
 use crate::ffi::types::c_uint;
 use crate::ffi::{self, CPtr};
 use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
@@ -428,9 +427,6 @@ impl PublicKey {
             PublicKey(pk)
         }
     }
-    /// Creates a new public key from an [`ElligatorSwift`].
-    #[inline]
-    pub fn from_ellswift(ellswift: ElligatorSwift) -> PublicKey { ElligatorSwift::decode(ellswift) }
 
     /// Creates a new public key from a [`SecretKey`] and the global [`SECP256K1`] context.
     #[inline]
