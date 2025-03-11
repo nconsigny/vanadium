@@ -65,7 +65,7 @@
 //!
 //! ```rust
 //! # #[cfg(feature = "alloc")] {
-//! use secp256k1::{Secp256k1, Message, SecretKey, PublicKey};
+//! use vlib_secp256k1::{Secp256k1, Message, SecretKey, PublicKey};
 //!
 //! let secp = Secp256k1::new();
 //! let secret_key = SecretKey::from_slice(&[0xcd; 32]).expect("32 bytes, within curve order");
@@ -83,7 +83,7 @@
 //!
 //! ```rust
 //! # #[cfg(feature = "alloc")] {
-//! use secp256k1::{Secp256k1, Message, ecdsa, PublicKey};
+//! use vlib_secp256k1::{Secp256k1, Message, ecdsa, PublicKey};
 //!
 //! let secp = Secp256k1::verification_only();
 //!
