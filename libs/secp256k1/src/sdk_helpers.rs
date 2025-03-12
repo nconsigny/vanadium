@@ -1,18 +1,15 @@
 use sdk::bignum::{BigNum, BigNumMod};
 
-use crate::constants::P;
 use crate::Error::{self, InvalidPublicKey};
 
 // helper function to compute the square root candidate
 // returns Some(y) if a square root (y) exists for x^3 + 7, otherwise None.
 #[inline(always)]
 fn secp256k1_compute_y_internal<'a>(x: &'a BigNumMod<'a, 32>) -> Option<BigNumMod<'a, 32>> {
-    let mut t = x * x;
-    t *= x;
-    t += BigNumMod::from_u32(7, &P);
+    let t = x * x * x + 7;
     let y = t.pow(&BigNum::from_be_bytes(crate::constants::SQR_EXPONENT));
 
-    if &y * &y == t {
+    if y * y == t {
         Some(y)
     } else {
         None
@@ -41,8 +38,7 @@ pub fn secp256k1_compute_y_with_parity<'a>(
 
     // if the last byte of y is odd, negate it to ensure an even y-coordinate
     if y.as_be_bytes()[31] & 1 != parity {
-        let zero = BigNumMod::from_u32(0, &P);
-        y = &zero - &y;
+        y = 0 - y;
     }
 
     Ok(y)
