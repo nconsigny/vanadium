@@ -233,7 +233,12 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         Self { buffer, modulus }
     }
 
-    /// Returns the value as a big-endian byte array.
+    /// Returns the value, in big-endian, expressed as a &[u8; N].
+    pub fn as_be_bytes(&self) -> &[u8; N] {
+        &self.buffer
+    }
+
+    /// Converts to a big-endian byte array.
     pub fn to_be_bytes(&self) -> [u8; N] {
         self.buffer
     }
