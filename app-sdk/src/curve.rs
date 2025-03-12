@@ -394,11 +394,13 @@ impl HasCurveKind<32> for Secp256k1 {
 pub type Secp256k1Point = Point<Secp256k1, 32>;
 
 impl Secp256k1 {
-    pub fn get_generator() -> Secp256k1Point {
-        Point::new(
-            hex!("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"),
-            hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"),
-        )
+    pub const fn get_generator() -> Secp256k1Point {
+        Point {
+            curve_marker: PhantomData,
+            prefix: 0x04,
+            x: hex!("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"),
+            y: hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"),
+        }
     }
 }
 
