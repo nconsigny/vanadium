@@ -6,19 +6,19 @@
 use core::ops::{self, BitXor};
 use core::{fmt, str};
 
-use sdk::bignum::{BigNum, BigNumMod, Modulus};
+use sdk::bignum::BigNumMod;
 use sdk::curve::Secp256k1Point;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeTuple;
 use subtle::{Choice, ConstantTimeEq};
 
+use crate::constants::{self, G, P};
+use crate::sdk_helpers::secp256k1_compute_y;
 use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
 #[cfg(feature = "hashes")]
 #[allow(deprecated)]
 use crate::ThirtyTwoByteHash;
-use crate::{
-    constants, ecdsa, from_hex, schnorr, Message, Scalar, Secp256k1, Signing, Verification,
-};
+use crate::{ecdsa, from_hex, schnorr, Message, Scalar, Secp256k1, Signing, Verification};
 
 // subtle doesn't have implement ConstantTimeLess for [u8; 32]
 #[inline]
@@ -328,7 +328,9 @@ impl PublicKey {
     /// # }
     /// ```
     #[inline]
-    pub fn from_secret_key<C: Signing>(secp: &Secp256k1<C>, sk: &SecretKey) -> PublicKey { todo!() }
+    pub fn from_secret_key<C: Signing>(_secp: &Secp256k1<C>, sk: &SecretKey) -> PublicKey {
+        PublicKey(&G * &sk.secret_bytes())
+    }
 
     /// Creates a public key directly from a slice.
     #[inline]
@@ -347,12 +349,8 @@ impl PublicKey {
                 x.copy_from_slice(&data[1..33]);
 
                 // compute the y coordinate
-                let m = Modulus::from_be_bytes(crate::constants::FIELD_SIZE);
-                let x_bn = BigNumMod::from_be_bytes(x, &m);
-                let mut t = &x_bn * &x_bn;
-                t *= &x_bn;
-                t += BigNumMod::from_u32(7, &m);
-                let y_bn = t.pow(&BigNum::from_be_bytes(crate::constants::SQR_EXPONENT));
+                let x_bn = BigNumMod::from_be_bytes(x, &P);
+                let y_bn = secp256k1_compute_y(&x_bn)?;
                 let y = y_bn.to_be_bytes();
                 Ok(PublicKey(Secp256k1Point::new(x, y)))
             }
@@ -855,6 +853,22 @@ impl XOnlyPublicKey {
     pub fn from_slice(data: &[u8]) -> Result<XOnlyPublicKey, Error> {
         if data.is_empty() || data.len() != constants::SCHNORR_PUBLIC_KEY_SIZE {
             return Err(Error::InvalidPublicKey);
+        }
+
+        match <[u8; constants::SCHNORR_PUBLIC_KEY_SIZE]>::try_from(data) {
+            Ok(data) => {
+                // check if the key is valid, like in the original implementation
+                // a key is valid if it is in the range [1, n - 1] where n is the order of the curve
+                if data == crate::constants::ZERO || !data.lt(&crate::constants::CURVE_ORDER) {
+                    return Err(InvalidPublicKey);
+                }
+
+                let x_bn = BigNumMod::from_be_bytes(data, &P);
+                let _ = secp256k1_compute_y(&x_bn)?;
+
+                Ok(XOnlyPublicKey(data))
+            }
+            Err(_) => Err(InvalidPublicKey),
         }
     }
 

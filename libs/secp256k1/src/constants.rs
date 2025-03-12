@@ -82,3 +82,9 @@ pub const ZERO: [u8; 32] = [0; 32];
 pub const ONE: [u8; 32] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 ];
+
+/// The curve Prime, represented as a Modulus from Vanadium's app-sdk
+pub const P: sdk::bignum::Modulus<32> = sdk::bignum::Modulus::<32>::from_be_bytes(FIELD_SIZE);
+
+/// The curve generator, represented as a Secp256k1Point from Vanadium's app-sdk
+pub const G: sdk::curve::Secp256k1Point = sdk::curve::Secp256k1::get_generator();
