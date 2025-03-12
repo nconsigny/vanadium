@@ -1,5 +1,9 @@
 This crate is mostly a clone of [rust-secp256k1](https://github.com/rust-bitcoin/rust-secp256k1), but modified in order to use the Vanadium V-App SDK for cryptography-related code.
 
+At this stage, only a fraction of the functionality is implemented. Namely, everything that rust-bitcoin uses, and mostly nothing else.
+
+Therefore, this crate should not be used, except in `vlib-bitcoin`.
+
 ## Rationale
 
 `rust-secp256k1` natively implements all the necessary cryptographic primitives, and can be compiled to Risc-V. However, this would lose the benefits of the cryptographic accelerator available in signing devices, and made accessible to V-Apps via the Vanadium V-App SDK.

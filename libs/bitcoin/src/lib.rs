@@ -60,7 +60,14 @@ pub extern crate ordered;
 
 /// Rust wrapper library for Pieter Wuille's libsecp256k1.  Implements ECDSA and BIP 340 signatures
 /// for the SECG elliptic curve group secp256k1 and related utilities.
-pub extern crate secp256k1;
+// pub extern crate secp256k1 as secp256k1;
+
+// We do not re-export vlib-secp256k1, as it is only a partial implementation of the rust-secp256k1
+// and it should only be used in vlib-bitcoin at this time.
+// However, we need to at least export the Secp256k1 type as it is part of the public API of vlib-bitcoin.
+pub mod secp256k1 {
+    pub use secp256k1::Secp256k1;
+}
 
 #[cfg(feature = "serde")]
 #[macro_use]
