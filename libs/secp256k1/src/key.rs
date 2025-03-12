@@ -13,7 +13,7 @@ use serde::ser::SerializeTuple;
 use subtle::{Choice, ConstantTimeEq};
 
 use crate::constants::{self, G, P};
-use crate::sdk_helpers::{secp256k1_compute_even_y, secp256k1_compute_y};
+use crate::sdk_helpers::{secp256k1_compute_y, secp256k1_compute_y_with_parity};
 use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
 #[cfg(feature = "hashes")]
 #[allow(deprecated)]
@@ -350,7 +350,7 @@ impl PublicKey {
 
                 // compute the y coordinate
                 let x_bn = BigNumMod::from_be_bytes(x, &P);
-                let y_bn = secp256k1_compute_y(&x_bn)?;
+                let y_bn = secp256k1_compute_y_with_parity(&x_bn, header & 1)?;
                 let y = y_bn.to_be_bytes();
                 Ok(PublicKey(Secp256k1Point::new(x, y)))
             }
@@ -863,6 +863,7 @@ impl XOnlyPublicKey {
                     return Err(InvalidPublicKey);
                 }
 
+                // check if the x coordinate is on the curve
                 let x_bn = BigNumMod::from_be_bytes(data, &P);
                 let _ = secp256k1_compute_y(&x_bn)?;
 
@@ -912,7 +913,7 @@ impl XOnlyPublicKey {
         let tweak_point: sdk::curve::Point<sdk::curve::Secp256k1, 32> = &G * &tweak.as_be_bytes();
 
         let x_bn = BigNumMod::from_be_bytes(self.0, &P);
-        let y = secp256k1_compute_even_y(&x_bn)?;
+        let y = secp256k1_compute_y_with_parity(&x_bn, 0)?;
         let tweaked = &Secp256k1Point::new(x_bn.to_be_bytes(), y.to_be_bytes()) + &tweak_point;
         let parity = Parity::from_u8(tweaked.y[31] & 1).unwrap();
 
@@ -1119,7 +1120,7 @@ impl<'de> serde::Deserialize<'de> for Parity {
 
 impl From<PublicKey> for XOnlyPublicKey {
     fn from(src: PublicKey) -> XOnlyPublicKey {
-        XOnlyPublicKey::from_slice(&src.serialize()[1..]).expect("This should never fail")
+        XOnlyPublicKey::from_slice(&src.0.x).expect("This should never fail")
     }
 }
 
