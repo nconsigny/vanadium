@@ -10,7 +10,7 @@ use sdk::bignum::{BigNum, BigNumMod, Modulus};
 use sdk::curve::Secp256k1Point;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeTuple;
-use subtle::ConstantTimeEq;
+use subtle::{Choice, ConstantTimeEq};
 
 use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
 #[cfg(feature = "hashes")]
@@ -19,6 +19,22 @@ use crate::ThirtyTwoByteHash;
 use crate::{
     constants, ecdsa, from_hex, schnorr, Message, Scalar, Secp256k1, Signing, Verification,
 };
+
+// subtle doesn't have implement ConstantTimeLess for [u8; 32]
+#[inline]
+fn ct_lt(a: &[u8; 32], b: &[u8; 32]) -> Choice {
+    let mut less = 0u8; // Will be 1 if a < b, 0 otherwise
+    let mut equal = 1u8; // Will be 1 if equal so far, 0 otherwise
+
+    for i in 0..32 {
+        // Update less: set to 1 if a[i] < a[i] and all previous bytes were equal
+        less |= equal & (a[i] < b[i]) as u8;
+        // Update equal: remains 1 only if a[i] == a[i] and equal was 1
+        equal &= (a[i] == b[i]) as u8;
+    }
+
+    Choice::from(less & 1)
+}
 
 /// Secret key - a 256-bit key used to create ECDSA and Taproot signatures.
 ///
@@ -173,8 +189,8 @@ impl SecretKey {
             Ok(data) => {
                 // check if the key is valid, like in the original implementation
                 // a key is valid if it is in the range [1, n - 1] where n is the order of the curve
-                if data.ct_eq(&crate::constants::ZERO).into()
-                    || !data.lt(&crate::constants::CURVE_ORDER)
+                if bool::from(data.ct_eq(&crate::constants::ZERO))
+                    || !bool::from(ct_lt(&data, &crate::constants::CURVE_ORDER))
                 {
                     return Err(InvalidSecretKey);
                 }
@@ -840,8 +856,6 @@ impl XOnlyPublicKey {
         if data.is_empty() || data.len() != constants::SCHNORR_PUBLIC_KEY_SIZE {
             return Err(Error::InvalidPublicKey);
         }
-
-        todo!()
     }
 
     #[inline]
