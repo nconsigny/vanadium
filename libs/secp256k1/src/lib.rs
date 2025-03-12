@@ -162,6 +162,8 @@ mod secret;
 mod context;
 mod key;
 
+mod sdk_helpers;
+
 pub mod constants;
 pub mod ecdsa;
 pub mod scalar;
