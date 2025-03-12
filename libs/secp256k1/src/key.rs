@@ -12,9 +12,9 @@ use sdk::curve::Secp256k1Point;
 use serde::ser::SerializeTuple;
 use subtle::{Choice, ConstantTimeEq};
 
-use crate::constants::{self, G, P};
+use crate::constants::{self, G, N, P};
 use crate::sdk_helpers::{secp256k1_compute_y, secp256k1_compute_y_with_parity};
-use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
+use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey, InvalidTweak};
 #[cfg(feature = "hashes")]
 #[allow(deprecated)]
 use crate::ThirtyTwoByteHash;
@@ -235,7 +235,18 @@ impl SecretKey {
     ///
     /// Returns an error if the resulting key would be invalid.
     #[inline]
-    pub fn add_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> { todo!() }
+    pub fn add_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> {
+        let self_bn = BigNumMod::from_be_bytes(self.0, &N);
+        let tweak_bn = BigNumMod::from_be_bytes(*tweak.as_be_bytes(), &N);
+        let result_bn = &self_bn + &tweak_bn;
+        let result = result_bn.as_be_bytes();
+
+        if bool::from(result.ct_eq(&crate::constants::ZERO)) {
+            return Err(InvalidTweak);
+        }
+        self.0 = *result;
+        Ok(self)
+    }
 
     /// Tweaks a [`SecretKey`] by multiplying by `tweak` modulo the curve order.
     ///
