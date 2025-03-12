@@ -24,6 +24,10 @@ pub struct SerializedSignature {
     len: usize,
 }
 
+impl SerializedSignature {
+    pub(crate) fn new(data: [u8; MAX_LEN], len: usize) -> Self { Self { data, len } }
+}
+
 impl fmt::Debug for SerializedSignature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(self, f) }
 }
