@@ -374,6 +374,14 @@ impl PublicKey {
                 let mut y = [0u8; 32];
                 y.copy_from_slice(&data[33..65]);
                 let point = sdk::curve::Secp256k1Point::new(x, y);
+
+                let x_bn = BigNumMod::from_be_bytes(x, &P);
+                let y_bn = BigNumMod::from_be_bytes(y, &P);
+                let seven = BigNumMod::from_u32(7, &P);
+                if &y_bn * &y_bn != &(&(&x_bn * &x_bn) * &x_bn) + &seven {
+                    return Err(Error::InvalidPublicKey);
+                }
+
                 Ok(PublicKey(point))
             }
             0x06 | 0x07 => panic!("Hybrid keys are not implemented"),

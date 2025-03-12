@@ -73,12 +73,12 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         // TODO: remove debug prints
         // println!("\x1b[93m{:?}\x1b[0m", cpu);
 
-        // println!(
-        //     "\x1b[32m{:08x?}: {:08x?} -> {:?}\x1b[0m",
-        //     cpu.pc,
-        //     instr,
-        //     common::riscv::decode::decode(instr)
-        // );
+        println!(
+            "\x1b[32m{:08x?}: {:08x?} -> {:?}\x1b[0m",
+            cpu.pc,
+            instr,
+            common::riscv::decode::decode(instr)
+        );
 
         let result = cpu.execute(instr, Some(&mut ecall_handler));
 
