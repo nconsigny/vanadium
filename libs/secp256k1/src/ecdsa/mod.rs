@@ -40,11 +40,63 @@ impl Signature {
     #[inline]
     /// Converts a DER-encoded byte slice to a signature
     pub fn from_der(data: &[u8]) -> Result<Signature, Error> {
-        if data.is_empty() {
+        if data.len() < 6 {
             return Err(Error::InvalidSignature);
         }
 
-        todo!()
+        // Check tag
+        if data[0] != 0x30 {
+            return Err(Error::InvalidSignature);
+        }
+
+        // Total length of the sequence
+        let total_len = data[1];
+        if data.len() < total_len as usize + 2 {
+            return Err(Error::InvalidSignature);
+        }
+
+        // Parse r value
+        let mut pos = 2;
+        if data[pos] != 0x02 {
+            return Err(Error::InvalidSignature);
+        }
+        pos += 1;
+        let r_len = data[pos] as usize;
+        pos += 1;
+
+        // Handle r value (skip leading zero if present)
+        let r_start = if r_len > 32 && data[pos] == 0 { pos + 1 } else { pos };
+        let r_actual_len = if r_len > 32 { r_len - 1 } else { r_len };
+        if r_actual_len > 32 {
+            return Err(Error::InvalidSignature);
+        }
+
+        // Parse s value
+        pos = pos + r_len;
+        if pos >= data.len() || data[pos] != 0x02 {
+            return Err(Error::InvalidSignature);
+        }
+        pos += 1;
+        let s_len = data[pos] as usize;
+        pos += 1;
+
+        // Handle s value (skip leading zero if present)
+        let s_start = if s_len > 32 && data[pos] == 0 { pos + 1 } else { pos };
+        let s_actual_len = if s_len > 32 { s_len - 1 } else { s_len };
+        if s_actual_len > 32 {
+            return Err(Error::InvalidSignature);
+        }
+
+        let mut result = [0u8; 64];
+
+        // Copy r (left-pad with zeros if necessary)
+        let r_dest_start = 32 - r_actual_len;
+        result[r_dest_start..32].copy_from_slice(&data[r_start..r_start + r_actual_len]);
+        // Copy s (left-pad with zeros if necessary)
+        let s_dest_start = 64 - s_actual_len;
+        result[s_dest_start..64].copy_from_slice(&data[s_start..s_start + s_actual_len]);
+
+        Ok(Self(result))
     }
 
     /// Converts a 64-byte compact-encoded byte slice to a signature
@@ -89,11 +141,56 @@ impl Signature {
 
     #[inline]
     /// Serializes the signature in DER format
-    pub fn serialize_der(&self) -> SerializedSignature { todo!() }
+    pub fn serialize_der(&self) -> SerializedSignature {
+        let r = &self.0[0..32];
+        let s = &self.0[32..64];
+
+        // Calculate lengths for r and s, including potential leading zero
+        let r_len = 32 + ((r[0] >= 0x80) as usize);
+        let s_len = 32 + ((s[0] >= 0x80) as usize);
+
+        let inner_len = 2 + r_len + 2 + s_len; // 2 bytes each for INTEGER tags and lengths
+
+        let mut data = [0u8; serialized_signature::MAX_LEN];
+
+        let mut pos = 0;
+
+        // Write SEQUENCE tag and length
+        data[pos] = 0x30;
+        pos += 1;
+        data[pos] = inner_len as u8;
+        pos += 1;
+
+        // Write r value
+        data[pos] = 0x02;
+        pos += 1;
+        data[pos] = r_len as u8;
+        pos += 1;
+        if r[0] >= 0x80 {
+            data[pos] = 0x00;
+            pos += 1;
+        }
+        data[pos..pos + 32].copy_from_slice(r);
+        pos += 32;
+
+        // Write s value
+        data[pos] = 0x02;
+        pos += 1;
+        data[pos] = s_len as u8;
+        pos += 1;
+        if s[0] >= 0x80 {
+            data[pos] = 0x00;
+            pos += 1;
+        }
+        data[pos..pos + 32].copy_from_slice(s);
+        pos += 32;
+
+        SerializedSignature::new(data, pos)
+    }
 
     #[inline]
     /// Serializes the signature in compact format
-    pub fn serialize_compact(&self) -> [u8; 64] { todo!() }
+    pub fn serialize_compact(&self) -> [u8; 64] { self.0 }
 }
 
 /// Creates a new signature from a FFI signature
