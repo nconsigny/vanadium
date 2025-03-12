@@ -13,7 +13,7 @@ use serde::ser::SerializeTuple;
 use subtle::{Choice, ConstantTimeEq};
 
 use crate::constants::{self, G, P};
-use crate::sdk_helpers::secp256k1_compute_y;
+use crate::sdk_helpers::{secp256k1_compute_even_y, secp256k1_compute_y};
 use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey};
 #[cfg(feature = "hashes")]
 #[allow(deprecated)]
@@ -902,12 +902,23 @@ impl XOnlyPublicKey {
     /// let tweaked = xonly.add_tweak(&secp, &tweak).expect("Improbable to fail with a randomly generated tweak");
     /// # }
     /// ```
+    // NOTE: due to a limitation of Vanadium SDK, this currently panics instead of returning an error if the
+    //       tweak equals the negation of the secret key.
     pub fn add_tweak<V: Verification>(
         mut self,
-        secp: &Secp256k1<V>,
+        _secp: &Secp256k1<V>,
         tweak: &Scalar,
     ) -> Result<(XOnlyPublicKey, Parity), Error> {
-        todo!()
+        let tweak_point: sdk::curve::Point<sdk::curve::Secp256k1, 32> = &G * &tweak.as_be_bytes();
+
+        let x_bn = BigNumMod::from_be_bytes(self.0, &P);
+        let y = secp256k1_compute_even_y(&x_bn)?;
+        let tweaked = &Secp256k1Point::new(x_bn.to_be_bytes(), y.to_be_bytes()) + &tweak_point;
+        let parity = Parity::from_u8(tweaked.y[31] & 1).unwrap();
+
+        self.0 = tweaked.x;
+
+        Ok((self, parity))
     }
 
     /// Verifies that a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed correctly.
@@ -939,14 +950,19 @@ impl XOnlyPublicKey {
     /// assert!(original.tweak_add_check(&secp, &tweaked, parity, tweak));
     /// # }
     /// ```
+    // NOTE: due to a limitation of Vanadium SDK, this currently panics instead of returning an error if the
+    //       tweak equals the negation of the secret key.
     pub fn tweak_add_check<V: Verification>(
         &self,
-        secp: &Secp256k1<V>,
+        _secp: &Secp256k1<V>,
         tweaked_key: &Self,
         tweaked_parity: Parity,
         tweak: Scalar,
     ) -> bool {
-        todo!()
+        let Ok((tweaked_result, parity_result)) = self.add_tweak(_secp, &tweak) else {
+            return false;
+        };
+        tweaked_result == *tweaked_key && parity_result == tweaked_parity
     }
 
     /// Returns the [`PublicKey`] for this [`XOnlyPublicKey`].
