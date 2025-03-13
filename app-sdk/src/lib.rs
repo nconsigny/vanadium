@@ -29,7 +29,12 @@ use embedded_alloc::Heap;
 #[cfg(not(target_arch = "riscv32"))]
 use ctor;
 
+#[cfg(target_arch = "riscv32")]
 const HEAP_SIZE: usize = 65536;
+
+#[cfg(not(target_arch = "riscv32"))]
+const HEAP_SIZE: usize = 33554432;
+
 static mut HEAP_MEM: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 #[global_allocator]
