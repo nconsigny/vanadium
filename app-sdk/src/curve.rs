@@ -125,14 +125,32 @@ where
 /// * `C` - The curve type implementing `Curve<SCALAR_LENGTH>`.
 /// * `SCALAR_LENGTH` - The byte length of the scalar and coordinate elements.
 #[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Point<C, const SCALAR_LENGTH: usize>
 where
     C: Curve<SCALAR_LENGTH>,
 {
     curve_marker: PhantomData<C>,
     prefix: u8,
-    x: [u8; SCALAR_LENGTH],
-    y: [u8; SCALAR_LENGTH],
+    pub x: [u8; SCALAR_LENGTH],
+    pub y: [u8; SCALAR_LENGTH],
+}
+
+impl<C, const SCALAR_LENGTH: usize> Point<C, SCALAR_LENGTH>
+where
+    C: Curve<SCALAR_LENGTH>,
+{
+    const ZERO: [u8; SCALAR_LENGTH] = [0u8; SCALAR_LENGTH];
+
+    /// Checks if the point corresponds to the identity element by verifying
+    /// whether both x and y coordinates are zero.
+    ///
+    /// Guaranteed to run in constant time.
+    ///
+    /// Returns `true` if both coordinates are zero, otherwise `false`.
+    pub fn is_zero(&self) -> bool {
+        self.x.ct_eq(&Self::ZERO).unwrap_u8() == 1 && self.y.ct_eq(&Self::ZERO).unwrap_u8() == 1
+    }
 }
 
 impl<C, const SCALAR_LENGTH: usize> Default for Point<C, SCALAR_LENGTH>
@@ -364,6 +382,7 @@ where
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Secp256k1;
 
 impl HasCurveKind<32> for Secp256k1 {
@@ -375,11 +394,13 @@ impl HasCurveKind<32> for Secp256k1 {
 pub type Secp256k1Point = Point<Secp256k1, 32>;
 
 impl Secp256k1 {
-    pub fn get_generator() -> Secp256k1Point {
-        Point::new(
-            hex!("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"),
-            hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"),
-        )
+    pub const fn get_generator() -> Secp256k1Point {
+        Point {
+            curve_marker: PhantomData,
+            prefix: 0x04,
+            x: hex!("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"),
+            y: hex!("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"),
+        }
     }
 }
 

@@ -70,20 +70,42 @@ impl<const N: usize> BigNum<N> {
 
 // Implementations for addition and subtraction on `BigNum`
 
-impl<const N: usize> Add for &BigNum<N> {
+impl<const N: usize> Add<&BigNum<N>> for &BigNum<N> {
     type Output = BigNum<N>;
 
-    fn add(self, other: Self) -> BigNum<N> {
+    fn add(self, other: &BigNum<N>) -> BigNum<N> {
         let mut result = [0u8; N];
         let mut carry = 0u16;
-
         for i in (0..N).rev() {
-            let sum = self.buffer[i] as u16 + other.buffer[i] as u16 + carry;
-            result[i] = sum as u8;
-            carry = sum >> 8;
+            let s = self.buffer[i] as u16 + other.buffer[i] as u16 + carry;
+            result[i] = s as u8;
+            carry = s >> 8;
         }
-
         BigNum { buffer: result }
+    }
+}
+
+impl<const N: usize> Add<&BigNum<N>> for BigNum<N> {
+    type Output = BigNum<N>;
+
+    fn add(self, other: &BigNum<N>) -> BigNum<N> {
+        &self + other
+    }
+}
+
+impl<const N: usize> Add<BigNum<N>> for &BigNum<N> {
+    type Output = BigNum<N>;
+
+    fn add(self, other: BigNum<N>) -> BigNum<N> {
+        self + &other
+    }
+}
+
+impl<const N: usize> Add<BigNum<N>> for BigNum<N> {
+    type Output = BigNum<N>;
+
+    fn add(self, other: BigNum<N>) -> BigNum<N> {
+        &self + &other
     }
 }
 
@@ -118,6 +140,30 @@ impl<const N: usize> Sub for &BigNum<N> {
         }
 
         BigNum { buffer: result }
+    }
+}
+
+impl<const N: usize> Sub<&BigNum<N>> for BigNum<N> {
+    type Output = BigNum<N>;
+
+    fn sub(self, other: &BigNum<N>) -> BigNum<N> {
+        &self - other
+    }
+}
+
+impl<const N: usize> Sub<BigNum<N>> for &BigNum<N> {
+    type Output = BigNum<N>;
+
+    fn sub(self, other: BigNum<N>) -> BigNum<N> {
+        self - &other
+    }
+}
+
+impl<const N: usize> Sub<BigNum<N>> for BigNum<N> {
+    type Output = BigNum<N>;
+
+    fn sub(self, other: BigNum<N>) -> BigNum<N> {
+        &self - &other
     }
 }
 
@@ -233,7 +279,12 @@ impl<'a, const N: usize> BigNumMod<'a, N> {
         Self { buffer, modulus }
     }
 
-    /// Returns the value as a big-endian byte array.
+    /// Returns the value, in big-endian, expressed as a &[u8; N].
+    pub fn as_be_bytes(&self) -> &[u8; N] {
+        &self.buffer
+    }
+
+    /// Converts to a big-endian byte array.
     pub fn to_be_bytes(&self) -> [u8; N] {
         self.buffer
     }
@@ -305,6 +356,30 @@ impl<'a, const N: usize> Add for &BigNumMod<'a, N> {
     }
 }
 
+impl<'a, const N: usize> Add<&BigNumMod<'a, N>> for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn add(self, other: &BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        &self + other
+    }
+}
+
+impl<'a, const N: usize> Add<BigNumMod<'a, N>> for &BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn add(self, other: BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        self + &other
+    }
+}
+
+impl<'a, const N: usize> Add<BigNumMod<'a, N>> for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn add(self, other: BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        &self + &other
+    }
+}
+
 impl<'a, const N: usize> AddAssign for BigNumMod<'a, N> {
     fn add_assign(&mut self, other: Self) {
         if self.modulus != other.modulus {
@@ -321,6 +396,14 @@ impl<'a, const N: usize> AddAssign for BigNumMod<'a, N> {
         if res != 1 {
             panic!("Addition failed");
         }
+    }
+}
+
+impl<'a, const N: usize> Add<u32> for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn add(self, other: u32) -> BigNumMod<'a, N> {
+        &self + other
     }
 }
 
@@ -353,7 +436,6 @@ impl<'a, const N: usize> Sub for &BigNumMod<'a, N> {
         if self.modulus != other.modulus {
             panic!("Moduli do not match");
         }
-
         let mut result = [0u8; N];
         let res = Ecall::bn_subm(
             result.as_mut_ptr(),
@@ -366,6 +448,30 @@ impl<'a, const N: usize> Sub for &BigNumMod<'a, N> {
             panic!("Subtraction failed");
         }
         BigNumMod::from_be_bytes(result, self.modulus)
+    }
+}
+
+impl<'a, const N: usize> Sub<&BigNumMod<'a, N>> for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn sub(self, other: &BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        &self - other
+    }
+}
+
+impl<'a, const N: usize> Sub<BigNumMod<'a, N>> for &BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn sub(self, other: BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        self - &other
+    }
+}
+
+impl<'a, const N: usize> Sub<BigNumMod<'a, N>> for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn sub(self, other: BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        &self - &other
     }
 }
 
@@ -396,6 +502,30 @@ impl<'a, const N: usize> core::ops::Sub<u32> for BigNumMod<'a, N> {
     }
 }
 
+impl<'a, const N: usize> core::ops::Sub<u32> for &BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn sub(self, other: u32) -> BigNumMod<'a, N> {
+        self - &BigNumMod::from_u32(other, self.modulus)
+    }
+}
+
+impl<'a, const N: usize> core::ops::Sub<&BigNumMod<'a, N>> for u32 {
+    type Output = BigNumMod<'a, N>;
+
+    fn sub(self, rhs: &BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        BigNumMod::from_u32(self, rhs.modulus) - rhs
+    }
+}
+
+impl<'a, const N: usize> core::ops::Sub<BigNumMod<'a, N>> for u32 {
+    type Output = BigNumMod<'a, N>;
+
+    fn sub(self, rhs: BigNumMod<'a, N>) -> BigNumMod<'a, N> {
+        BigNumMod::from_u32(self, rhs.modulus) - &rhs
+    }
+}
+
 impl<'a, const N: usize> SubAssign<u32> for BigNumMod<'a, N> {
     fn sub_assign(&mut self, other: u32) {
         *self -= Self::from_u32(other, self.modulus);
@@ -409,7 +539,6 @@ impl<'a, const N: usize> core::ops::Mul for &BigNumMod<'a, N> {
         if self.modulus != other.modulus {
             panic!("Moduli do not match");
         }
-
         let mut result = [0u8; N];
         let res = Ecall::bn_multm(
             result.as_mut_ptr(),
@@ -422,6 +551,30 @@ impl<'a, const N: usize> core::ops::Mul for &BigNumMod<'a, N> {
             panic!("Multiplication failed");
         }
         BigNumMod::from_be_bytes(result, self.modulus)
+    }
+}
+
+impl<'a, const N: usize> core::ops::Mul<&BigNumMod<'a, N>> for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn mul(self, other: &BigNumMod<'a, N>) -> Self::Output {
+        &self * other
+    }
+}
+
+impl<'a, const N: usize> core::ops::Mul<BigNumMod<'a, N>> for &BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn mul(self, other: BigNumMod<'a, N>) -> Self::Output {
+        self * &other
+    }
+}
+
+impl<'a, const N: usize> core::ops::Mul for BigNumMod<'a, N> {
+    type Output = BigNumMod<'a, N>;
+
+    fn mul(self, other: Self) -> Self::Output {
+        &self * &other
     }
 }
 
@@ -463,6 +616,14 @@ impl<'a, const N: usize> core::ops::Mul<&BigNumMod<'a, N>> for u32 {
 
     fn mul(self, other: &BigNumMod<'a, N>) -> BigNumMod<'a, N> {
         &BigNumMod::from_u32(self, other.modulus) * other
+    }
+}
+
+impl<'a, const N: usize> core::ops::Neg for BigNumMod<'a, N> {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self::from_u32(0, self.modulus) - self
     }
 }
 
@@ -762,5 +923,19 @@ mod tests {
             a.pow(&BigNum::from_be_bytes(hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"))).buffer,
             hex!("3c0baee8c4e2f7220615013d7402fa5e69e43bc10e55500a5af4f8b966658846")
         );
+    }
+
+    #[test]
+    fn test_big_num_mod_neg_zero() {
+        let zero = BigNumMod::from_u32(0, &M);
+        assert_eq!(-zero, zero);
+    }
+
+    #[test]
+    fn test_big_num_mod_neg() {
+        let a = BigNumMod::from_u32(5, &M);
+        let neg_a = -a;
+        // In modular arithmetic, a + (-a) should equal 0
+        assert_eq!(&a + &neg_a, BigNumMod::from_u32(0, &M));
     }
 }
