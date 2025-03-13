@@ -6,14 +6,15 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 critical-section = "1.1.2"
-ctor = "0.2.8"
-embedded-alloc = "0.5.1"
 subtle = { version="2.6.1", default-features = false }
 hex-literal = "0.4.1"
 zeroize = "1.8.1"
 
 [build-dependencies]
 common = { path = "../common", features = ["wrapped_serializable"] }
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embedded-alloc = "0.5.1"
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 bip32 = "0.5.2"
