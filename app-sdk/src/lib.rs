@@ -24,33 +24,25 @@ mod ecalls_native;
 mod ux_generated;
 
 use ecalls::{Ecall, EcallsInterface};
-use embedded_alloc::Heap;
 
-#[cfg(not(target_arch = "riscv32"))]
-use ctor;
+#[cfg(target_arch = "riscv32")]
+use embedded_alloc::Heap;
 
 #[cfg(target_arch = "riscv32")]
 const HEAP_SIZE: usize = 65536;
-
-#[cfg(not(target_arch = "riscv32"))]
-const HEAP_SIZE: usize = 33554432;
-
+#[cfg(target_arch = "riscv32")]
 static mut HEAP_MEM: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
+#[cfg(target_arch = "riscv32")]
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
+#[cfg(target_arch = "riscv32")]
 fn init_heap() {
     unsafe {
-        HEAP.init(&raw mut HEAP_MEM as usize, HEAP_SIZE);
+        #[allow(static_mut_refs)]
+        HEAP.init(HEAP_MEM.as_mut_ptr() as usize, HEAP_SIZE);
     }
-}
-
-// On native targets, we use the ctor crate to call the initializer automatically at startup
-#[cfg(not(target_arch = "riscv32"))]
-#[ctor::ctor]
-fn init_head_wrapper() {
-    init_heap();
 }
 
 // embedded-alloc requires an implementation of critical_section::Impl
