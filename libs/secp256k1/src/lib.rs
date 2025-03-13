@@ -138,6 +138,10 @@
 //!           **Important**: `serde` encoding is **not** the same as consensus encoding!
 //!
 
+// suppress dead code warnings in vlib-secp256k1, as we prefer to keep the code as close to the original as possible
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_variables)]
 // Coding conventions
 #![deny(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 #![warn(missing_docs, missing_copy_implementations, missing_debug_implementations)]
