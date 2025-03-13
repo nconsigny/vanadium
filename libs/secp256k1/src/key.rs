@@ -14,7 +14,7 @@ use subtle::{Choice, ConstantTimeEq};
 
 use crate::constants::{self, G, N, P};
 use crate::sdk_helpers::{secp256k1_compute_y, secp256k1_compute_y_with_parity};
-use crate::Error::{self, InvalidPublicKey, InvalidPublicKeySum, InvalidSecretKey, InvalidTweak};
+use crate::Error::{self, InvalidPublicKey, InvalidSecretKey, InvalidTweak};
 #[cfg(feature = "hashes")]
 #[allow(deprecated)]
 use crate::ThirtyTwoByteHash;
