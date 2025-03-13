@@ -36,9 +36,9 @@ pub fn secp256k1_compute_y_with_parity<'a>(
 
     let mut y = secp256k1_compute_y_internal(x).ok_or(InvalidPublicKey)?;
 
-    // if the last byte of y is odd, negate it to ensure an even y-coordinate
+    // if the last byte of y doesn't have the correct parity, negate it
     if y.as_be_bytes()[31] & 1 != parity {
-        y = 0 - y;
+        y = -y;
     }
 
     Ok(y)

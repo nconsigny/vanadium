@@ -619,6 +619,14 @@ impl<'a, const N: usize> core::ops::Mul<&BigNumMod<'a, N>> for u32 {
     }
 }
 
+impl<'a, const N: usize> core::ops::Neg for BigNumMod<'a, N> {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self::from_u32(0, self.modulus) - self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // TODO: these tests are only for the native target. We would like to run them for both the native
@@ -915,5 +923,19 @@ mod tests {
             a.pow(&BigNum::from_be_bytes(hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"))).buffer,
             hex!("3c0baee8c4e2f7220615013d7402fa5e69e43bc10e55500a5af4f8b966658846")
         );
+    }
+
+    #[test]
+    fn test_big_num_mod_neg_zero() {
+        let zero = BigNumMod::from_u32(0, &M);
+        assert_eq!(-zero, zero);
+    }
+
+    #[test]
+    fn test_big_num_mod_neg() {
+        let a = BigNumMod::from_u32(5, &M);
+        let neg_a = -a;
+        // In modular arithmetic, a + (-a) should equal 0
+        assert_eq!(&a + &neg_a, BigNumMod::from_u32(0, &M));
     }
 }
