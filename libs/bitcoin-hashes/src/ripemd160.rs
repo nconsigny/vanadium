@@ -23,8 +23,6 @@ fn from_engine(e: HashEngine) -> Hash {
     Hash(res)
 }
 
-const BLOCK_SIZE: usize = 64;
-
 /// Engine to compute RIPEMD160 hash function.
 #[derive(Clone)]
 pub struct HashEngine {

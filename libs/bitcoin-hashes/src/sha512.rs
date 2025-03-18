@@ -5,7 +5,7 @@
 
 use core::ops::Index;
 use core::slice::SliceIndex;
-use core::{cmp, str};
+use core::str;
 
 use sdk::hash::Hasher as _;
 
@@ -22,8 +22,6 @@ fn from_engine(e: HashEngine) -> Hash {
     e.hasher.digest(&mut res);
     Hash(res)
 }
-
-pub(crate) const BLOCK_SIZE: usize = 128;
 
 /// Engine to compute SHA512 hash function.
 #[derive(Clone)]
