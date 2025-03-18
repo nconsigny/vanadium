@@ -120,11 +120,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use hashes::sha256d;
+    // use hashes::sha256d;
 
-    use super::*;
-    use crate::blockdata::block::Block;
-    use crate::consensus::encode::deserialize;
+    // use super::*;
+    // use crate::blockdata::block::Block;
+    // use crate::consensus::encode::deserialize;
 
     // #[test]
     // fn both_merkle_root_functions_return_the_same_result() {

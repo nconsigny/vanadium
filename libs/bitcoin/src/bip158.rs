@@ -597,14 +597,14 @@ impl<'a, W: Write> BitStreamWriter<'a, W> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    // use std::collections::HashMap;
 
     use hex::test_hex_unwrap as hex;
     // use serde_json::Value;
 
     use super::*;
-    use crate::consensus::encode::deserialize;
-    use crate::ScriptBuf;
+    // use crate::consensus::encode::deserialize;
+    // use crate::ScriptBuf;
 
     // #[test]
     // fn test_blockfilters() {
