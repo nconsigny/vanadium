@@ -564,7 +564,7 @@ mod tests {
     use secp256k1::rand::prelude::*;
 
     use super::*;
-    use crate::consensus::encode::{deserialize, serialize};
+    // use crate::consensus::encode::{deserialize, serialize};
 
     #[cfg(feature = "rand-std")]
     macro_rules! pmt_tests {
