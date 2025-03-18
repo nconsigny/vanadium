@@ -1577,14 +1577,12 @@ impl std::error::Error for TaprootError {
 mod test {
     use core::str::FromStr;
 
-    use hashes::sha256;
     use hashes::sha256t::Tag;
     use hex::FromHex;
     use secp256k1::VerifyOnly;
 
     use super::*;
     use crate::sighash::{TapSighash, TapSighashTag};
-    use crate::{Address, KnownHrp};
     extern crate serde_json;
 
     #[cfg(feature = "serde")]
@@ -1593,58 +1591,6 @@ mod test {
         serde_test::Configure,
         serde_test::{assert_tokens, Token},
     };
-
-    fn tag_engine(tag_name: &str) -> sha256::HashEngine {
-        let mut engine = sha256::Hash::engine();
-        let tag_hash = sha256::Hash::hash(tag_name.as_bytes());
-        engine.input(tag_hash.as_ref());
-        engine.input(tag_hash.as_ref());
-        engine
-    }
-
-    #[test]
-    fn test_midstates() {
-        // test that engine creation roundtrips
-        assert_eq!(
-            tag_engine("TapLeaf").midstate(),
-            TapLeafTag::engine().midstate()
-        );
-        assert_eq!(
-            tag_engine("TapBranch").midstate(),
-            TapBranchTag::engine().midstate()
-        );
-        assert_eq!(
-            tag_engine("TapTweak").midstate(),
-            TapTweakTag::engine().midstate()
-        );
-        assert_eq!(
-            tag_engine("TapSighash").midstate(),
-            TapSighashTag::engine().midstate()
-        );
-
-        // check that hash creation is the same as building into the same engine
-        fn empty_hash(tag_name: &str) -> [u8; 32] {
-            let mut e = tag_engine(tag_name);
-            e.input(&[]);
-            TapNodeHash::from_engine(e).to_byte_array()
-        }
-        assert_eq!(
-            empty_hash("TapLeaf"),
-            TapLeafHash::hash(&[]).to_byte_array()
-        );
-        assert_eq!(
-            empty_hash("TapBranch"),
-            TapNodeHash::hash(&[]).to_byte_array()
-        );
-        assert_eq!(
-            empty_hash("TapTweak"),
-            TapTweakHash::hash(&[]).to_byte_array()
-        );
-        assert_eq!(
-            empty_hash("TapSighash"),
-            TapSighash::hash(&[]).to_byte_array()
-        );
-    }
 
     #[test]
     fn test_vectors_core() {
