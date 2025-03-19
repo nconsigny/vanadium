@@ -245,17 +245,42 @@ async fn handle_cli_command(
             keys_info,
         } => {
             // parse keys_info in the format "key_info1, key_info2, ..."
+            // TODO: conversion should either be done using the structs from common::bip388 directly,
+            //       or implementing From/TryFrom for the various types involved
+
             let keys_info = parse_keys_info(&keys_info)?;
-            let wallet_policy = common::bip388::WalletPolicy::new(&descriptor_template, keys_info)?;
-            let wallet_policy_coords = common::account::WalletPolicyCoordinates {
+            let wallet_policy_coords = common::message::WalletPolicyCoordinates {
                 is_change: *is_change,
                 address_index: *address_index,
             };
+            let wallet_policy_msg = common::message::WalletPolicy {
+                template: descriptor_template.to_string(),
+                keys_info: keys_info
+                    .iter()
+                    .map(|ki| common::message::PubkeyInfo {
+                        pubkey: ki.pubkey.encode().to_vec(),
+                        origin: ki.origin_info.as_ref().map(|origin_info| {
+                            common::message::KeyOrigin {
+                                fingerprint: origin_info.fingerprint,
+                                path: common::message::Bip32Path(
+                                    origin_info
+                                        .derivation_path
+                                        .iter()
+                                        .map(|step| u32::from(*step))
+                                        .collect(),
+                                ),
+                            }
+                        }),
+                    })
+                    .collect(),
+            };
+
             let addr = bitcoin_client
                 .get_address(
-                    &wallet_policy,
+                    &common::message::Account::WalletPolicy(wallet_policy_msg),
                     name.as_deref().unwrap_or(""),
-                    &wallet_policy_coords,
+                    &common::message::AccountCoordinates::WalletPolicy(wallet_policy_coords),
+                    &[42u8; 32], // TODO: placeholder
                     *display,
                 )
                 .await?;
