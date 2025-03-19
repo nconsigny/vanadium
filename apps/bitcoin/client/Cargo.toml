@@ -9,8 +9,8 @@ common = { package = "vnd-bitcoin-common", path = "../common"}
 hex = "0.4.3"
 hidapi = "2.6.3"
 ledger-transport-hid = "0.11.0"
-quick-protobuf = { version = "0.8.1", default-features = false }
 sdk = { package = "vanadium-client-sdk", path = "../../../client-sdk"}
+serde = "1.0.219"
 tokio = { version = "1.38.1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync"] }
 
 # The following dependencies are only used for the binary executable.
@@ -19,6 +19,7 @@ tokio = { version = "1.38.1", features = ["io-util", "macros", "net", "rt", "rt-
 clap = { version = "4.5.31", features = ["derive"] }
 rustyline = "15.0.0"
 shellwords = "1.1.0"
+postcard = { version = "1.1.1", features = ["alloc"] }
 
 
 [lib]
