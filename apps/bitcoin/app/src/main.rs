@@ -1,12 +1,9 @@
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
-use alloc::borrow::Cow;
-
 #[cfg(target_arch = "riscv32")]
 use sdk::fatal;
 
 extern crate alloc;
-extern crate quick_protobuf;
 
 mod constants;
 mod handlers;
@@ -14,13 +11,9 @@ mod merkle;
 
 use handlers::*;
 
-use alloc::string::{String, ToString};
-use alloc::vec;
-use alloc::vec::Vec;
-use common::message::{
-    mod_Request::OneOfrequest, mod_Response::OneOfresponse, Request, Response, ResponseError,
-};
-use quick_protobuf::{BytesReader, BytesWriter, MessageRead, MessageWrite, Writer};
+use alloc::{boxed::Box, string::ToString};
+
+use common::message::{Request, Response};
 
 // Temporary to force the creation of a data section
 #[used]
@@ -49,53 +42,38 @@ pub fn _start() {
     main()
 }
 
-fn handle_req_<'a>(buffer: &'a [u8]) -> Result<Response<'a>, &'static str> {
-    let mut reader = BytesReader::from_bytes(buffer);
-    let request: Request =
-        Request::from_reader(&mut reader, buffer).map_err(|_| "Failed to parse request")?; // TODO: proper error handling
+fn handle_request(request: &Request) -> Result<Response, &'static str> {
+    match request {
+        Request::GetVersion => todo!(),
+        Request::Exit => sdk::exit(0),
+        Request::GetMasterFingerprint => handle_get_master_fingerprint(),
+        Request::GetExtendedPubkey { path, display } => handle_get_extended_pubkey(path, *display),
+        Request::RegisterAccount(_account) => todo!(),
+        Request::GetAddress {
+            name,
+            account,
+            hmac,
+            coordinates,
+            display,
+        } => {
+            // hmac should be empty or a 32 byte vector; if not, give an error, otherwise convert to Option<[u8; 32]>
+            let hmac = match hmac.len() {
+                0 => None,
+                32 => Some(hmac.as_slice().try_into().unwrap()),
+                _ => return Err("Invalid HMAC length"),
+            };
 
-    let response = match request.request {
-        OneOfrequest::get_version(_) => OneOfresponse::get_version(todo!()),
-        OneOfrequest::exit(_) => {
-            sdk::exit(0);
+            handle_get_address(name.as_deref(), account, hmac, coordinates, *display)
         }
-        OneOfrequest::get_master_fingerprint(_) => {
-            OneOfresponse::get_master_fingerprint(handle_get_master_fingerprint()?)
-        }
-        OneOfrequest::get_extended_pubkey(req) => {
-            OneOfresponse::get_extended_pubkey(handle_get_extended_pubkey(&req)?)
-        }
-        OneOfrequest::register_account(_req) => OneOfresponse::register_account(todo!()),
-        OneOfrequest::get_address(req) => OneOfresponse::get_address(handle_get_address(&req)?),
-        OneOfrequest::sign_psbt(_req) => OneOfresponse::sign_psbt(todo!()),
-        OneOfrequest::None => OneOfresponse::error(ResponseError {
-            error_msg: Cow::Borrowed("Invalid command"),
-        }),
-    };
-
-    Ok(Response { response })
+        Request::SignPsbt { psbt: _ } => todo!(),
+    }
 }
 
-fn handle_req(buffer: &[u8]) -> Vec<u8> {
-    let error_msg: String;
-
-    let response = match handle_req_(buffer) {
-        Ok(response) => response,
-        Err(error) => {
-            error_msg = error.to_string();
-            Response {
-                response: OneOfresponse::error(ResponseError {
-                    error_msg: Cow::Borrowed(&error_msg),
-                }),
-            }
-        }
-    };
-
-    let mut out = vec![0; response.get_size()];
-    let mut writer = Writer::new(BytesWriter::new(&mut out));
-    response.write_message(&mut writer).unwrap();
-
-    out.to_vec()
+fn process_message() -> Result<Response, Box<dyn core::error::Error>> {
+    let req_msg = sdk::comm::receive_message()?;
+    let request: Request = postcard::from_bytes(&req_msg)?;
+    let response = handle_request(&request)?;
+    Ok(response)
 }
 
 pub fn main() {
@@ -103,23 +81,11 @@ pub fn main() {
 
     sdk::ux::ux_idle();
     loop {
-        let req = match sdk::comm::receive_message() {
-            Ok(req) => req,
-            Err(e) => {
-                let error_string = e.to_string();
-                let r = Response {
-                    response: OneOfresponse::error(ResponseError {
-                        error_msg: Cow::Borrowed(&error_string),
-                    }),
-                };
-                let mut out = vec![0; r.get_size()];
-                let mut writer = Writer::new(BytesWriter::new(&mut out));
-                r.write_message(&mut writer).unwrap();
-
-                out.to_vec()
-            }
+        let response = match process_message() {
+            Ok(response) => response,
+            Err(e) => Response::Error(e.to_string()),
         };
-        let result = handle_req(&req);
-        sdk::comm::send_message(&result);
+        let resp_msg = postcard::to_allocvec(&response).unwrap();
+        sdk::comm::send_message(&resp_msg);
     }
 }

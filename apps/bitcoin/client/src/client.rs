@@ -1,15 +1,7 @@
 use std::str::FromStr;
 
 use bitcoin::bip32::DerivationPath;
-use common::message::{
-    mod_Request::OneOfrequest, mod_Response::OneOfresponse, Request, RequestGetMasterFingerprint,
-    Response,
-};
-use common::message::{
-    Account, AccountCoordinates, RequestExit, RequestGetAddress, RequestGetExtendedPubkey,
-    RequestGetVersion,
-};
-use quick_protobuf::{BytesReader, BytesWriter, MessageRead, MessageWrite, Writer};
+use common::message::{self, Request, Response};
 use sdk::vanadium_client::{VAppClient, VAppExecutionError};
 
 use sdk::comm::SendMessageError;
@@ -71,48 +63,36 @@ impl<'a> BitcoinClient {
         Self { app_client }
     }
 
-    async fn create_request<T: MessageWrite>(
-        request: OneOfrequest<'_>,
-    ) -> Result<Vec<u8>, BitcoinClientError> {
-        let req = Request { request };
-        let mut out = vec![0; req.get_size()];
-        let mut writer = Writer::new(BytesWriter::new(&mut out));
-        req.write_message(&mut writer)
-            .map_err(|_| BitcoinClientError::GenericError("Failed to write message"))?;
-        Ok(out)
-    }
-
-    async fn send_message(&mut self, out: Vec<u8>) -> Result<Vec<u8>, BitcoinClientError> {
-        sdk::comm::send_message(&mut self.app_client, &out)
+    async fn send_message(&mut self, out: &[u8]) -> Result<Vec<u8>, BitcoinClientError> {
+        sdk::comm::send_message(&mut self.app_client, out)
             .await
             .map_err(BitcoinClientError::from)
     }
 
-    async fn parse_response<T: MessageRead<'a>>(
-        response_raw: &'a [u8],
-    ) -> Result<T, BitcoinClientError> {
-        let mut reader = BytesReader::from_bytes(&response_raw);
-        T::from_reader(&mut reader, response_raw)
-            .map_err(|_| BitcoinClientError::GenericError("Failed to parse response"))
+    async fn parse_response(response_raw: &'a [u8]) -> Result<Response, BitcoinClientError> {
+        let resp: Response = postcard::from_bytes(response_raw)
+            .map_err(|_| BitcoinClientError::GenericError("Failed to parse response"))?;
+        Ok(resp)
     }
 
     pub async fn get_version(&mut self) -> Result<String, BitcoinClientError> {
-        let out = Self::create_request::<RequestGetVersion>(OneOfrequest::get_version(
-            RequestGetVersion {},
-        ))
-        .await?;
+        let msg = postcard::to_allocvec(&Request::GetVersion).map_err(|_| {
+            BitcoinClientError::GenericError("Failed to serialize GetVersion request")
+        })?;
 
-        let response_raw = self.send_message(out).await?;
-        let response: Response = Self::parse_response(&response_raw).await?;
-        match response.response {
-            OneOfresponse::get_version(resp) => Ok(String::from(resp.version)),
+        let response_raw = self.send_message(&msg).await?;
+        match Self::parse_response(&response_raw).await? {
+            Response::Version(version) => Ok(version),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }
 
     pub async fn exit(&mut self) -> Result<i32, BitcoinClientError> {
-        let out = Self::create_request::<RequestExit>(OneOfrequest::exit(RequestExit {})).await?;
-        match self.send_message(out).await {
+        let msg = postcard::to_allocvec(&Request::Exit)
+            .map_err(|_| BitcoinClientError::GenericError("Failed to serialize Exit request"))?;
+        let response_raw = self.send_message(&msg).await?;
+
+        match Self::parse_response(&response_raw).await {
             Ok(_) => Err(BitcoinClientError::InvalidResponse(
                 "Exit message shouldn't return!",
             )),
@@ -131,14 +111,13 @@ impl<'a> BitcoinClient {
     }
 
     pub async fn get_master_fingerprint(&mut self) -> Result<u32, BitcoinClientError> {
-        let out = Self::create_request::<RequestGetMasterFingerprint>(
-            OneOfrequest::get_master_fingerprint(RequestGetMasterFingerprint {}),
-        )
-        .await?;
-        let response_raw = self.send_message(out).await?;
-        let response: Response = Self::parse_response(&response_raw).await?;
-        match response.response {
-            OneOfresponse::get_master_fingerprint(resp) => Ok(resp.fingerprint),
+        let msg = postcard::to_allocvec(&Request::GetMasterFingerprint).map_err(|_| {
+            BitcoinClientError::GenericError("Failed to serialize GetMasterFingerprint request")
+        })?;
+
+        let response_raw = self.send_message(&msg).await?;
+        match Self::parse_response(&response_raw).await? {
+            Response::MasterFingerprint(fpr) => Ok(fpr),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }
@@ -151,52 +130,46 @@ impl<'a> BitcoinClient {
         let path =
             DerivationPath::from_str(bip32_path).map_err(|_| "Failed to convert bip32_path")?;
 
-        let out = Self::create_request::<RequestGetExtendedPubkey>(
-            OneOfrequest::get_extended_pubkey(RequestGetExtendedPubkey {
-                display,
-                bip32_path: path.into_iter().map(|step| (*step).into()).collect(),
-            }),
-        )
-        .await?;
-        let response_raw = self.send_message(out).await?;
-        let response: Response = Self::parse_response(&response_raw).await?;
-        match response.response {
-            OneOfresponse::get_extended_pubkey(resp) => resp
-                .pubkey
-                .as_ref()
-                .try_into()
-                .map_err(|_| BitcoinClientError::InvalidResponse("Invalid pubkey length")),
+        let msg = postcard::to_allocvec(&Request::GetExtendedPubkey {
+            display,
+            path: message::Bip32Path(path.to_u32_vec()),
+        })
+        .map_err(|_| {
+            BitcoinClientError::GenericError("Failed to serialize GetExtendedPubkey request")
+        })?;
+        let response_raw = self.send_message(&msg).await?;
+        match Self::parse_response(&response_raw).await? {
+            Response::ExtendedPubkey(pubkey) => {
+                let arr: [u8; 78] = pubkey
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| BitcoinClientError::InvalidResponse("Invalid pubkey length"))?;
+                Ok(arr)
+            }
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }
 
-    pub async fn get_address<'b, T: common::account::Account + 'static>(
+    pub async fn get_address(
         &mut self,
-        account: &'b T,
+        account: &message::Account,
         name: &str,
-        coords: &'b T::Coordinates,
+        coords: &message::AccountCoordinates,
+        hmac: &[u8],
         display: bool,
-    ) -> Result<String, BitcoinClientError>
-    where
-        Account<'b>: From<&'b T>,
-        AccountCoordinates: From<&'b T::Coordinates>,
-    {
-        let out = Self::create_request::<RequestGetAddress>(OneOfrequest::get_address(
-            RequestGetAddress {
-                display,
-                name: name.into(),
-                account: Some(Account::try_from(account).map_err(|_| "Failed to convert account")?),
-                account_coordinates: Some(
-                    AccountCoordinates::try_from(coords)
-                        .map_err(|_| "Failed to convert coordinates")?,
-                ),
-            },
-        ))
-        .await?;
-        let response_raw = self.send_message(out).await?;
-        let response: Response = Self::parse_response(&response_raw).await?;
-        match response.response {
-            OneOfresponse::get_address(resp) => Ok(resp.address.into()),
+    ) -> Result<String, BitcoinClientError> {
+        let msg = postcard::to_allocvec(&Request::GetAddress {
+            display,
+            name: Some(name.to_string()),
+            account: account.clone(),
+            hmac: hmac.to_vec(),
+            coordinates: coords.clone(),
+        })
+        .map_err(|_| BitcoinClientError::GenericError("Failed to serialize GetAddress request"))?;
+
+        let response_raw = self.send_message(&msg).await?;
+        match Self::parse_response(&response_raw).await? {
+            Response::Address(addr) => Ok(addr),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }
