@@ -102,7 +102,6 @@ pub fn handle_get_extended_pubkey(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bs58;
 
     use std::num::ParseIntError;
 
@@ -175,12 +174,7 @@ mod tests {
 
             assert_eq!(
                 response,
-                Response::ExtendedPubkey(
-                    bs58::decode(expected_xpub)
-                        .with_check(None)
-                        .into_vec()
-                        .unwrap()
-                )
+                Response::ExtendedPubkey(bitcoin::base58::decode_check(expected_xpub).unwrap())
             );
         }
     }
