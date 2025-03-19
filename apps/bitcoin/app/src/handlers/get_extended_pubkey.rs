@@ -1,6 +1,6 @@
-use alloc::{borrow::Cow, vec::Vec};
+use alloc::vec::Vec;
 
-use common::message::{RequestGetExtendedPubkey, ResponseGetExtendedPubkey};
+use common::message::Response;
 use sdk::{
     curve::{Curve, EcfpPrivateKey, EcfpPublicKey, Secp256k1, ToPublicKey},
     hash::{Hasher, Ripemd160, Sha256},
@@ -8,6 +8,7 @@ use sdk::{
 
 const BIP32_TESTNET_PUBKEY_VERSION: u32 = 0x043587CFu32;
 
+// TODO: refactor using vlib_bitcoin
 fn get_pubkey_fingerprint(pubkey: &EcfpPublicKey<Secp256k1, 32>) -> u32 {
     let pk_bytes = pubkey.as_ref().to_bytes();
     let mut sha256hasher = Sha256::new();
@@ -48,34 +49,35 @@ fn display_xpub(_xpub: &str, _path: &[u32]) -> bool {
     true
 }
 
-pub fn handle_get_extended_pubkey<'a, 'b>(
-    req: &'a RequestGetExtendedPubkey,
-) -> Result<ResponseGetExtendedPubkey<'b>, &'static str> {
-    if req.bip32_path.len() > 256 {
+pub fn handle_get_extended_pubkey(
+    bip32_path: &common::message::Bip32Path,
+    display: bool,
+) -> Result<Response, &'static str> {
+    if bip32_path.0.len() > 256 {
         return Err("Derivation path is too long");
     }
 
-    let hd_node = sdk::curve::Secp256k1::derive_hd_node(&req.bip32_path)?;
+    let hd_node = sdk::curve::Secp256k1::derive_hd_node(&bip32_path.0)?;
     let privkey: EcfpPrivateKey<Secp256k1, 32> = EcfpPrivateKey::new(*hd_node.privkey);
     let pubkey = privkey.to_public_key();
     let pubkey_bytes = pubkey.as_ref().to_bytes();
 
-    let depth = req.bip32_path.len() as u8;
+    let depth = bip32_path.0.len() as u8;
 
-    let parent_fpr: u32 = if req.bip32_path.is_empty() {
+    let parent_fpr: u32 = if bip32_path.0.is_empty() {
         0
     } else {
         let hd_node =
-            sdk::curve::Secp256k1::derive_hd_node(&req.bip32_path[..req.bip32_path.len() - 1])?;
+            sdk::curve::Secp256k1::derive_hd_node(&bip32_path.0[..bip32_path.0.len() - 1])?;
         let parent_privkey: EcfpPrivateKey<Secp256k1, 32> = EcfpPrivateKey::new(*hd_node.privkey);
         let parent_pubkey = parent_privkey.to_public_key();
         get_pubkey_fingerprint(&parent_pubkey)
     };
 
-    let child_number: u32 = if req.bip32_path.is_empty() {
+    let child_number: u32 = if bip32_path.0.is_empty() {
         0
     } else {
-        req.bip32_path[req.bip32_path.len() - 1]
+        bip32_path.0[bip32_path.0.len() - 1]
     };
 
     let mut xpub = Vec::with_capacity(78);
@@ -87,16 +89,14 @@ pub fn handle_get_extended_pubkey<'a, 'b>(
     xpub.push(pubkey_bytes[64] % 2 + 0x02);
     xpub.extend_from_slice(&pubkey_bytes[1..33]);
 
-    if req.display {
+    if display {
         let xpub_base58 = bitcoin::base58::encode_check(&xpub);
-        if !display_xpub(&xpub_base58, &req.bip32_path) {
+        if !display_xpub(&xpub_base58, &bip32_path.0) {
             return Err("Rejected by the user");
         }
     }
 
-    Ok(ResponseGetExtendedPubkey {
-        pubkey: Cow::Owned(xpub),
-    })
+    Ok(Response::ExtendedPubkey(xpub))
 }
 
 #[cfg(test)]
@@ -167,19 +167,20 @@ mod tests {
         for (path, expected_xpub) in testcases {
             // decode the derivation path into a Vec<u32>
 
-            let req = RequestGetExtendedPubkey {
-                bip32_path: parse_derivation_path(path).unwrap(),
-                display: false,
-            };
-
-            let response = handle_get_extended_pubkey(&req).unwrap();
+            let response = handle_get_extended_pubkey(
+                &common::message::Bip32Path(parse_derivation_path(path).unwrap()),
+                false,
+            )
+            .unwrap();
 
             assert_eq!(
-                response.pubkey,
-                bs58::decode(expected_xpub)
-                    .with_check(None)
-                    .into_vec()
-                    .unwrap()
+                response,
+                Response::ExtendedPubkey(
+                    bs58::decode(expected_xpub)
+                        .with_check(None)
+                        .into_vec()
+                        .unwrap()
+                )
             );
         }
     }

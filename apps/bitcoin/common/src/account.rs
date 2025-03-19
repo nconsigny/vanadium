@@ -1,5 +1,8 @@
 use alloc::string::{String, ToString};
 
+// re-export, as we use this both as a message and as an internal data type
+pub use crate::message::WalletPolicyCoordinates;
+
 pub use crate::bip388::{
     DescriptorTemplate, KeyInformation, KeyPlaceholder, TapTree, WalletPolicy,
 };
@@ -15,13 +18,6 @@ pub trait Account {
     type Coordinates;
 
     fn get_address(&self, coords: &Self::Coordinates) -> Result<String, &'static str>;
-}
-
-/// Coordinates for the `WalletPolicy` account type
-#[derive(Debug, Clone, Copy)]
-pub struct WalletPolicyCoordinates {
-    pub is_change: bool,
-    pub address_index: u32,
 }
 
 // Implement the generic trait for `WalletPolicy` with its corresponding coordinates.
