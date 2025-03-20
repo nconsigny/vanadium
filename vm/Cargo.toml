@@ -25,6 +25,11 @@ lto = true
 default = []
 pending_review_screen = []
 
+# Features only for speculos
+trace = []              # prints each instruction to the console using semihosting
+trace_full = ["trace"]  # also prints the state of the CPU registers
+trace_colors = []       # if trace or trace_full are enabled, prints them with colors to the console
+
 [package.metadata.ledger]
 curve = ["secp256k1"]
 flags = "0x10"  # DERIVE_MASTER
