@@ -83,11 +83,19 @@ pub const ONE: [u8; 32] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 ];
 
-/// The curve Prime, represented as a Modulus from Vanadium's app-sdk
-pub const P: sdk::bignum::Modulus<32> = sdk::bignum::Modulus::<32>::from_be_bytes(FIELD_SIZE);
+/// The curve Prime, represented as a ModulusProvider from Vanadium's app-sdk
+#[derive(Debug, Clone, Copy)]
+pub struct P;
+impl sdk::bignum::ModulusProvider<32> for P {
+    const M: [u8; 32] = FIELD_SIZE;
+}
 
-/// The curve order, represented as a Modulus from Vanadium's app-sdk
-pub const N: sdk::bignum::Modulus<32> = sdk::bignum::Modulus::<32>::from_be_bytes(CURVE_ORDER);
+/// The curve order, represented as a ModulusProvider from Vanadium's app-sdk
+#[derive(Debug, Clone, Copy)]
+pub struct N;
+impl sdk::bignum::ModulusProvider<32> for N {
+    const M: [u8; 32] = CURVE_ORDER;
+}
 
 /// The curve generator, represented as a Secp256k1Point from Vanadium's app-sdk
 pub const G: sdk::curve::Secp256k1Point = sdk::curve::Secp256k1::get_generator();
