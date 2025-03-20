@@ -70,13 +70,13 @@ impl SadikClient {
         operator: BigIntOperator,
         a: &[u8],
         b: &[u8],
-        modulus: &[u8],
+        modular: bool,
     ) -> Result<Vec<u8>, SadikClientError> {
         let cmd = Command::BigIntOperation {
             operator,
             a: a.to_vec(),
             b: b.to_vec(),
-            modulus: modulus.to_vec(),
+            modular,
         };
 
         let msg = postcard::to_allocvec(&cmd).expect("Serialization failed");

@@ -236,8 +236,8 @@ impl SecretKey {
     /// Returns an error if the resulting key would be invalid.
     #[inline]
     pub fn add_tweak(mut self, tweak: &Scalar) -> Result<SecretKey, Error> {
-        let self_bn = BigNumMod::from_be_bytes(self.0, &N);
-        let tweak_bn = BigNumMod::from_be_bytes(*tweak.as_be_bytes(), &N);
+        let self_bn = BigNumMod::<32, N>::from_be_bytes_noreduce(self.0);
+        let tweak_bn = BigNumMod::<32, N>::from_be_bytes_noreduce(*tweak.as_be_bytes());
         let result_bn = &self_bn + &tweak_bn;
         let result = result_bn.as_be_bytes();
 
@@ -356,28 +356,42 @@ impl PublicKey {
                 if data.len() != 33 {
                     return Err(Error::InvalidPublicKey);
                 }
-                let mut x = [0u8; 32];
-                x.copy_from_slice(&data[1..33]);
+                let x: &[u8; 32] = data[1..33].try_into().unwrap();
+
+                // check if x is a valid coordinate
+                if x == &crate::constants::ZERO || x >= &crate::constants::CURVE_ORDER {
+                    return Err(Error::InvalidPublicKey);
+                }
 
                 // compute the y coordinate
-                let x_bn = BigNumMod::from_be_bytes(x, &P);
-                let y_bn = secp256k1_compute_y_with_parity(&x_bn, header & 1)?;
+                let x_bn = sdk::bignum::as_big_num_mod_ref::<32, P>(x);
+                let y_bn = secp256k1_compute_y_with_parity(x_bn, header & 1)?;
                 let y = y_bn.to_be_bytes();
-                Ok(PublicKey(Secp256k1Point::new(x, y)))
+                Ok(PublicKey(Secp256k1Point::new(*x, y)))
             }
             0x04 => {
                 if data.len() != 65 {
                     return Err(Error::InvalidPublicKey);
                 }
-                let mut x = [0u8; 32];
-                x.copy_from_slice(&data[1..33]);
-                let mut y = [0u8; 32];
-                y.copy_from_slice(&data[33..65]);
-                let point = sdk::curve::Secp256k1Point::new(x, y);
+                let x: &[u8; 32] = data[1..33].try_into().unwrap();
+                let y: &[u8; 32] = data[33..65].try_into().unwrap();
 
-                let x_bn = BigNumMod::from_be_bytes(x, &P);
-                let y_bn = BigNumMod::from_be_bytes(y, &P);
-                if &y_bn * &y_bn != &x_bn * &x_bn * &x_bn + 7 {
+                // check if x is a valid coordinate
+                if x == &crate::constants::ZERO || x >= &crate::constants::CURVE_ORDER {
+                    return Err(Error::InvalidPublicKey);
+                }
+                // check if y is a valid coordinate
+                if y == &crate::constants::ZERO || y >= &crate::constants::CURVE_ORDER {
+                    return Err(Error::InvalidPublicKey);
+                }
+
+                let point = sdk::curve::Secp256k1Point::new(*x, *y);
+
+                let x_bn = sdk::bignum::as_big_num_mod_ref::<32, P>(x);
+                let y_bn = sdk::bignum::as_big_num_mod_ref::<32, P>(y);
+                let lhs = y_bn * y_bn;
+                let rhs = x_bn * x_bn * x_bn + crate::sdk_helpers::SEVEN;
+                if !lhs.unsafe_eq(&rhs) {
                     return Err(Error::InvalidPublicKey);
                 }
 
@@ -882,7 +896,7 @@ impl XOnlyPublicKey {
                 }
 
                 // check if the x coordinate is on the curve
-                let x_bn = BigNumMod::from_be_bytes(data, &P);
+                let x_bn = BigNumMod::<32, P>::from_be_bytes_noreduce(data);
                 let _ = secp256k1_compute_y(&x_bn)?;
 
                 Ok(XOnlyPublicKey(data))
@@ -930,7 +944,7 @@ impl XOnlyPublicKey {
     ) -> Result<(XOnlyPublicKey, Parity), Error> {
         let tweak_point: sdk::curve::Point<sdk::curve::Secp256k1, 32> = &G * &tweak.as_be_bytes();
 
-        let x_bn = BigNumMod::from_be_bytes(self.0, &P);
+        let x_bn = BigNumMod::<32, P>::from_be_bytes_noreduce(self.0);
         let y = secp256k1_compute_y_with_parity(&x_bn, 0)?;
         let tweaked = &Secp256k1Point::new(x_bn.to_be_bytes(), y.to_be_bytes()) + &tweak_point;
         let parity = Parity::from_u8(tweaked.y[31] & 1).unwrap();
