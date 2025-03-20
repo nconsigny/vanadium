@@ -4,7 +4,7 @@
 use sdk::fatal;
 
 use sdk::{
-    bignum::{BigNum, BigNumMod, Modulus},
+    bignum::{BigNum, BigNumMod, ModulusProvider},
     curve::{Curve as _, EcfpPrivateKey, EcfpPublicKey, Secp256k1Point},
     hash::Hasher,
 };
@@ -39,6 +39,17 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 #[no_mangle]
 pub fn _start() {
     main()
+}
+
+/// The curve order of the Secp256k1 curve, represented as a ModulusProvider from Vanadium's app-sdk
+#[derive(Debug, Clone, Copy)]
+pub struct N;
+impl ModulusProvider<32> for N {
+    const M: [u8; 32] = [
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xfe, 0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36,
+        0x41, 0x41,
+    ];
 }
 
 // parses a 65-byte uncompressed pubkey into an EcfpPublicKey
@@ -101,9 +112,9 @@ pub fn main() {
                 operator,
                 a,
                 b,
-                modulus,
+                modular,
             } => {
-                if modulus.len() == 0 {
+                if !modular {
                     macro_rules! impl_bignum_processing {
                         ($len:expr, $a:expr, $b:expr, $operator:expr) => {{
                             let a: BigNum<$len> =
@@ -140,18 +151,13 @@ pub fn main() {
                     }
                 } else {
                     // modular
-                    if modulus.len() != 32 {
-                        panic!("Only modulus length of 32 is supported in sadik");
-                    }
-
-                    let modulus = Modulus::from_be_bytes(modulus.as_slice().try_into().unwrap());
 
                     if let common::BigIntOperator::Pow = operator {
                         if a.len() != 32 {
                             panic!("Only modular big numbers of length 32 are supported in sadik");
                         }
-                        let a: BigNumMod<32> =
-                            BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap(), &modulus);
+                        let a: BigNumMod<32, N> =
+                            BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap());
 
                         macro_rules! impl_modular_pow {
                             ($len:expr, $b:expr, $a:expr) => {{
@@ -176,10 +182,10 @@ pub fn main() {
                             panic!("Only modular big numbers of length 32 are supported in sadik");
                         }
 
-                        let a: BigNumMod<32> =
-                            BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap(), &modulus);
-                        let b: BigNumMod<32> =
-                            BigNumMod::from_be_bytes(b.as_slice().try_into().unwrap(), &modulus);
+                        let a: BigNumMod<32, N> =
+                            BigNumMod::from_be_bytes(a.as_slice().try_into().unwrap());
+                        let b: BigNumMod<32, N> =
+                            BigNumMod::from_be_bytes(b.as_slice().try_into().unwrap());
 
                         match operator {
                             common::BigIntOperator::Add => (&a + &b).to_be_bytes().to_vec(),

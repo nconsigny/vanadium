@@ -31,7 +31,7 @@ pub enum Command {
         operator: BigIntOperator,
         a: Vec<u8>,
         b: Vec<u8>,
-        modulus: Vec<u8>, // if 0, not modular
+        modular: bool, // if false, not modular; otherwise, modulo the curve order of Secp256k1
     },
     Hash {
         hash_id: u32,
