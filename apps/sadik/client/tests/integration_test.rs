@@ -21,39 +21,39 @@ async fn test_big_num() {
 
     // additions
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Add, &hex!("77989873"), &hex!("a4589234"), &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Add, &hex!("77989873"), &hex!("a4589234"), false).await.unwrap(),
         hex!("1bf12aa7")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Add, &hex!("47989873"), &hex!("a4589234"), &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Add, &hex!("47989873"), &hex!("a4589234"), false).await.unwrap(),
         hex!("ebf12aa7")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Add, &hex!("ffffffff"), &hex!("00000001"), &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Add, &hex!("ffffffff"), &hex!("00000001"), false).await.unwrap(),
         hex!("00000000")
     );
 
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Add, &minus_one_large, &one_large, &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Add, &minus_one_large, &one_large, false).await.unwrap(),
         zero_large
     );
 
     // subtractions
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("a4589234"), &hex!("77989873"), &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("a4589234"), &hex!("77989873"), false).await.unwrap(),
         hex!("2cbff9c1")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("77989873"), &hex!("a4589234"), &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("77989873"), &hex!("a4589234"), false).await.unwrap(),
         hex!("d340063f")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("00000000"), &hex!("00000001"), &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("00000000"), &hex!("00000001"), false).await.unwrap(),
         hex!("ffffffff")
     );
 
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Sub, &zero_large, &one_large, &[]).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Sub, &zero_large, &one_large, false).await.unwrap(),
         minus_one_large
     );
 }
@@ -63,6 +63,9 @@ async fn test_big_num() {
 async fn test_big_num_mod() {
     let mut setup = test_common::setup().await;
 
+    // all operations are modulo 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+    // (curve order of Secp256k1)
+
     let M: Vec<u8> = hex!("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f").to_vec();
     let M2: Vec<u8> = hex!("3d4b0f9e4e4d5b6e5e5d6e7e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9e8e8d9e9d").to_vec();
 
@@ -71,73 +74,73 @@ async fn test_big_num_mod() {
 
     // addition
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Add, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), &M).await.unwrap(),
-        hex!("15d7f1c4cab897b32c12c8a1b638879e023d5a9d8ca0da88d89bdb53a7b61679")
+        setup.client.bignum_operation(BigIntOperator::Add, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), true).await.unwrap(),
+        hex!("15d7f1c4cab897b32c12c8a1b638879f478e7db6dd583a4d18c97cc5d77fd167")
     );
 
     // subtraction
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), &M).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), true).await.unwrap(),
         hex!("2eb6c1439a7770b1fc00388eb1d77f8afdd55575799fb6185776d4c060ae0062")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("7390984098209380980948098230840982340294098092384092834923840923"), &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &M).await.unwrap(),
-        hex!("d1493ebc65888f4e03ffc7714e288075022aaa8a866049e7a8892b3e9f51fbcd")
+        setup.client.bignum_operation(BigIntOperator::Sub, &hex!("7390984098209380980948098230840982340294098092384092834923840923"), &hex!("a247598432980432940980983408039480095809832048509809580984320985"), true).await.unwrap(),
+        hex!("d1493ebc65888f4e03ffc7714e288073bcd9877135a8ea23685b89cc6f8840df")
     );
 
     // multiplication
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, &M).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, true).await.unwrap(),
         zero
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &one, &M).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &one, true).await.unwrap(),
         hex!("a247598432980432940980983408039480095809832048509809580984320985")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), &M).await.unwrap(),
-        hex!("2d5daeb3ed823bef5a4480a2c5aa0708e8e37ed7302d2b21c9b442b244d48ce6")
+        setup.client.bignum_operation(BigIntOperator::Mul, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("7390984098209380980948098230840982340294098092384092834923840923"), true).await.unwrap(),
+        hex!("1657a819aad617cac89f35ff9d4890c66cc5675c70f2b66e974bc243b2e69116")
     );
 
-    // TODO: disabled until speculos is fixed as per https://github.com/LedgerHQ/speculos/pull/52
+    // TODO: disabled until speculos is fixed as per https://github.com/LedgerHQ/speculos/pull/529
     // powers: 0
     // assert_eq!(
-    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00"), &M2).await.unwrap(),
+    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00"), true).await.unwrap(),
     //     one
     // );
     // assert_eq!(
-    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, &M2).await.unwrap(),
+    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, true).await.unwrap(),
     //     one
     // );
 
     // powers: 1
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &one, &M).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &one, true).await.unwrap(),
         hex!("a247598432980432940980983408039480095809832048509809580984320985")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("01"), &M).await.unwrap(),
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("01"), true).await.unwrap(),
         hex!("a247598432980432940980983408039480095809832048509809580984320985")
     );
 
     // powers: 2
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("02"), &M2).await.unwrap(),
-        hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("02"), true).await.unwrap(),
+        hex!("4b3820d9706f0a26b136ea1c3df40a4836663a11be453dcbe1a7f8230e7dbe0e")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00000002"), &M2).await.unwrap(),
-        hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00000002"), true).await.unwrap(),
+        hex!("4b3820d9706f0a26b136ea1c3df40a4836663a11be453dcbe1a7f8230e7dbe0e")
     );
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("0000000000000000000000000000000000000000000000000000000000000002"), &M2).await.unwrap(),
-        hex!("2378a937274b6304f12d26e7170d5d757087246a2db3d5c776faf10984d3331b")
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("0000000000000000000000000000000000000000000000000000000000000002"), true).await.unwrap(),
+        hex!("4b3820d9706f0a26b136ea1c3df40a4836663a11be453dcbe1a7f8230e7dbe0e")
     );
 
     // powers: large
     assert_eq!(
-        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"), &M2).await.unwrap(),
-        hex!("3c0baee8c4e2f7220615013d7402fa5e69e43bc10e55500a5af4f8b966658846")
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("22e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd722e0b80916f2f35efab04d6d61155f9d1aa9f8f0dff2a2b656cdee1bb7b6dcd7"), true).await.unwrap(),
+        hex!("8d72fea89e5500398d2034bd3058cf82ebeec06c61a8ff83e7fbf2cbf5c9b647")
     );
 }
 
