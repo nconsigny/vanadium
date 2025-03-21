@@ -66,6 +66,10 @@
       "path": "apps/sadik/common",
       "name": "vnd-sadik-common"
     }
+    {
+      "path": "tools",
+      "name": "🛠 tools"
+    }
   ],
   "settings": {
     "[apps/test/app]": {
