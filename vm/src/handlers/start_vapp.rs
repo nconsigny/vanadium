@@ -70,15 +70,32 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
             .fetch_instruction::<CommEcallError>()
             .expect("Failed to fetch instruction");
 
-        // TODO: remove debug prints
-        // println!("\x1b[93m{:?}\x1b[0m", cpu);
+        #[cfg(feature = "trace_full")]
+        {
+            #[cfg(feature = "trace_colors")]
+            crate::print!("\x1b[93m");
 
-        println!(
-            "\x1b[32m{:08x?}: {:08x?} -> {:?}\x1b[0m",
-            cpu.pc,
-            instr,
-            common::riscv::decode::decode(instr)
-        );
+            crate::println!("{:?}", cpu);
+            #[cfg(feature = "trace_colors")]
+
+            crate::print!("\x1b[0m");
+        }
+
+        #[cfg(feature = "trace")]
+        {
+            #[cfg(feature = "trace_colors")]
+            crate::print!("\x1b[32m");
+
+            crate::println!(
+                "{:08x?}: {:08x?} -> {:?}",
+                cpu.pc,
+                instr,
+                common::riscv::decode::decode(instr)
+            );
+
+            #[cfg(feature = "trace_colors")]
+            crate::print!("\x1b[0m");
+        }
 
         let result = cpu.execute(instr, Some(&mut ecall_handler));
 
