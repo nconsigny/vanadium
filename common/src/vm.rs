@@ -434,6 +434,7 @@ impl<M: PagedMemory> Cpu<M> {
         }
     }
 
+    #[inline]
     fn read_u8<E: fmt::Debug>(&mut self, address: u32) -> Result<u8, CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(self.stack_seg.read_u8(address)?);
@@ -445,6 +446,7 @@ impl<M: PagedMemory> Cpu<M> {
         Err(MemoryError::AddressOutOfBounds.into())
     }
 
+    #[inline]
     fn read_u16<E: fmt::Debug>(&mut self, address: u32) -> Result<u16, CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(self.stack_seg.read_u16(address)?);
@@ -456,6 +458,7 @@ impl<M: PagedMemory> Cpu<M> {
         Err(MemoryError::AddressOutOfBounds.into())
     }
 
+    #[inline]
     fn read_u32<E: fmt::Debug>(&mut self, address: u32) -> Result<u32, CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(self.stack_seg.read_u32(address)?);
@@ -467,6 +470,7 @@ impl<M: PagedMemory> Cpu<M> {
         Err(MemoryError::AddressOutOfBounds.into())
     }
 
+    #[inline]
     fn write_u8<E: fmt::Debug>(&mut self, address: u32, value: u8) -> Result<(), CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(self.stack_seg.write_u8(address, value)?);
@@ -476,6 +480,7 @@ impl<M: PagedMemory> Cpu<M> {
         Err(MemoryError::AddressOutOfBounds.into())
     }
 
+    #[inline]
     fn write_u16<E: fmt::Debug>(&mut self, address: u32, value: u16) -> Result<(), CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(self.stack_seg.write_u16(address, value)?);
@@ -485,6 +490,7 @@ impl<M: PagedMemory> Cpu<M> {
         Err(MemoryError::AddressOutOfBounds.into())
     }
 
+    #[inline]
     fn write_u32<E: fmt::Debug>(&mut self, address: u32, value: u32) -> Result<(), CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(self.stack_seg.write_u32(address, value)?);
@@ -494,6 +500,7 @@ impl<M: PagedMemory> Cpu<M> {
         Err(MemoryError::AddressOutOfBounds.into())
     }
 
+    #[inline(always)]
     pub fn get_segment<E: fmt::Debug>(
         &mut self,
         address: u32,
