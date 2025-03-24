@@ -543,6 +543,49 @@ impl<'a, M: PagedMemory> Cpu<'a, M> {
             Op::Sra { rd, rs1, rs2 } => { self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) >> (self.regs[rs2 as usize] & 0x1f)) as u32; },
             Op::Or { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] | self.regs[rs2 as usize]; },
             Op::And { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] & self.regs[rs2 as usize]; },
+            Op::Mul { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_mul(self.regs[rs2 as usize]); },
+            Op::Mulh { rd, rs1, rs2 } => {
+                let result = ((self.regs[rs1 as usize] as i64) * (self.regs[rs2 as usize] as i64)) >> 32;
+                self.regs[rd as usize] = result as u32;
+            },
+            Op::Mulhsu { rd, rs1, rs2 } => {
+                let signed_val = self.regs[rs1 as usize] as i32 as i64;
+                let unsigned_val = self.regs[rs2 as usize] as u64;
+                let result = (signed_val * (unsigned_val as i64)) >> 32;
+                self.regs[rd as usize] = result as u32;
+            },
+            Op::Mulhu { rd, rs1, rs2 } => {
+                let result = ((self.regs[rs1 as usize] as u64) * (self.regs[rs2 as usize] as u64)) >> 32;
+                self.regs[rd as usize] = result as u32;
+            },
+            Op::Div { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = u32::MAX;
+                } else {
+                    self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32).wrapping_div(self.regs[rs2 as usize] as i32)) as u32;
+                }
+            },
+            Op::Divu { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = u32::MAX;
+                } else {
+                    self.regs[rd as usize] = self.regs[rs1 as usize] / self.regs[rs2 as usize];
+                }
+            },
+            Op::Rem { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = self.regs[rs1 as usize];
+                } else {
+                    self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32).wrapping_rem(self.regs[rs2 as usize] as i32)) as u32;
+                }
+            },
+            Op::Remu { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = self.regs[rs1 as usize];
+                } else {
+                    self.regs[rd as usize] = self.regs[rs1 as usize] % self.regs[rs2 as usize];
+                }
+            },
             Op::Addi { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_add(imm as u32); },
             Op::Andi { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] & (imm as u32); },
             Op::Auipc { rd, imm } => { self.regs[rd as usize] = self.pc.wrapping_add(imm as u32); },
