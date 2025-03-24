@@ -38,6 +38,10 @@ pub struct OutsourcedMemory<'c> {
     is_readonly: bool,
     section_kind: SectionKind,
     usage_counter: u32,
+    #[cfg(feature = "metrics")]
+    pub n_page_loads: usize,
+    #[cfg(feature = "metrics")]
+    pub n_page_commits: usize,
 }
 
 impl<'c> core::fmt::Debug for OutsourcedMemory<'c> {
@@ -66,12 +70,21 @@ impl<'c> OutsourcedMemory<'c> {
             is_readonly,
             section_kind,
             usage_counter: 0,
+            #[cfg(feature = "metrics")]
+            n_page_loads: 0,
+            #[cfg(feature = "metrics")]
+            n_page_commits: 0,
         }
     }
 
     fn commit_page_at(&mut self, index: usize) -> Result<(), common::vm::MemoryError> {
         let page = &self.pages[index];
         assert!(page.valid, "Trying to commit an invalid page");
+
+        #[cfg(feature = "metrics")]
+        {
+            self.n_page_commits += 1;
+        }
 
         let mut comm = self.comm.borrow_mut();
         CommitPageMessage::new(self.section_kind, page.idx).serialize_to_comm(&mut comm);
@@ -103,6 +116,11 @@ impl<'c> OutsourcedMemory<'c> {
     }
 
     fn load_page(&mut self, page_index: u32) -> Result<Page, common::vm::MemoryError> {
+        #[cfg(feature = "metrics")]
+        {
+            self.n_page_loads += 1;
+        }
+
         let mut comm = self.comm.borrow_mut();
         GetPageMessage::new(self.section_kind, page_index).serialize_to_comm(&mut comm);
         comm.reply(AppSW::InterruptedExecution);

@@ -25,6 +25,8 @@ lto = true
 default = []
 pending_review_screen = []
 
+metrics = [] # Enable collection of performance metrics during execution
+
 # Features only for speculos
 trace = []              # prints each instruction to the console using semihosting
 trace_full = ["trace"]  # also prints the state of the CPU registers
