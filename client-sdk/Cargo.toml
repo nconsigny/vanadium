@@ -11,6 +11,6 @@ hex = "0.4.3"
 hidapi = "2.6.3"
 ledger-apdu = "0.11.0"
 ledger-transport-hid = "0.11.0"
-postcard = { version = "1.0.8", features = ["alloc"] }
+postcard = { version = "1.1.1", default-features = false, features = ["alloc"] }
 sha2 = "0.10.8"
 tokio = { version = "1.38.1", features = ["io-util", "macros", "net", "process", "rt", "sync"] }
