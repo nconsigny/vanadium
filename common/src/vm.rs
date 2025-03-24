@@ -93,15 +93,19 @@ impl VecMemory {
 
 /// Represents a contiguous region of memory, implemented via a paged memory.
 #[derive(Debug)]
-pub struct MemorySegment<M: PagedMemory> {
+pub struct MemorySegment<'a, M: PagedMemory> {
     start_address: u32,
     size: u32,
-    paged_memory: M,
+    paged_memory: &'a mut M,
 }
 
-impl<M: PagedMemory> MemorySegment<M> {
+impl<'a, M: PagedMemory> MemorySegment<'a, M> {
     /// Creates a new `MemorySegment`.
-    pub fn new(start_address: u32, size: u32, paged_memory: M) -> Result<Self, MemoryError> {
+    pub fn new(
+        start_address: u32,
+        size: u32,
+        paged_memory: &'a mut M,
+    ) -> Result<Self, MemoryError> {
         if size == 0 {
             return Err(MemoryError::ZeroSize);
         }
@@ -339,19 +343,19 @@ impl<M: PagedMemory> MemorySegment<M> {
 
 /// Represents the state of the Risc-V CPU, with registers and three memory segments
 /// for code, data and stack.
-pub struct Cpu<M: PagedMemory> {
+pub struct Cpu<'a, M: PagedMemory> {
     pub pc: u32,
     pub regs: [u32; 32],
-    pub code_seg: MemorySegment<M>,
-    pub data_seg: MemorySegment<M>,
-    pub stack_seg: MemorySegment<M>,
+    pub code_seg: MemorySegment<'a, M>,
+    pub data_seg: MemorySegment<'a, M>,
+    pub stack_seg: MemorySegment<'a, M>,
 }
 
 pub trait EcallHandler {
     type Memory: PagedMemory;
     type Error: fmt::Debug;
 
-    fn handle_ecall(&mut self, cpu: &mut Cpu<Self::Memory>) -> Result<(), Self::Error>;
+    fn handle_ecall(&mut self, cpu: &mut Cpu<'_, Self::Memory>) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug)]
@@ -395,7 +399,7 @@ impl<E: fmt::Debug> From<MemoryError> for CpuError<E> {
     }
 }
 
-impl<M: PagedMemory> fmt::Debug for Cpu<M> {
+impl<'a, M: PagedMemory> fmt::Debug for Cpu<'a, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Array of register names in RISC-V
         let reg_names = [
@@ -417,14 +421,14 @@ impl<M: PagedMemory> fmt::Debug for Cpu<M> {
     }
 }
 
-impl<M: PagedMemory> Cpu<M> {
+impl<'a, M: PagedMemory> Cpu<'a, M> {
     /// Creates a new `Cpu` instance.
     pub fn new(
         entrypoint: u32,
-        code_seg: MemorySegment<M>,
-        data_seg: MemorySegment<M>,
-        stack_seg: MemorySegment<M>,
-    ) -> Cpu<M> {
+        code_seg: MemorySegment<'a, M>,
+        data_seg: MemorySegment<'a, M>,
+        stack_seg: MemorySegment<'a, M>,
+    ) -> Cpu<'a, M> {
         Cpu {
             pc: entrypoint,
             regs: [0; 32],
@@ -504,7 +508,7 @@ impl<M: PagedMemory> Cpu<M> {
     pub fn get_segment<E: fmt::Debug>(
         &mut self,
         address: u32,
-    ) -> Result<&mut MemorySegment<M>, CpuError<E>> {
+    ) -> Result<&mut MemorySegment<'a, M>, CpuError<E>> {
         if self.stack_seg.contains(address) {
             return Ok(&mut self.stack_seg);
         } else if self.data_seg.contains(address) {
@@ -717,32 +721,41 @@ mod tests {
 
     #[test]
     fn test_memory_segment_new() {
+        let mut paged_memory = VecMemory::new(16);
         let size = (PAGE_SIZE * 16) as u32;
-        let paged_memory = VecMemory::new(16);
-        let segment = MemorySegment::new(0, size, paged_memory);
+        let segment = MemorySegment::new(0, size, &mut paged_memory);
         assert!(segment.is_ok());
 
         // Failure cases
 
         // 0-sized memory
-        assert!(MemorySegment::new(1, 0, VecMemory::new(1)).is_err());
+        let mut paged_memory = VecMemory::new(1);
+        assert!(MemorySegment::new(1, 0, &mut paged_memory).is_err());
 
         // Test unaligned start addresses
-        assert!(MemorySegment::new(1, size, VecMemory::new(16)).is_err());
-        assert!(MemorySegment::new(2, size, VecMemory::new(16)).is_err());
-        assert!(MemorySegment::new(3, size, VecMemory::new(16)).is_err());
+        let mut paged_memory = VecMemory::new(16);
+        assert!(MemorySegment::new(1, size, &mut paged_memory).is_err());
+
+        let mut paged_memory = VecMemory::new(16);
+        assert!(MemorySegment::new(2, size, &mut paged_memory).is_err());
+
+        let mut paged_memory = VecMemory::new(16);
+        assert!(MemorySegment::new(3, size, &mut paged_memory).is_err());
 
         // Overflow: ending address is too large
-        assert!(MemorySegment::new(-(size as i32 - 1) as u32, size, VecMemory::new(16)).is_err());
+        let mut paged_memory = VecMemory::new(16);
+        assert!(MemorySegment::new(-(size as i32 - 1) as u32, size, &mut paged_memory).is_err());
+
         // This one is ok, the last byte has address 0xffffffff
-        assert!(MemorySegment::new(-(size as i32) as u32, size, VecMemory::new(16)).is_ok());
+        let mut paged_memory = VecMemory::new(16);
+        assert!(MemorySegment::new(-(size as i32) as u32, size, &mut paged_memory).is_ok());
     }
 
     #[test]
     fn test_memory_segment_contains() {
-        let paged_memory = VecMemory::new(16);
+        let mut paged_memory = VecMemory::new(16);
         let size = (PAGE_SIZE * 16) as u32;
-        let segment = MemorySegment::new(0, size, paged_memory).unwrap();
+        let segment = MemorySegment::new(0, size, &mut paged_memory).unwrap();
         assert!(segment.contains(0));
         assert!(segment.contains(size - 1));
 
@@ -762,7 +775,7 @@ mod tests {
         first_page.data[2] = 3;
         first_page.data[3] = 4;
 
-        let mut segment = MemorySegment::new(0, 4096, paged_memory).unwrap();
+        let mut segment = MemorySegment::new(0, 4096, &mut paged_memory).unwrap();
 
         // Test read_u8
         assert_eq!(segment.read_u8(0).unwrap(), 1);
@@ -776,8 +789,8 @@ mod tests {
 
     #[test]
     fn test_memory_segment_write() {
-        let paged_memory = VecMemory::new(16);
-        let mut segment = MemorySegment::new(0, 4096, paged_memory).unwrap();
+        let mut paged_memory = VecMemory::new(16);
+        let mut segment = MemorySegment::new(0, 4096, &mut paged_memory).unwrap();
 
         // Test write_u8
         segment.write_u8(0, 42).unwrap();
@@ -794,8 +807,8 @@ mod tests {
 
     #[test]
     fn test_memory_segment_write_buffer_single_page() {
-        let paged_memory = VecMemory::new(1); // Single page of memory
-        let mut segment = MemorySegment::new(0, PAGE_SIZE as u32, paged_memory).unwrap();
+        let mut paged_memory = VecMemory::new(1); // Single page of memory
+        let mut segment = MemorySegment::new(0, PAGE_SIZE as u32, &mut paged_memory).unwrap();
 
         assert!(PAGE_SIZE == 256); // this test would need to be adapted for different page sizes
 
@@ -812,8 +825,8 @@ mod tests {
 
     #[test]
     fn test_memory_segment_write_buffer_cross_page_boundary() {
-        let paged_memory = VecMemory::new(2); // Two pages of memory
-        let mut segment = MemorySegment::new(0, (PAGE_SIZE * 2) as u32, paged_memory).unwrap();
+        let mut paged_memory = VecMemory::new(2); // Two pages of memory
+        let mut segment = MemorySegment::new(0, (PAGE_SIZE * 2) as u32, &mut paged_memory).unwrap();
 
         let buffer: Vec<u8> = (0..32).collect(); // Buffer that spans across two pages
         let start_address = PAGE_SIZE as u32 - 16; // 16 bytes away from the page boundary
@@ -838,8 +851,9 @@ mod tests {
 
     #[test]
     fn test_memory_segment_write_buffer_multiple_pages() {
-        let paged_memory = VecMemory::new(4); // Three pages of memory
-        let mut segment = MemorySegment::new(44, (PAGE_SIZE * 3) as u32, paged_memory).unwrap();
+        let mut paged_memory = VecMemory::new(4); // Three pages of memory
+        let mut segment =
+            MemorySegment::new(44, (PAGE_SIZE * 3) as u32, &mut paged_memory).unwrap();
 
         let start_address = 56u32;
 
@@ -858,8 +872,8 @@ mod tests {
 
     #[test]
     fn test_memory_segment_write_read_empty_buffer() {
-        let paged_memory = VecMemory::new(1);
-        let mut segment = MemorySegment::new(0, PAGE_SIZE as u32, paged_memory).unwrap();
+        let mut paged_memory = VecMemory::new(1);
+        let mut segment = MemorySegment::new(0, PAGE_SIZE as u32, &mut paged_memory).unwrap();
 
         // Empty buffer write should succeed without doing anything
         let write_result = segment.write_buffer(0, &[]);
