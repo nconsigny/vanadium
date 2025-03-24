@@ -12,7 +12,7 @@ common = { package = "vnd-sadik-common", path = "../common"}
 hex = "0.4.3"
 hidapi = "2.6.3"
 ledger-transport-hid = "0.11.0"
-postcard = { version = "1.0.8", features = ["alloc"] }
+postcard = { version = "1.1.1", features = ["alloc"] }
 sdk = { package = "vanadium-client-sdk", path = "../../../client-sdk"}
 serde = "1.0.215"
 tokio = { version = "1.38.1", features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync"] }
