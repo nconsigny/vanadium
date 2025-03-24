@@ -171,7 +171,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
-          target: riscv32i-unknown-none-elf
+          target: riscv32im-unknown-none-elf
           components: rustfmt, clippy
           profile: minimal
       - name: Clone
@@ -179,12 +179,12 @@ jobs:
       - name: Build app
         working-directory: apps/test/app
         run: |
-          cargo +nightly build --release --target riscv32i-unknown-none-elf
+          cargo +nightly build --release --target riscv32im-unknown-none-elf
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: vnd_test_riscv_binary
-          path: apps/test/app/target/riscv32i-unknown-none-elf/release/vnd-test
+          path: apps/test/app/target/riscv32im-unknown-none-elf/release/vnd-test
 
   vnd_test_speculos_integration_tests:
     name: vnd-test, Integration tests on Speculos
@@ -246,7 +246,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
-          target: riscv32i-unknown-none-elf
+          target: riscv32im-unknown-none-elf
           components: rustfmt, clippy
           profile: minimal
       - name: Clone
@@ -254,12 +254,12 @@ jobs:
       - name: Build app
         working-directory: apps/sadik/app
         run: |
-          cargo +nightly build --release --target riscv32i-unknown-none-elf
+          cargo +nightly build --release --target riscv32im-unknown-none-elf
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: vnd_sadik_riscv_binary
-          path: apps/sadik/app/target/riscv32i-unknown-none-elf/release/vnd-sadik
+          path: apps/sadik/app/target/riscv32im-unknown-none-elf/release/vnd-sadik
 
   vnd_sadik_integration_tests:
     name: vnd-sadik, Integration tests on Speculos
