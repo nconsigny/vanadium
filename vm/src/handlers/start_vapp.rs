@@ -32,24 +32,27 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let comm = Rc::new(RefCell::new(comm));
 
+    let mut code_mem = OutsourcedMemory::new(comm.clone(), 12, true, SectionKind::Code);
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
         manifest.code_end - manifest.code_start,
-        OutsourcedMemory::new(comm.clone(), 12, true, SectionKind::Code),
+        &mut code_mem,
     )
     .unwrap();
 
+    let mut data_mem = OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Data);
     let data_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.data_start,
         manifest.data_end - manifest.data_start,
-        OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Data),
+        &mut data_mem,
     )
     .unwrap();
 
+    let mut stack_mem = OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Stack);
     let stack_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.stack_start,
         manifest.stack_end - manifest.stack_start,
-        OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Stack),
+        &mut stack_mem,
     )
     .unwrap();
 
@@ -63,7 +66,9 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let mut ecall_handler = CommEcallHandler::new(comm.clone(), &manifest);
 
+    #[cfg(feature = "metrics")]
     let mut instr_count = 0;
+
     loop {
         // TODO: handle errors
         let instr = cpu
@@ -99,13 +104,26 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
         let result = cpu.execute(instr, Some(&mut ecall_handler));
 
-        instr_count += 1;
+        #[cfg(feature = "metrics")]
+        {
+            instr_count += 1;
+        }
 
         match result {
             Ok(_) => {}
             Err(common::vm::CpuError::EcallError(e)) => match e {
                 CommEcallError::Exit(status) => {
-                    println!("Vanadium ran {} instructions", instr_count);
+                    #[cfg(feature = "metrics")]
+                    {
+                        let n_loads =
+                            code_mem.n_page_loads + data_mem.n_page_loads + stack_mem.n_page_loads;
+                        let n_commits = code_mem.n_page_commits
+                            + data_mem.n_page_commits
+                            + stack_mem.n_page_commits;
+                        println!("Vanadium ran {} instructions", instr_count);
+                        println!("Number of page loads:   {}", n_loads);
+                        println!("Number of page commits: {}", n_commits);
+                    }
                     println!("Exiting with status {}", status);
                     return Ok(status.to_be_bytes().to_vec());
                 }
