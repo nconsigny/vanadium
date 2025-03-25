@@ -19,7 +19,7 @@ impl TestSetup {
         let vanadium_binary = std::env::var("VANADIUM_BINARY")
             .unwrap_or_else(|_| "../../../vm/build/nanos2/bin/app.elf".to_string());
         let vapp_binary = std::env::var("VAPP_BINARY").unwrap_or_else(|_| {
-            "../app/target/riscv32im-unknown-none-elf/release/vnd-sadik".to_string()
+            "../app/target/riscv32imc-unknown-none-elf/release/vnd-sadik".to_string()
         });
 
         let (child, transport) = spawn_speculos_and_transport(&vanadium_binary).await;
