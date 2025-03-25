@@ -4,7 +4,7 @@ run:
 # build for both native and riscv targets
 build:
   cargo build --release --target=x86_64-unknown-linux-gnu
-  cargo build --release --target=riscv32im-unknown-none-elf
+  cargo build --release --target=riscv32imc-unknown-none-elf
 
 # build for native target
 build-native:
@@ -12,12 +12,12 @@ build-native:
 
 # build for riscv target
 build-riscv:
-  cargo build --release --target=riscv32im-unknown-none-elf
+  cargo build --release --target=riscv32imc-unknown-none-elf
 
 # disassembles the riscv binary
 disassemble:
-  riscv64-linux-gnu-objdump -d target/riscv32im-unknown-none-elf/release/vnd-bitcoin
+  riscv64-linux-gnu-objdump -d target/riscv32imc-unknown-none-elf/release/vnd-bitcoin
 
 # show the sections of the riscv binary
 show-sections:
-  readelf -S target/riscv32im-unknown-none-elf/release/vnd-bitcoin
+  readelf -S target/riscv32imc-unknown-none-elf/release/vnd-bitcoin
