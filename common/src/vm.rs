@@ -110,7 +110,7 @@ impl<'a, M: PagedMemory> MemorySegment<'a, M> {
             return Err(MemoryError::ZeroSize);
         }
 
-        if start_address & 3 != 0 {
+        if start_address % 2 != 0 {
             return Err(MemoryError::StartAddressNotAligned);
         }
 
@@ -522,16 +522,30 @@ impl<'a, M: PagedMemory> Cpu<'a, M> {
     #[inline(always)]
     /// Fetches the next instruction to be executed.
     pub fn fetch_instruction<E: fmt::Debug>(&mut self) -> Result<u32, CpuError<E>> {
-        Ok(self.code_seg.read_u32(self.pc)?)
+        if self.pc % 4 == 0 && self.code_seg.contains(self.pc + 3) {
+            // if the address is aligned and within boundaries, we can read four bytes at once
+            Ok(self.code_seg.read_u32(self.pc)?)
+        } else {
+            // as the address is not 4-bytes aligned, we have to read each half separately,
+            // and consider the case where the second half might not be readable
+            // (which is fine if the instruction is compressed)
+            let inst_lo: u16 = self.code_seg.read_u16(self.pc)?;
+            let inst_hi = if inst_lo & 0b11 != 0b11 {
+                // compressed instruction, ignore the second half
+                0u16
+            } else {
+                // not a compressed instruction, we have to read the next two bytes
+                self.code_seg.read_u16(self.pc + 2)?
+            };
+            Ok(u32::from(inst_hi) << 16 | u32::from(inst_lo))
+        }
     }
 
     #[rustfmt::skip]
     #[inline(always)]
     pub fn execute<E: fmt::Debug>(&mut self, inst: u32, ecall_handler: Option<&mut dyn EcallHandler<Memory = M, Error = E>>) -> Result<(), CpuError<E>> {
-        let mut pc_inc: u32 = 4;
-        const INST_SIZE: u32 = 4;
-
-        let op = crate::riscv::decode::decode(inst);
+        let (op, inst_size) = crate::riscv::decode::decode(inst);
+        let mut pc_inc: u32 = inst_size;
         match op {
             Op::Add { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_add(self.regs[rs2 as usize]); },
             Op::Sub { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_sub(self.regs[rs2 as usize]); },
@@ -543,6 +557,49 @@ impl<'a, M: PagedMemory> Cpu<'a, M> {
             Op::Sra { rd, rs1, rs2 } => { self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32) >> (self.regs[rs2 as usize] & 0x1f)) as u32; },
             Op::Or { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] | self.regs[rs2 as usize]; },
             Op::And { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize] & self.regs[rs2 as usize]; },
+            Op::Mul { rd, rs1, rs2 } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_mul(self.regs[rs2 as usize]); },
+            Op::Mulh { rd, rs1, rs2 } => {
+                let result = ((self.regs[rs1 as usize] as i64) * (self.regs[rs2 as usize] as i64)) >> 32;
+                self.regs[rd as usize] = result as u32;
+            },
+            Op::Mulhsu { rd, rs1, rs2 } => {
+                let signed_val = self.regs[rs1 as usize] as i32 as i64;
+                let unsigned_val = self.regs[rs2 as usize] as u64;
+                let result = (signed_val * (unsigned_val as i64)) >> 32;
+                self.regs[rd as usize] = result as u32;
+            },
+            Op::Mulhu { rd, rs1, rs2 } => {
+                let result = ((self.regs[rs1 as usize] as u64) * (self.regs[rs2 as usize] as u64)) >> 32;
+                self.regs[rd as usize] = result as u32;
+            },
+            Op::Div { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = u32::MAX;
+                } else {
+                    self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32).wrapping_div(self.regs[rs2 as usize] as i32)) as u32;
+                }
+            },
+            Op::Divu { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = u32::MAX;
+                } else {
+                    self.regs[rd as usize] = self.regs[rs1 as usize] / self.regs[rs2 as usize];
+                }
+            },
+            Op::Rem { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = self.regs[rs1 as usize];
+                } else {
+                    self.regs[rd as usize] = ((self.regs[rs1 as usize] as i32).wrapping_rem(self.regs[rs2 as usize] as i32)) as u32;
+                }
+            },
+            Op::Remu { rd, rs1, rs2 } => {
+                if self.regs[rs2 as usize] == 0 {
+                    self.regs[rd as usize] = self.regs[rs1 as usize];
+                } else {
+                    self.regs[rd as usize] = self.regs[rs1 as usize] % self.regs[rs2 as usize];
+                }
+            },
             Op::Addi { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize].wrapping_add(imm as u32); },
             Op::Andi { rd, rs1, imm } => { self.regs[rd as usize] = self.regs[rs1 as usize] & (imm as u32); },
             Op::Auipc { rd, imm } => { self.regs[rd as usize] = self.pc.wrapping_add(imm as u32); },
@@ -578,11 +635,11 @@ impl<'a, M: PagedMemory> Cpu<'a, M> {
             },
             Op::Jal { rd, imm } => {
                 pc_inc = imm as u32;
-                self.regs[rd as usize] = self.pc.wrapping_add(INST_SIZE);
+                self.regs[rd as usize] = self.pc.wrapping_add(inst_size);
             },
             Op::Jalr { rd, rs1, imm } => {
                 let new_pc = self.regs[rs1 as usize].wrapping_add(imm as u32) & !1;
-                self.regs[rd as usize] = self.pc.wrapping_add(INST_SIZE);
+                self.regs[rd as usize] = self.pc.wrapping_add(inst_size);
                 self.pc = new_pc;
                 pc_inc = 0;
             },
@@ -735,9 +792,6 @@ mod tests {
         // Test unaligned start addresses
         let mut paged_memory = VecMemory::new(16);
         assert!(MemorySegment::new(1, size, &mut paged_memory).is_err());
-
-        let mut paged_memory = VecMemory::new(16);
-        assert!(MemorySegment::new(2, size, &mut paged_memory).is_err());
 
         let mut paged_memory = VecMemory::new(16);
         assert!(MemorySegment::new(3, size, &mut paged_memory).is_err());
