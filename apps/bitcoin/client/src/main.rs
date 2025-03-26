@@ -300,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let default_app_path = if args.native {
         "../app/target/x86_64-unknown-linux-gnu/release/vnd-bitcoin"
     } else {
-        "../app/target/riscv32i-unknown-none-elf/release/vnd-bitcoin"
+        "../app/target/riscv32imc-unknown-none-elf/release/vnd-bitcoin"
     };
 
     let app_path_str = args.app.unwrap_or(default_app_path.to_string());

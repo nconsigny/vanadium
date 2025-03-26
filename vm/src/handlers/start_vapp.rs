@@ -61,8 +61,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     // x2 is the stack pointer, that grows backwards from the end of the stack
     // we make sure it's aligned to a multiple of 4
     cpu.regs[2] = (manifest.stack_end - 4) & !3;
-
-    assert!(cpu.pc % 4 == 0, "Unaligned entrypoint");
+    assert!(cpu.pc % 2 == 0, "Unaligned entrypoint");
 
     let mut ecall_handler = CommEcallHandler::new(comm.clone(), &manifest);
 
@@ -91,12 +90,14 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
             #[cfg(feature = "trace_colors")]
             crate::print!("\x1b[32m");
 
-            crate::println!(
-                "{:08x?}: {:08x?} -> {:?}",
-                cpu.pc,
-                instr,
-                common::riscv::decode::decode(instr)
-            );
+            // Print the instruction, but check if it's compressed
+            let (decoded_op, len) = common::riscv::decode::decode(instr);
+            if len == 2 {
+                let instr_lo = (instr & 0xffffu32) as u16;
+                crate::println!("{:08x?}: {:04x?} -> {:?}", cpu.pc, instr_lo, decoded_op);
+            } else {
+                crate::println!("{:08x?}: {:08x?} -> {:?}", cpu.pc, instr, decoded_op);
+            }
 
             #[cfg(feature = "trace_colors")]
             crate::print!("\x1b[0m");
