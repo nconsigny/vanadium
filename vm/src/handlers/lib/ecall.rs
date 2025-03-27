@@ -1587,3 +1587,9 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
         Ok(())
     }
 }
+
+impl<'a> Drop for CommEcallHandler<'a> {
+    fn drop(&mut self) {
+        drop_ux_handler();
+    }
+}

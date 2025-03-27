@@ -110,6 +110,21 @@ pub fn get_ux_handler() -> &'static mut UxHandler {
     }
 }
 
+pub fn drop_ux_handler() {
+    unsafe {
+        if !UX_HANDLER_INITIALIZED {
+            return;
+        }
+
+        #[allow(static_mut_refs)] // it's safe as we are in single-threaded mode
+        let handler = UX_HANDLER.assume_init_mut();
+        handler.release_page();
+        handler.clear_cstrings();
+
+        UX_HANDLER_INITIALIZED = false;
+    }
+}
+
 impl UxHandler {
     // We keep the constructor private in order to manage the singleton instance
     fn new() -> Self {
@@ -449,13 +464,5 @@ impl UxHandler {
         }
 
         Ok(())
-    }
-}
-
-impl Drop for UxHandler {
-    fn drop(&mut self) {
-        unsafe {
-            UX_HANDLER_INITIALIZED = false;
-        }
     }
 }
