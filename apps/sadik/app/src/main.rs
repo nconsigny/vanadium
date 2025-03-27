@@ -38,6 +38,7 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn _start() {
+    sdk::rust_init_heap();
     main()
 }
 
@@ -67,8 +68,6 @@ fn parse_pubkey(pubkey: &[u8]) -> EcfpPublicKey<sdk::curve::Secp256k1, 32> {
 }
 
 pub fn main() {
-    sdk::rust_init_heap();
-
     sdk::ux::ux_idle();
     loop {
         let msg = match sdk::comm::receive_message() {

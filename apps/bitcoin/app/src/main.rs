@@ -39,6 +39,7 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn _start() {
+    sdk::rust_init_heap();
     main()
 }
 
@@ -77,8 +78,6 @@ fn process_message() -> Result<Response, Box<dyn core::error::Error>> {
 }
 
 pub fn main() {
-    sdk::rust_init_heap();
-
     sdk::ux::ux_idle();
     loop {
         let response = match process_message() {

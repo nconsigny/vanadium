@@ -35,17 +35,11 @@ fn my_panic(info: &core::panic::PanicInfo) -> ! {
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn _start() {
-    app_main()
-}
-
-#[cfg(not(target_arch = "riscv32"))]
-fn main() {
-    app_main();
-}
-
-pub fn app_main() {
     sdk::rust_init_heap();
+    main()
+}
 
+pub fn main() {
     sdk::ux::ux_idle();
 
     loop {
