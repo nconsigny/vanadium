@@ -872,10 +872,17 @@ impl<'a> CommEcallHandler<'a> {
         let mut chain_code_local: [u8; 32] = [0; 32];
 
         let mut pubkey: sys::cx_ecfp_public_key_t = Default::default();
+
+        // Hack: we're passing an empty path, but [].as_ptr() would return a fixed non-zero constant that is
+        // not a valid pointer, which would make os_perso_derive_node_bip32 crash on the real device (but not
+        // on speculos).
+        // Therefore, we use a local non-empty array instead, but still pass 0 for the pathLength parameter.
+        let empty_path = [0u32; 1];
+
         unsafe {
             sys::os_perso_derive_node_bip32(
                 CurveKind::Secp256k1 as u8,
-                [].as_ptr(),
+                empty_path.as_ptr(),
                 0,
                 private_key_local.as_mut_ptr(),
                 chain_code_local.as_mut_ptr(),
