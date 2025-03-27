@@ -13,7 +13,7 @@ The [client/tests](client/tests) folder contains integration tests to run with S
 In order to build the app for the Risc-V target, enter the `app` folder and run:
 
    ```sh
-   cargo build --release --target=riscv32i-unknown-none-elf
+   cargo build --release --target=riscv32imc-unknown-none-elf
    ```
 
 ### Native

@@ -13,7 +13,7 @@ The `client` is a library crate (see [lib.rs](client/src/lib.rs)), but it also h
 In order to build the app for the Risc-V target, enter the `app` folder and run:
 
    ```sh
-   cargo build --release --target=riscv32i-unknown-none-elf
+   cargo build --release --target=riscv32imc-unknown-none-elf
    ```
 
 ### Native
