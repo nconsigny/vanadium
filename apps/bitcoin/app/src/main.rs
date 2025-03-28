@@ -13,11 +13,6 @@ use alloc::{string::ToString, vec::Vec};
 use common::message::{Request, Response};
 use sdk::App;
 
-// Temporary to force the creation of a data section
-#[used]
-#[no_mangle]
-pub static mut APP_NAME: [u8; 32] = *b"Bitcoin\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn _start() {

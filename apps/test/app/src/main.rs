@@ -8,11 +8,6 @@ mod handlers;
 use commands::Command;
 use handlers::*;
 
-// Temporary to force the creation of a data section
-#[used]
-#[no_mangle]
-pub static mut APP_NAME: [u8; 32] = *b"Test\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn _start() {
