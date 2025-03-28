@@ -32,6 +32,7 @@ fn display_address(_account_name: Option<&str>, _addr: &str) -> bool {
 }
 
 pub fn handle_get_address(
+    _app: &mut sdk::App,
     name: Option<&str>,
     account: &common::message::Account,
     _hmac: Option<&[u8; 32]>,
@@ -91,6 +92,7 @@ mod tests {
         });
 
         let resp = handle_get_address(
+            &mut sdk::App::singleton(),
             None,
             &account,
             None,

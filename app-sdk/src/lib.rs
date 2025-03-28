@@ -7,11 +7,14 @@ extern crate lazy_static;
 
 use alloc::vec::Vec;
 
+pub mod app;
 pub mod bignum;
 pub mod comm;
 pub mod curve;
 pub mod hash;
 pub mod ux;
+
+pub use app::App;
 
 mod ecalls;
 
@@ -64,19 +67,28 @@ pub extern "C" fn rust_init_heap() {
     init_heap();
 }
 
-// On native targets, the initializer is called automatically using ctor above
-#[cfg(not(target_arch = "riscv32"))]
-#[no_mangle]
-pub extern "C" fn rust_init_heap() {
-    // the initializer is called automatically on native targets
-}
-
 pub fn fatal(msg: &str) -> ! {
     Ecall::fatal(msg.as_ptr(), msg.len());
 }
 
 pub fn exit(status: i32) -> ! {
     Ecall::exit(status);
+}
+
+#[cfg(target_arch = "riscv32")]
+#[panic_handler]
+fn my_panic(info: &core::panic::PanicInfo) -> ! {
+    let message = if let Some(location) = info.location() {
+        alloc::format!(
+            "Panic occurred in file '{}' at line {}: {}",
+            location.file(),
+            location.line(),
+            info.message()
+        )
+    } else {
+        alloc::format!("Panic occurred: {}", info.message())
+    };
+    fatal(&message); // does not return
 }
 
 pub fn xrecv(size: usize) -> Vec<u8> {
@@ -100,10 +112,16 @@ pub fn xsend(buffer: &[u8]) {
     Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_placeholder() {
-        assert_eq!(1 + 1, 2);
-    }
+/// Initialization boilerplate for the application that is called before the main function, for
+/// targets that need it.
+#[macro_export]
+macro_rules! bootstrap {
+    () => {
+        #[cfg(target_arch = "riscv32")]
+        #[no_mangle]
+        pub fn _start() {
+            $crate::rust_init_heap();
+            main()
+        }
+    };
 }

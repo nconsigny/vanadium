@@ -50,6 +50,7 @@ fn display_xpub(_xpub: &str, _path: &[u32]) -> bool {
 }
 
 pub fn handle_get_extended_pubkey(
+    _app: &mut sdk::App,
     bip32_path: &common::message::Bip32Path,
     display: bool,
 ) -> Result<Response, &'static str> {
@@ -167,6 +168,7 @@ mod tests {
             // decode the derivation path into a Vec<u32>
 
             let response = handle_get_extended_pubkey(
+                &mut sdk::App::singleton(),
                 &common::message::Bip32Path(parse_derivation_path(path).unwrap()),
                 false,
             )
