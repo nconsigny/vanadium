@@ -67,13 +67,6 @@ pub extern "C" fn rust_init_heap() {
     init_heap();
 }
 
-// On native targets, the initializer is called automatically using ctor above
-#[cfg(not(target_arch = "riscv32"))]
-#[no_mangle]
-pub extern "C" fn rust_init_heap() {
-    // the initializer is called automatically on native targets
-}
-
 pub fn fatal(msg: &str) -> ! {
     Ecall::fatal(msg.as_ptr(), msg.len());
 }
@@ -119,10 +112,16 @@ pub fn xsend(buffer: &[u8]) {
     Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_placeholder() {
-        assert_eq!(1 + 1, 2);
-    }
+/// Initialization boilerplate for the application that is called before the main function, for
+/// targets that need it.
+#[macro_export]
+macro_rules! bootstrap {
+    () => {
+        #[cfg(target_arch = "riscv32")]
+        #[no_mangle]
+        pub fn _start() {
+            $crate::rust_init_heap();
+            main()
+        }
+    };
 }
