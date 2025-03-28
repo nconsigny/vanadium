@@ -7,11 +7,14 @@ extern crate lazy_static;
 
 use alloc::vec::Vec;
 
+pub mod app;
 pub mod bignum;
 pub mod comm;
 pub mod curve;
 pub mod hash;
 pub mod ux;
+
+pub use app::App;
 
 mod ecalls;
 
