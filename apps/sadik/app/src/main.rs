@@ -1,8 +1,5 @@
 #![cfg_attr(target_arch = "riscv32", no_std, no_main)]
 
-#[cfg(target_arch = "riscv32")]
-use sdk::fatal;
-
 use sdk::{
     bignum::{BigNum, BigNumMod, ModulusProvider},
     curve::{Curve as _, EcfpPrivateKey, EcfpPublicKey, Secp256k1Point},
@@ -18,22 +15,6 @@ use common::{Command, Curve, ECPointOperation, HashId};
 #[used]
 #[no_mangle]
 pub static mut APP_NAME: [u8; 32] = *b"Sadik\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-
-#[cfg(target_arch = "riscv32")]
-#[panic_handler]
-fn my_panic(info: &core::panic::PanicInfo) -> ! {
-    let message = if let Some(location) = info.location() {
-        alloc::format!(
-            "Panic occurred in file '{}' at line {}: {}",
-            location.file(),
-            location.line(),
-            info.message()
-        )
-    } else {
-        alloc::format!("Panic occurred: {}", info.message())
-    };
-    fatal(&message); // does not return
-}
 
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]

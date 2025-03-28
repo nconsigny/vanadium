@@ -19,22 +19,6 @@ use sdk::App;
 pub static mut APP_NAME: [u8; 32] = *b"Bitcoin\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
 #[cfg(target_arch = "riscv32")]
-#[panic_handler]
-fn my_panic(info: &core::panic::PanicInfo) -> ! {
-    let message = if let Some(location) = info.location() {
-        alloc::format!(
-            "Panic occurred in file '{}' at line {}: {}",
-            location.file(),
-            location.line(),
-            info.message()
-        )
-    } else {
-        alloc::format!("Panic occurred: {}", info.message())
-    };
-    sdk::fatal(&message); // does not return
-}
-
-#[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub fn _start() {
     sdk::rust_init_heap();

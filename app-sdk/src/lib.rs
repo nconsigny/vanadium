@@ -82,6 +82,22 @@ pub fn exit(status: i32) -> ! {
     Ecall::exit(status);
 }
 
+#[cfg(target_arch = "riscv32")]
+#[panic_handler]
+fn my_panic(info: &core::panic::PanicInfo) -> ! {
+    let message = if let Some(location) = info.location() {
+        alloc::format!(
+            "Panic occurred in file '{}' at line {}: {}",
+            location.file(),
+            location.line(),
+            info.message()
+        )
+    } else {
+        alloc::format!("Panic occurred: {}", info.message())
+    };
+    fatal(&message); // does not return
+}
+
 pub fn xrecv(size: usize) -> Vec<u8> {
     // We allocate a buffer with the requested size, but we don't initialize its content.
     // xrecv guarantees that recv_size have been overwritten with the received data, and we
