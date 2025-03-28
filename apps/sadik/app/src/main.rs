@@ -11,12 +11,7 @@ extern crate alloc;
 use alloc::{string::ToString, vec, vec::Vec};
 use common::{Command, Curve, ECPointOperation, HashId};
 
-#[cfg(target_arch = "riscv32")]
-#[no_mangle]
-pub fn _start() {
-    sdk::rust_init_heap();
-    main()
-}
+sdk::bootstrap!();
 
 /// The curve order of the Secp256k1 curve, represented as a ModulusProvider from Vanadium's app-sdk
 #[derive(Debug, Clone, Copy)]

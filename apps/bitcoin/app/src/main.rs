@@ -13,12 +13,7 @@ use alloc::{string::ToString, vec::Vec};
 use common::message::{Request, Response};
 use sdk::App;
 
-#[cfg(target_arch = "riscv32")]
-#[no_mangle]
-pub fn _start() {
-    sdk::rust_init_heap();
-    main()
-}
+sdk::bootstrap!();
 
 fn handle_request(app: &mut App, request: &Request) -> Result<Response, &'static str> {
     match request {

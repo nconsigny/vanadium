@@ -8,12 +8,7 @@ mod handlers;
 use commands::Command;
 use handlers::*;
 
-#[cfg(target_arch = "riscv32")]
-#[no_mangle]
-pub fn _start() {
-    sdk::rust_init_heap();
-    main()
-}
+sdk::bootstrap!();
 
 pub fn main() {
     sdk::ux::ux_idle();
