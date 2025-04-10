@@ -64,9 +64,9 @@ pub extern crate ordered;
 
 // We do not re-export vlib-secp256k1, as it is only a partial implementation of the rust-secp256k1
 // and it should only be used in vlib-bitcoin at this time.
-// However, we need to at least export the Secp256k1 type as it is part of the public API of vlib-bitcoin.
+// However, we need to at least export a few types that are part of the public API of vlib-bitcoin.
 pub mod secp256k1 {
-    pub use secp256k1::Secp256k1;
+    pub use secp256k1::{PublicKey, Secp256k1, XOnlyPublicKey};
 }
 
 #[cfg(feature = "serde")]
