@@ -32,6 +32,15 @@ pub struct WalletPolicyCoordinates {
     pub address_index: u32,
 }
 
+impl WalletPolicyCoordinates {
+    pub fn new(is_change: bool, address_index: u32) -> Self {
+        Self {
+            is_change,
+            address_index,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Account {
     WalletPolicy(WalletPolicy),
