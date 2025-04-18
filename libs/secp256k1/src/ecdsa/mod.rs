@@ -233,7 +233,15 @@ impl<C: Signing> Secp256k1<C> {
         sk: &SecretKey,
         noncedata: Option<&[u8; 32]>,
     ) -> Signature {
-        todo!()
+        match noncedata {
+            Some(_) => todo!(), // not implemented
+            None => {
+                let privkey =
+                    sdk::curve::EcfpPrivateKey::<sdk::curve::Secp256k1, 32>::new(*sk.as_ref());
+                let sig_raw = privkey.ecdsa_sign_hash(msg.as_ref()).unwrap();
+                Signature::from_der(&sig_raw).unwrap()
+            }
+        }
     }
 
     /// Constructs a signature for `msg` using the secret key `sk` and RFC6979 nonce

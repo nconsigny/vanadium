@@ -1,26 +1,23 @@
 use core::panic;
 use lazy_static::lazy_static;
+use rand::TryRngCore;
 use std::io;
 use std::io::Write;
 use std::sync::Mutex;
 
 use crate::ecalls::EcallsInterface;
 use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
-use common::ux::{EventCode, EventData, Deserializable};
+use common::ux::{Deserializable, EventCode, EventData};
 
 use bip32::{ChildNumber, XPrv};
 use hex_literal::hex;
 use k256::{
-    ecdsa::{
-        self,
-        signature::{hazmat::PrehashVerifier, SignerMut},
-    },
+    ecdsa::{self, signature::hazmat::PrehashVerifier},
     elliptic_curve::{
         sec1::{FromEncodedPoint, ToEncodedPoint},
         PrimeField,
     },
-    schnorr::{self, signature::Verifier},
-    EncodedPoint, ProjectivePoint, Scalar,
+    schnorr, EncodedPoint, ProjectivePoint, Scalar,
 };
 
 use num_bigint::BigUint;
@@ -661,10 +658,18 @@ impl EcallsInterface for Ecall {
 
         let mut privkey_bytes = [0u8; 32];
         privkey_bytes[..].copy_from_slice(privkey_slice);
-        let mut signing_key =
+        let signing_key =
             schnorr::SigningKey::from_bytes(&privkey_bytes).expect("Invalid private key");
 
-        let signature_bytes = signing_key.sign(msg_slice).to_bytes();
+        // generate 32 random bytes
+        let mut aux_rand = [0u8; 32];
+        rand::rngs::OsRng::default()
+            .try_fill_bytes(&mut aux_rand)
+            .expect("Failed to generate random bytes");
+        let signature_bytes = signing_key
+            .sign_raw(msg_slice, &aux_rand)
+            .unwrap()
+            .to_bytes();
 
         unsafe {
             std::ptr::copy_nonoverlapping(
@@ -716,7 +721,7 @@ impl EcallsInterface for Ecall {
             schnorr::VerifyingKey::from_bytes(xonly_pubkey_slice).expect("Invalid public key");
         let signature = schnorr::Signature::try_from(signature_slice).expect("Invalid signature");
 
-        match verifying_key.verify(msg_slice, &signature) {
+        match verifying_key.verify_raw(msg_slice, &signature) {
             Ok(_) => 1,
             Err(_) => 0,
         }

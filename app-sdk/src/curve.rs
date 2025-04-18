@@ -584,6 +584,78 @@ mod tests {
     }
 
     #[test]
+    fn test_secp256k1_ecdsa_sign_verify_rfc_6979() {
+        // Test vectors in format: (private_key_decimal, message, expected_signature)
+        let test_vectors = [
+            (
+                hex!("4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a"),
+                "Absence makes the heart grow fonder.",
+                hex!("3045022100996D79FBA54B24E9394FC5FAB6BF94D173F3752645075DE6E32574FE08625F770220345E638B373DCB0CE0C09E5799695EF64FFC5E01DD8367B9A205CE25F28870F6").to_vec(),
+            ),
+            (
+                hex!("dbc1b4c900ffe48d575b5da5c638040125f65db0fe3e24494b76ea986457d986"),
+                "Actions speak louder than words.",
+                hex!("304502210088164430985A4437471417C2386FAA536E1FE8EC91BD0F1F642BC22A776891530220090DC83D6E3B54A1A54DC2E79C693144179A512D9C9E686A6C25E7641A2101A8").to_vec(),
+            ),
+            (
+                hex!("084fed08b978af4d7d196a7446a86b58009e636b611db16211b65a9aadff29c5"),
+                "All for one and one for all.",
+                hex!("30450221009F1073C9C09B664498D4B216983330B01C29A0FB55DD61AA145B4EBD0579905502204592FB6626F672D4F3AD4BB2D0A1ED6C2A161CC35C6BB77E6F0FD3B63FEAB36F").to_vec(),
+            ),
+            (
+                hex!("e52d9c508c502347344d8c07ad91cbd6068afc75ff6292f062a09ca381c89e71"),
+                "All's fair in love and war.",
+                hex!("304502210080EABF24117B492635043886E7229B9705B970CBB6828C4E03A39DAE7AC34BDA022070E8A32CA1DF82ADD53FACBD58B4F2D3984D0A17B6B13C44460238D9FF74E41F").to_vec(),
+            ),
+            (
+                hex!("e77b9a9ae9e30b0dbdb6f510a264ef9de781501d7b6b92ae89eb059c5ab743db"),
+                "All work and no play makes Jack a dull boy.",
+                hex!("3045022100A43FF5EDEA7EA0B9716D4359574E990A6859CDAEB9D7D6B4964AFD40BE11BD35022067F9D82E22FC447A122997335525F117F37B141C3EFA9F8C6D77B586753F962F").to_vec(),
+            ),
+            (
+                hex!("67586e98fad27da0b9968bc039a1ef34c939b9b8e523a8bef89d478608c5ecf6"),
+                "All's well that ends well.",
+                hex!("3044022053CE16251F4FAE7EB87E2AB040A6F334E08687FB445566256CD217ECE389E0440220576506A168CBC9EE0DD485D6C418961E7A0861B0F05D22A93401812978D0B215").to_vec(),
+            ),
+            (
+                hex!("ca358758f6d27e6cf45272937977a748fd88391db679ceda7dc7bf1f005ee879"),
+                "An apple a day keeps the doctor away.",
+                hex!("3045022100DF8744CC06A304B041E88149ACFD84A68D8F4A2A4047056644E1EC8357E11EBE02204BA2D5499A26D072C797A86C7851533F287CEB8B818CAE2C5D4483C37C62750C").to_vec(),
+            ),
+            (
+                hex!("beead77994cf573341ec17b58bbf7eb34d2711c993c1d976b128b3188dc1829a"),
+                "An apple never falls far from the tree.",
+                hex!("3045022100878372D211ED0DBDE1273AE3DD85AEC577C08A06A55960F2E274F97CC9F2F38F02203F992CAA66F472A64F6CCDD8076C0A12202C674155A6A61B8CD23C1DED08AAB7").to_vec(),
+            ),
+            (
+                hex!("2b4c342f5433ebe591a1da77e013d1b72475562d48578dca8b84bac6651c3cb9"),
+                "An ounce of prevention is worth a pound of cure.",
+                hex!("3045022100D5CB4E148C0A29CE37F1542BE416E8EF575DA522666B19B541960D726C99662B022045C951C1CA938C90DAD6C3EEDE7C5DF67FCF0D14F90FAF201E8D215F215C5C18").to_vec(),
+            ),
+            (
+                hex!("01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"),
+                "Appearances can be deceiving.",
+                hex!("304402203E2F0118062306E2239C873828A7275DD35545A143797E224148C5BBBD59DD08022073A8C9E17BE75C66362913B5E05D81FD619B434EDDA766FAE6C352E86987809D").to_vec(),
+            ),
+        ];
+
+        for (private_key, message, expected_sig) in test_vectors {
+            let privkey = EcfpPrivateKey::<Secp256k1, 32>::new(private_key);
+            let msg_hash = crate::hash::Sha256::hash(message.as_bytes());
+            let pubkey = privkey.to_public_key();
+
+            let signature = privkey.ecdsa_sign_hash(&msg_hash).unwrap();
+            pubkey
+                .ecdsa_verify_hash(&msg_hash, &signature)
+                .expect("Signature should pass verification");
+
+            assert_eq!(
+                signature, expected_sig,
+                "Signature does not match expected value"
+            );
+        }
+    }
+
     fn test_secp256k1_ecdsa_sign_verify() {
         let privkey = EcfpPrivateKey::<Secp256k1, 32> {
             curve_marker: PhantomData,

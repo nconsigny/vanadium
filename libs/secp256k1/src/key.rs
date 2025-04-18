@@ -227,7 +227,11 @@ impl SecretKey {
     /// Negates the secret key.
     #[inline]
     #[must_use = "you forgot to use the negated secret key"]
-    pub fn negate(mut self) -> SecretKey { todo!() }
+    pub fn negate(mut self) -> SecretKey {
+        self.0 = *(-BigNumMod::<32, N>::from_be_bytes_noreduce(self.0)).as_be_bytes();
+
+        self
+    }
 
     /// Tweaks a [`SecretKey`] by adding `tweak` modulo the curve order.
     ///
@@ -548,7 +552,13 @@ impl PublicKey {
 
     /// Returns the [`XOnlyPublicKey`] (and it's [`Parity`]) for this [`PublicKey`].
     #[inline]
-    pub fn x_only_public_key(&self) -> (XOnlyPublicKey, Parity) { todo!() }
+    pub fn x_only_public_key(&self) -> (XOnlyPublicKey, Parity) {
+        let x = self.0.x;
+        let y = self.0.y;
+        let parity = Parity::from_u8(y[31] & 1).expect("This can never fail");
+        let x_only = XOnlyPublicKey::from_slice(&x).expect("We know the public key is valid");
+        (x_only, parity)
+    }
 
     /// Checks that `sig` is a valid ECDSA signature for `msg` using this public key.
     pub fn verify<C: Verification>(
@@ -718,7 +728,16 @@ impl Keypair {
         secp: &Secp256k1<C>,
         tweak: &Scalar,
     ) -> Result<Keypair, Error> {
-        todo!()
+        let y = self.0 .1 .0.y;
+        let is_y_odd = y[31] & 1 == 1;
+
+        self.0 .1 = self.0 .1.add_exp_tweak(secp, tweak)?;
+
+        if is_y_odd {
+            self.0 .0 = self.0 .0.negate();
+        }
+        self.0 .0 = self.0 .0.add_tweak(tweak)?;
+        Ok(self)
     }
 
     /// Returns the [`SecretKey`] for this [`Keypair`].
@@ -873,7 +892,9 @@ impl str::FromStr for XOnlyPublicKey {
 impl XOnlyPublicKey {
     /// Returns the [`XOnlyPublicKey`] (and it's [`Parity`]) for `keypair`.
     #[inline]
-    pub fn from_keypair(keypair: &Keypair) -> (XOnlyPublicKey, Parity) { todo!() }
+    pub fn from_keypair(keypair: &Keypair) -> (XOnlyPublicKey, Parity) {
+        keypair.public_key().x_only_public_key()
+    }
 
     /// Creates a schnorr public key directly from a slice.
     ///
