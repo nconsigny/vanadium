@@ -4,6 +4,7 @@ use common::{
     bip388::{DescriptorTemplate, SegwitVersion},
     message::{PartialSignature, Response},
     psbt::PsbtAccountCoordinates,
+    script::ToScript,
     taproot::{GetTapLeafHash, GetTapTreeHash},
 };
 
@@ -135,6 +136,7 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
         }
 
         let PsbtAccount::WalletPolicy(wallet_policy) = &accounts[account_id as usize];
+        let PsbtAccountCoordinates::WalletPolicy(coords) = coords;
 
         let segwit_version = wallet_policy.get_segwit_version()?;
 
@@ -143,7 +145,8 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
         }
 
         if segwit_version == SegwitVersion::Legacy || segwit_version == SegwitVersion::SegwitV0 {
-            // check that non-witness UTXO
+            // if the non-witness UTXO is present, validate it matches the previous output.
+            // If missing, fail for legacy inputs, while we show a warning for SegWit v0 inputs.
             match &input.non_witness_utxo {
                 Some(tx) => {
                     let prevout_id_computed = tx.compute_txid();
@@ -157,7 +160,7 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
                     if segwit_version == SegwitVersion::Legacy {
                         // for legacy transactions, non-witness UTXO is not required
                         return Err("Non-witness UTXO is required for SegWit version");
-                    } else {
+                    } else if segwit_version == SegwitVersion::SegwitV0 {
                         // for Segwitv0 transactions, non-witness UTXO is not mandatory,
                         // but we show a warning if missing
                         warn_unverified_inputs = true;
@@ -170,9 +173,49 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
             return Err("Witness UTXO is required for SegWit version");
         }
 
-        // TODO: other checks:
-        // - validate redeemScript (if provided)
-        // - validate witnssScript (if provided)
+        let input_scriptpubkey = if let Some(witness_utxo) = &input.witness_utxo {
+            let script = if let Some(redeem_script) = &input.redeem_script {
+                if witness_utxo.script_pubkey != redeem_script.to_p2sh() {
+                    return Err("Redeem script does not match the witness UTXO");
+                }
+                redeem_script
+            } else {
+                &witness_utxo.script_pubkey
+            };
+
+            if script.is_p2wsh() {
+                if let Some(witness_script) = &input.witness_script {
+                    if script != &witness_script.to_p2wsh() {
+                        return Err("Witness script does not match the witness UTXO");
+                    }
+                } else {
+                    return Err("Witness script is required for P2WSH");
+                }
+            }
+
+            &witness_utxo.script_pubkey
+        } else if let Some(non_witness_utxo) = &input.non_witness_utxo {
+            let prevout = &psbt.unsigned_tx.input[input_index].previous_output;
+            if non_witness_utxo.compute_txid() != prevout.txid {
+                return Err("Non-witness UTXO does not match the previous output");
+            }
+            if let Some(redeem_script) = &input.redeem_script {
+                if non_witness_utxo.output[prevout.vout as usize].script_pubkey
+                    != redeem_script.to_p2sh()
+                {
+                    return Err("Redeem script does not match the non-witness UTXO");
+                }
+            }
+
+            &non_witness_utxo.output[prevout.vout as usize].script_pubkey
+        } else {
+            return Err("Each input must have either a witness UTXO or a non-witness UTXO");
+        };
+
+        // verify that the account, derived at the coordinates in the PSBT, produces the same script
+        if wallet_policy.to_script(coords.is_change, coords.address_index)? != *input_scriptpubkey {
+            return Err("Script does not match the account at the coordinates indicated in the PSBT for this input");
+        }
     }
 
     /***** output checks *****/
@@ -292,18 +335,14 @@ mod tests {
     use super::*;
     use bitcoin::{
         base64::{engine::general_purpose::STANDARD, Engine as _},
-        secp256k1::{
-            self,
-            schnorr::{self, Signature},
-        },
-        PublicKey, XOnlyPublicKey,
+        secp256k1::schnorr::Signature,
+        XOnlyPublicKey,
     };
     use common::{
         bip388::{KeyPlaceholder, WalletPolicy},
         psbt::fill_psbt_with_bip388_coordinates,
     };
     use hex_literal::hex;
-    use sdk::curve::EcfpPublicKey;
 
     fn prepare_psbt(psbt: &mut Psbt, wallet_policy: &WalletPolicy) {
         let placeholders: Vec<KeyPlaceholder> = wallet_policy
