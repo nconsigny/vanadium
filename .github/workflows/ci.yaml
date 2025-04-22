@@ -311,3 +311,29 @@ jobs:
           VAPP_BINARY: ../../../vnd_sadik_riscv_binary/vnd-sadik
         run: |
           cargo test --features speculos-tests
+
+  # build bitcoin V-App
+  build_vnd_bitcoin:
+    name: vnd-bitcoin, Build on Risc-V target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: riscv32imc-unknown-none-elf
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Build app
+        working-directory: apps/bitcoin/app
+        run: |
+          cargo +nightly build --release --target riscv32imc-unknown-none-elf
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnd_bitcoin_riscv_binary
+          path: apps/bitcoin/app/target/riscv32imc-unknown-none-elf/release/vnd-bitcoin
+
+
