@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use common::{
     bip388::{DescriptorTemplate, SegwitVersion},
     message::{PartialSignature, Response},
-    psbt::PsbtAccountCoordinates,
+    psbt::{PsbtAccountCoordinates, PsbtAccountOutput},
     script::ToScript,
     taproot::{GetTapLeafHash, GetTapTreeHash},
 };
@@ -219,7 +219,26 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
     }
 
     /***** output checks *****/
-    // TODO
+    for (output_index, output) in psbt.outputs.iter().enumerate() {
+        let Some((account_id, coords)) = output.get_account_coordinates()? else {
+            // nothing to do for external outputs (they will be shown to the user)
+            continue;
+        };
+
+        if account_id as usize >= accounts.len() {
+            return Err("Invalid account ID");
+        }
+
+        let PsbtAccount::WalletPolicy(wallet_policy) = &accounts[account_id as usize];
+        let PsbtAccountCoordinates::WalletPolicy(coords) = coords;
+
+        // verify that the account, derived at the coordinates in the PSBT, produces the same script
+        if wallet_policy.to_script(coords.is_change, coords.address_index)?
+            != psbt.unsigned_tx.output[output_index].script_pubkey
+        {
+            return Err("Script does not match the account at the coordinates indicated in the PSBT for this output");
+        }
+    }
 
     /***** user validation UI *****/
 
