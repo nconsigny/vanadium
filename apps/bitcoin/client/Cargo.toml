@@ -20,6 +20,7 @@ clap = { version = "4.5.31", features = ["derive"] }
 rustyline = "15.0.0"
 shellwords = "1.1.0"
 postcard = { version = "1.1.1", features = ["alloc"] }
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 
 
 [lib]
