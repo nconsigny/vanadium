@@ -320,7 +320,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         };
 
         // TODO: for now we're ignoring proofs
-        let (mut data, _) = segment.get_page(page_index)?;
+        let (mut data, update_proof) = segment.get_page(page_index)?;
         let p1 = data.pop().unwrap();
 
         // return the content of the page (the last byte is in p1)
@@ -579,16 +579,18 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             (status, result) = match client_command_code {
                 ClientCommandCode::GetPage => self.process_get_page(&result).await?,
                 ClientCommandCode::CommitPage => self.process_commit_page(&result).await?,
-                ClientCommandCode::CommitPageContent => {
-                    // not a top-level command, part of CommitPage handling
-                    return Err(VAppEngineError::ResponseError(
-                        "Unexpected CommitPageContent client command",
-                    ));
-                }
                 ClientCommandCode::SendBuffer => self.process_send_buffer(&result).await?,
                 ClientCommandCode::ReceiveBuffer => self.process_receive_buffer(&result).await?,
                 ClientCommandCode::SendPanicBuffer => {
                     self.process_send_panic_buffer(&result).await?
+                }
+                ClientCommandCode::CommitPageContent
+                | ClientCommandCode::GetPageProof
+                | ClientCommandCode::GetPageProofContinued
+                | ClientCommandCode::CommitPageProof
+                | ClientCommandCode::CommitPageProofContinued => {
+                    // not a top-level command, part of the handling of some other command
+                    return Err(VAppEngineError::ResponseError("Unexpected command"));
                 }
             }
         }
