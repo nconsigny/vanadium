@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use bitcoin::bip32::DerivationPath;
-use common::message::{self, Request, Response};
+use common::message::{self, PartialSignature, Request, Response};
 use sdk::vanadium_client::{VAppClient, VAppExecutionError};
 
 use sdk::comm::SendMessageError;
@@ -170,6 +170,22 @@ impl<'a> BitcoinClient {
         let response_raw = self.send_message(&msg).await?;
         match Self::parse_response(&response_raw).await? {
             Response::Address(addr) => Ok(addr),
+            _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
+        }
+    }
+
+    pub async fn sign_psbt(
+        &mut self,
+        psbt: &[u8],
+    ) -> Result<Vec<PartialSignature>, BitcoinClientError> {
+        let msg = postcard::to_allocvec(&Request::SignPsbt {
+            psbt: psbt.to_vec(),
+        })
+        .map_err(|_| BitcoinClientError::GenericError("Failed to serialize SignPsbt request"))?;
+
+        let response_raw = self.send_message(&msg).await?;
+        match Self::parse_response(&response_raw).await? {
+            Response::PsbtSigned(partial_sigs) => Ok(partial_sigs),
             _ => Err(BitcoinClientError::InvalidResponse("Invalid response")),
         }
     }
