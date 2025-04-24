@@ -1,3 +1,5 @@
+use base64::Engine as _;
+
 use clap::{CommandFactory, Parser, Subcommand};
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
@@ -56,6 +58,10 @@ enum CliCommand {
         is_change: bool,
         #[clap(long, default_missing_value = "0")]
         address_index: u32,
+    },
+    SignPsbt {
+        #[clap(long)]
+        psbt: String,
     },
     Exit,
 }
@@ -285,6 +291,22 @@ async fn handle_cli_command(
                 )
                 .await?;
             println!("{}", addr);
+        }
+        CliCommand::SignPsbt { psbt } => {
+            let psbt = base64::engine::general_purpose::STANDARD
+                .decode(&psbt)
+                .map_err(|_| "Failed to decode PSBT")?;
+            let partial_sigs = bitcoin_client.sign_psbt(&psbt).await?;
+
+            println!("{} signatures returned", partial_sigs.len());
+            for part_sig in &partial_sigs {
+                println!("Input index: {}", part_sig.input_index);
+                println!("Public key: {}", hex::encode(&part_sig.pubkey));
+                println!("Signature: {}", hex::encode(&part_sig.signature));
+                if let Some(leaf_hash) = &part_sig.leaf_hash {
+                    println!("Leaf hash: {}", hex::encode(leaf_hash));
+                }
+            }
         }
         CliCommand::Exit => {
             return Err("Exiting".into());
