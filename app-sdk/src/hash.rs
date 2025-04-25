@@ -1,16 +1,4 @@
-pub trait Hasher<const DIGEST_SIZE: usize>: Sized {
-    fn new() -> Self;
-    fn update(&mut self, buffer: &[u8]) -> &mut Self;
-    fn digest(self, digest: &mut [u8; DIGEST_SIZE]);
-
-    fn hash(data: &[u8]) -> [u8; DIGEST_SIZE] {
-        let mut hasher = Self::new();
-        hasher.update(data);
-        let mut digest = [0u8; DIGEST_SIZE];
-        hasher.digest(&mut digest);
-        digest
-    }
-}
+pub use common::accumulator::Hasher;
 
 #[cfg(not(target_arch = "riscv32"))]
 mod hashers {
