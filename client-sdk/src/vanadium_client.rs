@@ -12,9 +12,12 @@ use common::accumulator::{
     AccumulatorError, HashOutput, Hasher, MerkleAccumulator, VectorAccumulator,
 };
 use common::client_commands::{
-    ClientCommandCode, CommitPageContentMessage, CommitPageMessage, GetPageMessage, Message,
-    MessageDeserializationError, ReceiveBufferMessage, ReceiveBufferResponse, SectionKind,
-    SendBufferMessage, SendPanicBufferMessage,
+    ClientCommandCode, CommitPageContentMessage, CommitPageMessage,
+    CommitPageProofContinuedMessage, CommitPageProofContinuedResponse, CommitPageProofResponse,
+    GetPageMessage, GetPageProofContinuedMessage, GetPageProofContinuedResponse,
+    GetPageProofMessage, GetPageProofResponse, Message, MessageDeserializationError,
+    ReceiveBufferMessage, ReceiveBufferResponse, SectionKind, SendBufferMessage,
+    SendPanicBufferMessage,
 };
 use common::constants::{page_start, PAGE_SIZE};
 use common::manifest::Manifest;
@@ -38,15 +41,14 @@ impl Hasher<32> for Sha256Hasher {
         }
     }
 
-    fn update(&mut self, data: &[u8]) {
+    fn update(&mut self, data: &[u8]) -> &mut Self {
         self.hasher.update(data);
+        self
     }
 
-    fn finalize(self) -> [u8; 32] {
+    fn digest(self, out: &mut [u8; 32]) {
         let result = self.hasher.finalize();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&result);
-        hash
+        out.copy_from_slice(&result);
     }
 }
 
@@ -156,12 +158,16 @@ impl MemorySegment {
         &mut self,
         page_index: u32,
         content: &[u8],
-    ) -> Result<(Vec<HashOutput<32>>, Vec<u8>), MemorySegmentError> {
+    ) -> Result<(Vec<HashOutput<32>>, HashOutput<32>), MemorySegmentError> {
         if content.len() != PAGE_SIZE {
             return Err(MemorySegmentError::InvalidPageSize);
         }
         let proof = self.content.update(page_index as usize, content.to_vec())?;
         Ok(proof)
+    }
+
+    fn get_content_root(&self) -> &HashOutput<32> {
+        self.content.root()
     }
 }
 
@@ -319,16 +325,99 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             SectionKind::Stack => &self.stack_seg,
         };
 
-        // TODO: for now we're ignoring proofs
-        let (mut data, update_proof) = segment.get_page(page_index)?;
+        // Get the page content and its proof
+        let (mut data, proof) = segment.get_page(page_index)?;
+
+        // Convert HashOutput<32> to [u8; 32]
+        let proof: Vec<[u8; 32]> = proof.into_iter().map(|h| h.0).collect();
+
         let p1 = data.pop().unwrap();
 
-        // return the content of the page (the last byte is in p1)
-        Ok(self
+        // Return the content of the page (the last byte is in p1)
+        let (status, result) = self
             .transport
             .exchange(&apdu_continue_with_p1(data, p1))
             .await
-            .map_err(VAppEngineError::TransportError)?)
+            .map_err(VAppEngineError::TransportError)?;
+
+        // If the VM requests a proof, handle it
+        if status != StatusWord::InterruptedExecution || result.is_empty() {
+            return Err(VAppEngineError::InterruptedExecutionExpected);
+        }
+
+        // We expect this message from the VM
+        GetPageProofMessage::deserialize(&result)?;
+
+        // Calculate how many proof elements we can send in one message
+        let max_proof_elements = (255 - 2) / 32; // 2 bytes for n and t, 32 bytes per proof element
+        let t = std::cmp::min(proof.len(), max_proof_elements) as u8;
+
+        // Create the proof response
+        let response =
+            GetPageProofResponse::new(proof.len() as u8, t, proof[0..t as usize].to_vec())
+                .serialize();
+
+        let (status, result) = self
+            .transport
+            .exchange(&apdu_continue(response))
+            .await
+            .map_err(VAppEngineError::TransportError)?;
+
+        // If there are more proof elements to send and VM requests them
+        if t < proof.len() as u8 {
+            if status != StatusWord::InterruptedExecution || result.is_empty() {
+                return Err(VAppEngineError::InterruptedExecutionExpected);
+            }
+
+            GetPageProofContinuedMessage::deserialize(&result)?;
+
+            let mut offset = t as usize;
+
+            // Send remaining proof elements, potentially in multiple messages
+            while offset < proof.len() {
+                let remaining = proof.len() - offset;
+                let t = std::cmp::min(remaining, max_proof_elements) as u8;
+
+                let response = GetPageProofContinuedResponse::new(
+                    t,
+                    proof[offset..offset + t as usize].to_vec(),
+                )
+                .serialize();
+
+                let (new_status, new_result) = self
+                    .transport
+                    .exchange(&apdu_continue(response))
+                    .await
+                    .map_err(VAppEngineError::TransportError)?;
+
+                offset += t as usize;
+
+                // If we've sent all proof elements, return the status and result
+                if offset >= proof.len() {
+                    return Ok((new_status, new_result));
+                }
+
+                // Otherwise, expect another GetPageProofContinuedMessage
+                if new_status != StatusWord::InterruptedExecution {
+                    return Err(VAppEngineError::InterruptedExecutionExpected);
+                }
+
+                if let Ok(GetPageProofContinuedMessage { command_code }) =
+                    GetPageProofContinuedMessage::deserialize(&new_result)
+                {
+                    if !matches!(command_code, ClientCommandCode::GetPageProofContinued) {
+                        return Err(VAppEngineError::ResponseError(
+                            "Unexpected command code during proof continuation",
+                        ));
+                    }
+                } else {
+                    return Err(VAppEngineError::ResponseError(
+                        "Failed to deserialize GetPageProofContinuedMessage",
+                    ));
+                }
+            }
+        }
+        Ok((status, result))
     }
 
     async fn process_commit_page(
@@ -361,15 +450,92 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             data,
         } = CommitPageContentMessage::deserialize(&tmp_result)?;
 
-        let update_proof = segment.store_page(msg.page_index, &data)?;
+        // Store page and get proof
+        let (proof, new_root) = segment.store_page(msg.page_index, &data)?;
 
-        // TODO: for now we ignore the update proof
+        // Convert HashOutput<32> to [u8; 32]
+        let proof: Vec<[u8; 32]> = proof.into_iter().map(|h| h.into()).collect();
 
-        Ok(self
+        // Calculate how many proof elements we can send in one message
+        let max_proof_elements = (255 - 2 - 32) / 32; // 2 bytes for n and t, 32 bytes for new_root, then 32 bytes for each proof element
+        let t = std::cmp::min(proof.len(), max_proof_elements) as u8;
+
+        // Create the proof response
+        let response = CommitPageProofResponse::new(
+            proof.len() as u8,
+            t,
+            new_root.into(),
+            proof[0..t as usize].to_vec(),
+        )
+        .serialize();
+
+        let (status, result) = self
             .transport
-            .exchange(&apdu_continue(vec![]))
+            .exchange(&apdu_continue(response))
             .await
-            .map_err(VAppEngineError::TransportError)?)
+            .map_err(VAppEngineError::TransportError)?;
+
+        // If there are more proof elements to send and VM requests them
+        if t < proof.len() as u8 && status == StatusWord::InterruptedExecution && !result.is_empty()
+        {
+            // CommitPageProofContinuedMessage have a different size
+            let max_proof_elements = (255 - 2) / 32; // 2 bytes for n and t, 32 bytes per proof element
+
+            let Ok(CommitPageProofContinuedMessage { command_code: _ }) =
+                CommitPageProofContinuedMessage::deserialize(&result)
+            else {
+                return Err(VAppEngineError::ResponseError(
+                    "Failed to deserialize CommitPageProofContinuedMessage",
+                ));
+            };
+            let mut offset = t as usize;
+
+            // Send remaining proof elements, potentially in multiple messages
+            while offset < proof.len() {
+                let remaining = proof.len() - offset;
+                let t = std::cmp::min(remaining, max_proof_elements) as u8;
+
+                let response = CommitPageProofContinuedResponse::new(
+                    t,
+                    proof[offset..offset + t as usize].to_vec(),
+                )
+                .serialize();
+
+                let (new_status, new_result) = self
+                    .transport
+                    .exchange(&apdu_continue(response))
+                    .await
+                    .map_err(VAppEngineError::TransportError)?;
+
+                offset += t as usize;
+
+                // If we've sent all proof elements, return the status and result
+                if offset >= proof.len() {
+                    return Ok((new_status, new_result));
+                }
+
+                // Otherwise, expect another CommitPageProofContinuedMessage
+                if new_status != StatusWord::InterruptedExecution {
+                    return Err(VAppEngineError::InterruptedExecutionExpected);
+                }
+
+                if let Ok(CommitPageProofContinuedMessage { command_code }) =
+                    CommitPageProofContinuedMessage::deserialize(&new_result)
+                {
+                    if !matches!(command_code, ClientCommandCode::CommitPageProofContinued) {
+                        return Err(VAppEngineError::ResponseError(
+                            "Unexpected command code during proof continuation",
+                        ));
+                    }
+                } else {
+                    return Err(VAppEngineError::ResponseError(
+                        "Failed to deserialize CommitPageProofContinuedMessage",
+                    ));
+                }
+            }
+        }
+
+        Ok((status, result))
     }
 
     // receive a buffer sent by the V-App via xsend; send it to the VappEngine
@@ -587,7 +753,6 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
                 ClientCommandCode::CommitPageContent
                 | ClientCommandCode::GetPageProof
                 | ClientCommandCode::GetPageProofContinued
-                | ClientCommandCode::CommitPageProof
                 | ClientCommandCode::CommitPageProofContinued => {
                     // not a top-level command, part of the handling of some other command
                     return Err(VAppEngineError::ResponseError("Unexpected command"));
@@ -830,6 +995,26 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VanadiumAppClient<E> {
     ) -> Result<(Self, [u8; 32]), Box<dyn std::error::Error + Send + Sync>> {
         // Create ELF file and manifest
         let elf_file = ElfFile::new(Path::new(&elf_path))?;
+
+        let stack_end = 0xd47a2000;
+        let stack_start = stack_end - 65536;
+
+        let code_merkle_root: [u8; 32] =
+            MemorySegment::new(elf_file.code_segment.start, &elf_file.code_segment.data)
+                .get_content_root()
+                .clone()
+                .into();
+        let data_merkle_root: [u8; 32] =
+            MemorySegment::new(elf_file.data_segment.start, &elf_file.data_segment.data)
+                .get_content_root()
+                .clone()
+                .into();
+        let stack_merkle_root: [u8; 32] =
+            MemorySegment::new(stack_start, &vec![0u8; (stack_end - stack_start) as usize])
+                .get_content_root()
+                .clone()
+                .into();
+
         let manifest = Manifest::new(
             0,
             "Test",
@@ -839,12 +1024,13 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VanadiumAppClient<E> {
             65536,
             elf_file.code_segment.start,
             elf_file.code_segment.end,
-            0xd47a2000 - 65536,
-            0xd47a2000,
+            code_merkle_root,
+            stack_start,
+            stack_end,
+            stack_merkle_root,
             elf_file.data_segment.start,
             elf_file.data_segment.end,
-            [0u8; 32],
-            0,
+            data_merkle_root,
         )?;
 
         let mut client = GenericVanadiumClient::new();
