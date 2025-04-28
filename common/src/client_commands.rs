@@ -410,15 +410,21 @@ impl Message for CommitPageContentMessage {
 /// Message sent by client in response to the VM's CommitPageContentMessage
 #[derive(Debug, Clone)]
 pub struct CommitPageProofResponse {
-    pub n: u8,                // number of element in the proof
-    pub t: u8,                // number of proof elements in this message
-    pub proof: Vec<[u8; 32]>, // hashes of the proof
+    pub n: u8, // number of element in the Merkle tree of proof (not counting new_root)
+    pub t: u8, // number of proof elements in this message
+    pub new_root: [u8; 32], // new root hash
+    pub proof: Vec<[u8; 32]>, // hashes of Merkle proof of the update proof
 }
 
 impl CommitPageProofResponse {
     #[inline]
-    pub fn new(n: u8, t: u8, proof: Vec<[u8; 32]>) -> Self {
-        CommitPageProofResponse { n, t, proof }
+    pub fn new(n: u8, t: u8, new_root: [u8; 32], proof: Vec<[u8; 32]>) -> Self {
+        CommitPageProofResponse {
+            n,
+            t,
+            new_root,
+            proof,
+        }
     }
 }
 
@@ -427,18 +433,26 @@ impl Message for CommitPageProofResponse {
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.n]);
         f(&[self.t]);
+        f(&self.new_root);
         for p in &self.proof {
             f(p);
         }
     }
 
     fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
-        if data.len() < 2 {
+        if data.len() < 2 + 32 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let n = data[0];
         let t = data[1];
-        let proof = data[2..]
+
+        let new_root = {
+            let mut arr = [0; 32];
+            arr.copy_from_slice(&data[2..34]);
+            arr
+        };
+
+        let proof = data[2 + 32..]
             .chunks_exact(32)
             .map(|chunk| {
                 let mut arr = [0; 32];
@@ -447,7 +461,12 @@ impl Message for CommitPageProofResponse {
             })
             .collect();
 
-        Ok(CommitPageProofResponse { n, t, proof })
+        Ok(CommitPageProofResponse {
+            n,
+            t,
+            new_root,
+            proof,
+        })
     }
 }
 
