@@ -32,7 +32,14 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let comm = Rc::new(RefCell::new(comm));
 
-    let mut code_mem = OutsourcedMemory::new(comm.clone(), 12, true, SectionKind::Code);
+    let mut code_mem = OutsourcedMemory::new(
+        comm.clone(),
+        12,
+        true,
+        SectionKind::Code,
+        manifest.n_code_pages(),
+        manifest.code_merkle_root.into(),
+    );
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
         manifest.code_end - manifest.code_start,
@@ -40,7 +47,14 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     )
     .unwrap();
 
-    let mut data_mem = OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Data);
+    let mut data_mem = OutsourcedMemory::new(
+        comm.clone(),
+        12,
+        false,
+        SectionKind::Data,
+        manifest.n_data_pages(),
+        manifest.data_merkle_root.into(),
+    );
     let data_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.data_start,
         manifest.data_end - manifest.data_start,
@@ -48,7 +62,14 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     )
     .unwrap();
 
-    let mut stack_mem = OutsourcedMemory::new(comm.clone(), 12, false, SectionKind::Stack);
+    let mut stack_mem = OutsourcedMemory::new(
+        comm.clone(),
+        12,
+        false,
+        SectionKind::Stack,
+        manifest.n_stack_pages(),
+        manifest.stack_merkle_root.into(),
+    );
     let stack_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.stack_start,
         manifest.stack_end - manifest.stack_start,
