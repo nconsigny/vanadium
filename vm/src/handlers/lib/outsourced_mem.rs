@@ -23,6 +23,7 @@ struct CachedPage {
     page_hash: HashOutput<32>, // Hash of the page data when loaded (before any changes)
     usage_counter: u32,        // For LRU tracking
     valid: bool,               // Indicates if the slot contains a valid page
+    modified: bool,            // Indicates if the page has been modified since it was loaded
 }
 
 impl Default for CachedPage {
@@ -35,6 +36,7 @@ impl Default for CachedPage {
             page_hash: [0; 32].into(),
             usage_counter: 0,
             valid: false,
+            modified: false,
         }
     }
 }
@@ -406,9 +408,28 @@ impl<'c> OutsourcedMemory<'c> {
     }
 }
 
+pub struct CachedPageRef<'a> {
+    cached_page: &'a mut CachedPage,
+}
+
+impl<'a> core::ops::Deref for CachedPageRef<'a> {
+    type Target = Page;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cached_page.page
+    }
+}
+
+impl<'a> core::ops::DerefMut for CachedPageRef<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.cached_page.modified = true;
+        &mut self.cached_page.page
+    }
+}
+
 impl<'c> PagedMemory for OutsourcedMemory<'c> {
     type PageRef<'a>
-        = &'a mut Page
+        = CachedPageRef<'a>
     where
         Self: 'a;
 
@@ -422,8 +443,10 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
                 // Update usage_counter for LRU
                 self.cached_pages[i].usage_counter = self.usage_counter;
 
-                // Return mutable reference to the page
-                return Ok(&mut self.cached_pages[i].page);
+                // Return mutable reference to the page with tracking
+                return Ok(CachedPageRef {
+                    cached_page: &mut self.cached_pages[i],
+                });
             }
         }
 
@@ -448,8 +471,8 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
                 }
             }
 
-            // Commit the page if this memory is not readonly
-            if !self.is_readonly {
+            // Commit the page if this memory is not readonly and the page was modified
+            if !self.is_readonly && self.cached_pages[evict_index].modified {
                 self.commit_page_at(evict_index)?;
             }
 
@@ -468,9 +491,12 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
             page_hash,
             usage_counter: self.usage_counter,
             valid: true,
+            modified: false,
         };
 
-        // Return mutable reference to the page
-        Ok(&mut self.cached_pages[slot].page)
+        // Return mutable reference to the page with tracking
+        Ok(CachedPageRef {
+            cached_page: &mut self.cached_pages[slot],
+        })
     }
 }
