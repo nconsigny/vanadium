@@ -96,14 +96,14 @@ impl Manifest {
 
     #[inline]
     pub fn n_code_pages(&self) -> u32 {
-        (self.code_end - self.code_start + (PAGE_SIZE as u32) - 1) / (PAGE_SIZE as u32)
+        (self.code_end - self.code_start).div_ceil(PAGE_SIZE as u32)
     }
     #[inline]
     pub fn n_data_pages(&self) -> u32 {
-        (self.data_end - self.data_start + (PAGE_SIZE as u32) - 1) / (PAGE_SIZE as u32)
+        (self.data_end - self.data_start).div_ceil(PAGE_SIZE as u32)
     }
     #[inline]
     pub fn n_stack_pages(&self) -> u32 {
-        (self.stack_end - self.stack_start + (PAGE_SIZE as u32) - 1) / (PAGE_SIZE as u32)
+        (self.stack_end - self.stack_start).div_ceil(PAGE_SIZE as u32)
     }
 }
