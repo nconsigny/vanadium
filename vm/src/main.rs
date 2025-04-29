@@ -18,6 +18,7 @@
 #![no_std]
 #![no_main]
 
+mod aes;
 mod app_ui;
 mod handlers;
 
