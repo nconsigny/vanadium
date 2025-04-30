@@ -24,6 +24,9 @@ mod handlers;
 
 mod settings;
 
+#[cfg(feature = "run_tests")]
+mod app_tests;
+
 use alloc::{string::ToString, vec, vec::Vec};
 use app_ui::menu::ui_menu_main;
 use handlers::{
@@ -157,6 +160,7 @@ impl TryFrom<ApduHeader> for Instruction {
     }
 }
 
+#[cfg(not(feature = "run_tests"))]
 #[no_mangle]
 extern "C" fn sample_main() {
     // Create the communication manager, and configure it to accept only APDU from the 0xe0 class.
@@ -203,6 +207,13 @@ extern "C" fn sample_main() {
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         home.show_and_return();
     }
+}
+
+#[cfg(feature = "run_tests")]
+#[no_mangle]
+extern "C" fn sample_main() {
+    app_tests::run_tests();
+    ledger_device_sdk::exit_app(0x00);
 }
 
 fn handle_apdu(comm: &mut Comm, ins: Instruction) -> Result<Vec<u8>, AppSW> {
