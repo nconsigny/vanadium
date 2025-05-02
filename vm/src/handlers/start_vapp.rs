@@ -9,6 +9,7 @@ use common::manifest::Manifest;
 use common::vm::{Cpu, MemorySegment};
 
 use super::lib::outsourced_mem::OutsourcedMemory;
+use crate::aes::{AesCtr, AesKey};
 use crate::handlers::lib::ecall::{CommEcallError, CommEcallHandler};
 use crate::{println, AppSW};
 
@@ -32,6 +33,10 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let comm = Rc::new(RefCell::new(comm));
 
+    let aes_ctr = Rc::new(RefCell::new(AesCtr::new(
+        AesKey::new_random().map_err(|_| AppSW::VMRuntimeError)?,
+    )));
+
     let mut code_mem = OutsourcedMemory::new(
         comm.clone(),
         12,
@@ -39,6 +44,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         SectionKind::Code,
         manifest.n_code_pages(),
         manifest.code_merkle_root.into(),
+        aes_ctr.clone(),
     );
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
@@ -54,6 +60,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         SectionKind::Data,
         manifest.n_data_pages(),
         manifest.data_merkle_root.into(),
+        aes_ctr.clone(),
     );
     let data_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.data_start,
@@ -69,6 +76,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         SectionKind::Stack,
         manifest.n_stack_pages(),
         manifest.stack_merkle_root.into(),
+        aes_ctr.clone(),
     );
     let stack_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.stack_start,
