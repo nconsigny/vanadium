@@ -52,6 +52,21 @@ impl Hasher<32> for Sha256Hasher {
     }
 }
 
+// Serializes a page in the format expected for the content of the leaf in the MerkleAccumulator, as follows:
+// - Clear-text pages are serialized as a 0 byte, followed by 12 0 bytes, followed by PAGE_SIZE bytes (page plaintext).
+// - Encrypted pages are serialized as a 1 byte, followed by 12 bytes for the nonce, followed by PAGE_SIZE bytes (page ciphertext).
+fn get_serialized_page(data: &[u8], nonce: Option<&[u8; 12]>) -> Vec<u8> {
+    let mut serialized_page = Vec::<u8>::with_capacity(1 + 12 + PAGE_SIZE);
+    if let Some(nonce) = nonce {
+        serialized_page.push(1); // is_encrypted
+        serialized_page.extend_from_slice(nonce);
+    } else {
+        serialized_page.extend_from_slice(&[0; 13]); // 1 byte for is_encrypted, 12 bytes for nonce
+    }
+    serialized_page.extend_from_slice(data);
+    serialized_page
+}
+
 #[derive(Debug)]
 enum MemorySegmentError {
     PageNotFound,
@@ -129,7 +144,10 @@ impl MemorySegment {
             page_content.extend_from_slice(&vec![0; (page_end_addr - content_end_addr) as usize]);
 
             current_addr = page_end_addr;
-            pages.push(page_content);
+
+            let serialized_page = get_serialized_page(&page_content, None);
+
+            pages.push(serialized_page);
         }
 
         Self {
@@ -159,7 +177,7 @@ impl MemorySegment {
         page_index: u32,
         content: &[u8],
     ) -> Result<(Vec<HashOutput<32>>, HashOutput<32>), MemorySegmentError> {
-        if content.len() != PAGE_SIZE {
+        if content.len() != 1 + 12 + PAGE_SIZE {
             return Err(MemorySegmentError::InvalidPageSize);
         }
         let proof = self.content.update(page_index as usize, content.to_vec())?;
@@ -325,18 +343,26 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             SectionKind::Stack => &self.stack_seg,
         };
 
-        // Get the page content and its proof
-        let (mut data, proof) = segment.get_page(page_index)?;
+        // Get the serialized page content and its proof
+        let (mut serialized_page, proof) = segment.get_page(page_index)?;
+
+        assert!(serialized_page.len() == 1 + 12 + PAGE_SIZE);
+
+        // split the first 13 bytes from the actual page data:
+        let (header, data) = serialized_page.split_at_mut(13);
+
+        let is_encrypted = header[0] != 0;
+        let nonce: [u8; 12] = header[1..13].try_into().unwrap();
 
         // Convert HashOutput<32> to [u8; 32]
         let proof: Vec<[u8; 32]> = proof.into_iter().map(|h| h.0).collect();
 
-        let p1 = data.pop().unwrap();
+        let p1 = data[PAGE_SIZE - 1];
 
         // Return the content of the page (the last byte is in p1)
         let (status, result) = self
             .transport
-            .exchange(&apdu_continue_with_p1(data, p1))
+            .exchange(&apdu_continue_with_p1(data[0..PAGE_SIZE - 1].to_vec(), p1))
             .await
             .map_err(VAppEngineError::TransportError)?;
 
@@ -353,9 +379,14 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         let t = std::cmp::min(proof.len(), max_proof_elements) as u8;
 
         // Create the proof response
-        let response =
-            GetPageProofResponse::new(proof.len() as u8, t, proof[0..t as usize].to_vec())
-                .serialize();
+        let response = GetPageProofResponse::new(
+            is_encrypted,
+            nonce,
+            proof.len() as u8,
+            t,
+            proof[0..t as usize].to_vec(),
+        )
+        .serialize();
 
         let (status, result) = self
             .transport
@@ -450,8 +481,16 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             data,
         } = CommitPageContentMessage::deserialize(&tmp_result)?;
 
+        assert!(data.len() == PAGE_SIZE);
+        assert!(msg.is_encrypted == true); // the VM should always commit to encrypted pages
+
+        let mut serialized_page = Vec::<u8>::with_capacity(1 + 12 + PAGE_SIZE);
+        serialized_page.push(msg.is_encrypted as u8);
+        serialized_page.extend_from_slice(&msg.nonce);
+        serialized_page.extend_from_slice(&data);
+
         // Store page and get proof
-        let (proof, new_root) = segment.store_page(msg.page_index, &data)?;
+        let (proof, new_root) = segment.store_page(msg.page_index, &serialized_page)?;
 
         // Convert HashOutput<32> to [u8; 32]
         let proof: Vec<[u8; 32]> = proof.into_iter().map(|h| h.into()).collect();
@@ -866,7 +905,13 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> GenericVanadiumClient<E> {
 
         // Start the VAppEngine in a task
         let app_hmac_clone = *app_hmac;
-        let vapp_engine_handle = tokio::spawn(async move { vapp_engine.run(app_hmac_clone).await });
+        let vapp_engine_handle = tokio::spawn(async move {
+            let res = vapp_engine.run(app_hmac_clone).await;
+            if let Err(e) = &res {
+                println!("VAppEngine error: {:?}", e);
+            }
+            res
+        });
 
         // Store the senders and receivers
         self.client_to_engine_sender = Some(client_to_engine_sender);

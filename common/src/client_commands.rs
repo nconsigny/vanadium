@@ -195,8 +195,11 @@ impl Message for GetPageProofMessage {
 }
 
 /// Message sent by client in response to the VM's GetPageProofMessage
+/// It contains the page's metadata, and the merkle proof of the page (or part of it)
 #[derive(Debug, Clone)]
 pub struct GetPageProofResponse {
+    pub is_encrypted: bool,   // whether the page is encrypted
+    pub nonce: [u8; 12],      // nonce of the page encryption (all zeros if not encrypted)
     pub n: u8,                // number of element in the proof
     pub t: u8,                // number of proof elements in this message
     pub proof: Vec<[u8; 32]>, // hashes of the proof
@@ -204,8 +207,14 @@ pub struct GetPageProofResponse {
 
 impl GetPageProofResponse {
     #[inline]
-    pub fn new(n: u8, t: u8, proof: Vec<[u8; 32]>) -> Self {
-        GetPageProofResponse { n, t, proof }
+    pub fn new(is_encrypted: bool, nonce: [u8; 12], n: u8, t: u8, proof: Vec<[u8; 32]>) -> Self {
+        GetPageProofResponse {
+            is_encrypted,
+            nonce,
+            n,
+            t,
+            proof,
+        }
     }
 }
 
@@ -214,18 +223,28 @@ impl Message for GetPageProofResponse {
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.n]);
         f(&[self.t]);
+        f(&[self.is_encrypted as u8]);
+        f(&self.nonce);
         for p in &self.proof {
             f(p);
         }
     }
 
     fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
-        if data.len() < 2 {
+        if data.len() < 1 + 1 + 1 + 12 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let n = data[0];
         let t = data[1];
-        let proof = data[2..]
+        let is_encrypted = data[2] == 1;
+        let nonce = if is_encrypted {
+            let mut arr = [0; 12];
+            arr.copy_from_slice(&data[3..15]);
+            arr
+        } else {
+            [0; 12]
+        };
+        let proof = data[1 + 1 + 1 + 12..]
             .chunks_exact(32)
             .map(|chunk| {
                 let mut arr = [0; 32];
@@ -234,7 +253,13 @@ impl Message for GetPageProofResponse {
             })
             .collect();
 
-        Ok(GetPageProofResponse { n, t, proof })
+        Ok(GetPageProofResponse {
+            is_encrypted,
+            nonce,
+            n,
+            t,
+            proof,
+        })
     }
 }
 
@@ -320,15 +345,24 @@ pub struct CommitPageMessage {
     pub command_code: ClientCommandCode,
     pub section_kind: SectionKind,
     pub page_index: u32,
+    pub is_encrypted: bool, // whether the page is encrypted
+    pub nonce: [u8; 12],    // nonce of the page encryption (all zeros if not encrypted)
 }
 
 impl CommitPageMessage {
     #[inline]
-    pub fn new(section_kind: SectionKind, page_index: u32) -> Self {
+    pub fn new(
+        section_kind: SectionKind,
+        page_index: u32,
+        is_encrypted: bool,
+        nonce: [u8; 12],
+    ) -> Self {
         CommitPageMessage {
             command_code: ClientCommandCode::CommitPage,
             section_kind,
             page_index,
+            is_encrypted,
+            nonce,
         }
     }
 }
@@ -339,10 +373,16 @@ impl Message for CommitPageMessage {
         f(&[self.command_code as u8]);
         f(&[self.section_kind as u8]);
         f(&self.page_index.to_be_bytes());
+        if self.is_encrypted {
+            f(&[1]);
+            f(&self.nonce);
+        } else {
+            f(&[0; 13]); // 0 byte, followed by 12 zero bytes for the (unused) nonce
+        }
     }
 
     fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
-        if data.len() != 6 {
+        if data.len() != 1 + 1 + 4 + 1 + 12 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let command_code = ClientCommandCode::try_from(data[0])
@@ -355,10 +395,21 @@ impl Message for CommitPageMessage {
             .map_err(|_| MessageDeserializationError::InvalidSectionKind)?;
         let page_index = u32::from_be_bytes([data[2], data[3], data[4], data[5]]);
 
+        let is_encrypted = data[6] == 1;
+        let nonce = if is_encrypted {
+            let mut arr = [0; 12];
+            arr.copy_from_slice(&data[7..19]);
+            arr
+        } else {
+            [0; 12]
+        };
+
         Ok(CommitPageMessage {
             command_code,
             section_kind,
             page_index,
+            is_encrypted,
+            nonce,
         })
     }
 }
