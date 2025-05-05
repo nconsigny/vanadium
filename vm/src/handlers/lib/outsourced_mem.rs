@@ -120,15 +120,18 @@ where
 
 struct Sha256Hasher(ledger_device_sdk::hash::sha2::Sha2_256);
 impl Hasher<32> for Sha256Hasher {
+    #[inline]
     fn new() -> Self {
         Self(ledger_device_sdk::hash::sha2::Sha2_256::new())
     }
 
+    #[inline]
     fn update(&mut self, data: &[u8]) -> &mut Self {
         self.0.update(data).unwrap();
         self
     }
 
+    #[inline]
     fn digest(mut self, out: &mut [u8; 32]) {
         self.0.finalize(out).unwrap();
     }
@@ -164,7 +167,7 @@ impl<'c> core::fmt::Debug for OutsourcedMemory<'c> {
 #[inline]
 /// Computes the hash of a page as a MerkleAccumulator element.
 /// Note that this assumes that a 0 byte is prepended to the hash of the serialized content of the page.
-/// Therefore, it would be incorrect if an accumulatore different than the MerkleAccumulator is used.
+/// Therefore, it would be incorrect if an accumulator different than the MerkleAccumulator is used.
 fn get_page_hash(data: &[u8], nonce: Option<&[u8; 12]>) -> HashOutput<32> {
     let mut hasher = Sha256Hasher::new();
     hasher.update(&[0x0u8]); // leaves in the Merkle tree have the 0x00 prefix
