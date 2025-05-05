@@ -16,6 +16,7 @@ ledger_secure_sdk_sys = "1.7.0"
 zeroize = "1.8.1"
 ledger_device_sdk = { version = "1.21.0", features = ["debug"] }
 spin = "0.9.8"
+hex-literal = "0.4.1"
 
 [profile.release]
 opt-level = 3
@@ -31,6 +32,8 @@ metrics = [] # Enable collection of performance metrics during execution
 trace = []              # prints each instruction to the console using semihosting
 trace_full = ["trace"]  # also prints the state of the CPU registers
 trace_colors = []       # if trace or trace_full are enabled, prints them with colors to the console
+
+run_tests = []  # Run the test suite instead of the app
 
 [package.metadata.ledger]
 curve = ["secp256k1"]

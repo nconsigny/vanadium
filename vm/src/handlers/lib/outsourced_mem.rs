@@ -14,6 +14,7 @@ use common::client_commands::{
 };
 use common::constants::PAGE_SIZE;
 
+use crate::aes::AesCtr;
 use crate::{AppSW, Instruction};
 
 #[derive(Clone, Debug)]
@@ -119,15 +120,18 @@ where
 
 struct Sha256Hasher(ledger_device_sdk::hash::sha2::Sha2_256);
 impl Hasher<32> for Sha256Hasher {
+    #[inline]
     fn new() -> Self {
         Self(ledger_device_sdk::hash::sha2::Sha2_256::new())
     }
 
+    #[inline]
     fn update(&mut self, data: &[u8]) -> &mut Self {
         self.0.update(data).unwrap();
         self
     }
 
+    #[inline]
     fn digest(mut self, out: &mut [u8; 32]) {
         self.0.finalize(out).unwrap();
     }
@@ -138,6 +142,7 @@ pub struct OutsourcedMemory<'c> {
     cached_pages: Vec<CachedPage>,
     n_pages: u32,
     merkle_root: HashOutput<32>,
+    aes_ctr: Rc<RefCell<AesCtr>>,
     is_readonly: bool,
     section_kind: SectionKind,
     usage_counter: u32,
@@ -159,6 +164,24 @@ impl<'c> core::fmt::Debug for OutsourcedMemory<'c> {
     }
 }
 
+#[inline]
+/// Computes the hash of a page as a MerkleAccumulator element.
+/// Note that this assumes that a 0 byte is prepended to the hash of the serialized content of the page.
+/// Therefore, it would be incorrect if an accumulator different than the MerkleAccumulator is used.
+fn get_page_hash(data: &[u8], nonce: Option<&[u8; 12]>) -> HashOutput<32> {
+    let mut hasher = Sha256Hasher::new();
+    hasher.update(&[0x0u8]); // leaves in the Merkle tree have the 0x00 prefix
+    match nonce {
+        Some(nonce) => {
+            hasher.update(&[0x1u8]);
+            hasher.update(nonce)
+        }
+        None => hasher.update(&[0x0u8; 13]),
+    };
+    hasher.update(data);
+    hasher.finalize().into()
+}
+
 impl<'c> OutsourcedMemory<'c> {
     pub fn new(
         comm: Rc<RefCell<&'c mut io::Comm>>,
@@ -167,12 +190,14 @@ impl<'c> OutsourcedMemory<'c> {
         section_kind: SectionKind,
         n_pages: u32,
         merkle_root: HashOutput<32>,
+        aes_ctr: Rc<RefCell<AesCtr>>,
     ) -> Self {
         Self {
             comm,
             cached_pages: vec![CachedPage::default(); max_pages_in_cache],
             n_pages,
             merkle_root,
+            aes_ctr,
             is_readonly,
             section_kind,
             usage_counter: 0,
@@ -194,8 +219,18 @@ impl<'c> OutsourcedMemory<'c> {
             self.n_page_commits += 1;
         }
 
+        let mut aes_ctr = self.aes_ctr.borrow_mut();
+
+        let (nonce, payload) = aes_ctr
+            .encrypt(&cached_page.page.data)
+            .map_err(|_| common::vm::MemoryError::GenericError("AES encryption failed"))?;
+        let new_page_hash = get_page_hash(&payload, Some(&nonce));
+
+        assert!(payload.len() == PAGE_SIZE);
+
         let mut comm = self.comm.borrow_mut();
-        CommitPageMessage::new(self.section_kind, cached_page.idx).serialize_to_comm(&mut comm);
+        CommitPageMessage::new(self.section_kind, cached_page.idx, true, nonce)
+            .serialize_to_comm(&mut comm);
 
         let Instruction::Continue(p1, p2) = io_exchange(&mut comm, AppSW::InterruptedExecution)
         else {
@@ -208,7 +243,7 @@ impl<'c> OutsourcedMemory<'c> {
         }
 
         // Second message: communicate the updated page content
-        CommitPageContentMessage::new(cached_page.page.data.to_vec()).serialize_to_comm(&mut comm);
+        CommitPageContentMessage::new(payload).serialize_to_comm(&mut comm);
 
         let Instruction::Continue(p1, p2) = io_exchange(&mut comm, AppSW::InterruptedExecution)
         else {
@@ -269,10 +304,6 @@ impl<'c> OutsourcedMemory<'c> {
 
         // Create update proof (InclusionProof, new_root)
         let update_proof = (proof_elements, new_root.clone());
-
-        // Calculate hashes for verification
-        let new_page_hash =
-            MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_element(&cached_page.page.data);
 
         // Verify the update proof
         if !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
@@ -351,6 +382,12 @@ impl<'c> OutsourcedMemory<'c> {
         let proof_response = GetPageProofResponse::deserialize(&proof_data)
             .map_err(|_| common::vm::MemoryError::GenericError("Invalid proof data"))?;
 
+        let page_hash = if proof_response.is_encrypted {
+            get_page_hash(&data, Some(&proof_response.nonce))
+        } else {
+            get_page_hash(&data, None)
+        };
+
         let n = proof_response.n; // Total number of elements in the proof
         let mut proof_elements = proof_response.proof;
 
@@ -389,9 +426,6 @@ impl<'c> OutsourcedMemory<'c> {
         let proof_elements: Vec<HashOutput<32>> =
             proof_elements.into_iter().map(Into::into).collect();
 
-        let page = Page { data };
-        let page_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_element(&page.data);
-
         if !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_inclusion_proof(
             &self.merkle_root,
             &proof_elements,
@@ -404,7 +438,24 @@ impl<'c> OutsourcedMemory<'c> {
             ));
         }
 
-        Ok((Page { data }, page_hash))
+        if proof_response.is_encrypted {
+            // Decrypt the page data
+            let aes_ctr = self.aes_ctr.borrow();
+            let decrypted_data = aes_ctr
+                .decrypt(&proof_response.nonce, &data)
+                .map_err(|_| common::vm::MemoryError::GenericError("AES decryption failed"))?;
+            assert!(decrypted_data.len() == PAGE_SIZE);
+
+            // TODO: we should modify the decryption so it happens in-place, and we would avoid reallocations
+            Ok((
+                Page {
+                    data: decrypted_data.try_into().unwrap(),
+                },
+                page_hash,
+            ))
+        } else {
+            Ok((Page { data }, page_hash))
+        }
     }
 }
 

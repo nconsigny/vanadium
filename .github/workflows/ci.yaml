@@ -160,6 +160,55 @@ jobs:
       upload_app_binaries_artifact: "vanadium_binaries"
       builder: ledger-app-builder
 
+  # build a custom binary for the Vanadium VM app only for the tests
+  build_vanadium_app_for_tests:
+    name: Build application using the reusable workflow
+    uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_build.yml@v1
+    with:
+      upload_app_binaries_artifact: "vanadium_binaries_for_tests"
+      builder: ledger-app-builder
+      cargo_ledger_build_args: "--features run_tests"
+
+  # VM app tests in speculos
+  
+  run_vanadium_app_speculos_tests:
+    name: Vanadium speculos tests ('run_tests' feature)
+
+    strategy:
+      matrix:
+        include:
+          - model: flex  # not much reasons to run this test on all devices
+
+    runs-on: ubuntu-latest
+    needs: [build_vanadium_app_for_tests]
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Install Speculos
+        run: |
+          pip install speculos
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && \
+          sudo apt-get install -y libudev-dev pkg-config && \
+          sudo apt-get install -y qemu-user-static libvncserver-dev
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Download Vanadium binaries for tests
+        uses: actions/download-artifact@v4
+        with:
+          name: vanadium_binaries_for_tests
+          path: ./vanadium_binaries_for_tests
+
+      - name: Run tests
+        run: |
+          speculos --display headless vanadium_binaries_for_tests/${{ matrix.model }}/release/app-vanadium
+
   ### Risc-V tests
 
   # build test V-App
