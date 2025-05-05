@@ -7,7 +7,7 @@
 //! produced by the prover.
 
 use alloc::{vec, vec::Vec};
-use core::{error::Error, fmt, marker::PhantomData};
+use core::{error::Error, fmt, marker::PhantomData, mem::MaybeUninit};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug)]
@@ -37,8 +37,17 @@ pub trait Hasher<const OUTPUT_SIZE: usize>: Sized {
     /// * `data` - A slice of bytes to be hashed.
     fn update(&mut self, data: &[u8]) -> &mut Self;
 
-    /// Finalizes the hashing process and returns the output as an array of bytes.
+    /// Finalizes the hashing process and writes the output to an array of bytes.
     fn digest(self, out: &mut [u8; OUTPUT_SIZE]);
+
+    /// Finalizes the hashing process and returns the output as an array of bytes.
+    fn finalize(self) -> [u8; OUTPUT_SIZE] {
+        let mut out = MaybeUninit::<[u8; OUTPUT_SIZE]>::uninit();
+        // SAFETY: the call to `digest` will fully initialize the output array.
+        let out_ref = unsafe { &mut *out.as_mut_ptr() };
+        self.digest(out_ref);
+        unsafe { out.assume_init() }
+    }
 
     /// Convenience method to hash data in a single step.
     ///
