@@ -1,6 +1,6 @@
 use serde::{self, Deserialize, Serialize};
 
-use crate::constants::PAGE_SIZE;
+use crate::constants::{page_start, PAGE_SIZE};
 
 const APP_NAME_LEN: usize = 32; // Define a suitable length
 const APP_VERSION_LEN: usize = 32; // Define a suitable length
@@ -95,15 +95,22 @@ impl Manifest {
     }
 
     #[inline]
-    pub fn n_code_pages(&self) -> u32 {
-        (self.code_end - self.code_start).div_ceil(PAGE_SIZE as u32)
+    fn n_pages(start: u32, end: u32) -> u32 {
+        1 + (page_start(end - 1) - page_start(start)) / PAGE_SIZE as u32
     }
+
+    #[inline]
+    pub fn n_code_pages(&self) -> u32 {
+        Self::n_pages(self.code_start, self.code_end)
+    }
+
     #[inline]
     pub fn n_data_pages(&self) -> u32 {
-        (self.data_end - self.data_start).div_ceil(PAGE_SIZE as u32)
+        Self::n_pages(self.data_start, self.data_end)
     }
+
     #[inline]
     pub fn n_stack_pages(&self) -> u32 {
-        (self.stack_end - self.stack_start).div_ceil(PAGE_SIZE as u32)
+        Self::n_pages(self.stack_start, self.stack_end)
     }
 }
