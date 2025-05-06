@@ -23,6 +23,10 @@
       "name": "₿ vlib-bitcoin-hashes"
     },
     {
+      "path": "libs/base58",
+      "name": "₿ vlib-base58"
+    },
+    {
       "path": "libs/secp256k1",
       "name": "₿ vlib-secp256k1"
     },
