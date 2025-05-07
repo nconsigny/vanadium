@@ -26,6 +26,13 @@ impl App {
             let req_msg = crate::comm::receive_message().expect("Communication error");
             let resp_msg = (self.handler)(self, &req_msg);
             crate::comm::send_message(&resp_msg);
+
+            // TODO: this is not ideal, as:
+            // - we should only do this if something was indeed shown during the execution of the command
+            // - we shouldn't do it immediately if a confirmation window or notice is being shown after a command
+            //   (as we would only go to the dashboard after a timeout).
+            // This is temporary until a more proper (stateful) framework is implemented.
+            crate::ux::ux_idle();
         }
     }
 
