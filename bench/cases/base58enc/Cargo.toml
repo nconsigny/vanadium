@@ -1,0 +1,10 @@
+[package]
+name = "vndbench-base58enc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }
+sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk"}
+
+[workspace]

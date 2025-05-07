@@ -1,0 +1,64 @@
+use sdk::vanadium_client::{VAppClient, VAppExecutionError};
+
+#[derive(Debug)]
+pub enum BenchClientError {
+    VAppExecutionError(VAppExecutionError),
+    VAppDidNotExit,
+    GenericError(&'static str),
+}
+
+impl From<VAppExecutionError> for BenchClientError {
+    fn from(e: VAppExecutionError) -> Self {
+        Self::VAppExecutionError(e)
+    }
+}
+
+impl From<&'static str> for BenchClientError {
+    fn from(e: &'static str) -> Self {
+        Self::GenericError(e)
+    }
+}
+
+impl std::fmt::Display for BenchClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BenchClientError::VAppExecutionError(e) => write!(f, "VAppExecutionError: {}", e),
+            BenchClientError::VAppDidNotExit => write!(f, "VAppDidNotExit"),
+            BenchClientError::GenericError(e) => write!(f, "GenericError: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for BenchClientError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            BenchClientError::VAppExecutionError(e) => Some(e),
+            BenchClientError::GenericError(_) => None,
+            BenchClientError::VAppDidNotExit => None,
+        }
+    }
+}
+
+pub struct BenchClient {
+    app_client: Box<dyn VAppClient + Send + Sync>,
+}
+
+impl BenchClient {
+    pub fn new(app_client: Box<dyn VAppClient + Send + Sync>) -> Self {
+        Self { app_client }
+    }
+
+    pub async fn run_and_exit(&mut self, repetitions: u64) -> Result<(), BenchClientError> {
+        match self
+            .app_client
+            .send_message(&repetitions.to_be_bytes())
+            .await
+        {
+            Ok(_) => Err(BenchClientError::VAppDidNotExit),
+            Err(e) => match e {
+                VAppExecutionError::AppExited(_) => Ok(()),
+                _ => Err(BenchClientError::VAppExecutionError(e)),
+            },
+        }
+    }
+}

@@ -69,7 +69,11 @@
     {
       "path": "apps/sadik/common",
       "name": "vnd-sadik-common"
-    }
+    },
+    {
+      "path": "bench",
+      "name": "📊 benchmarks"
+    },
     {
       "path": "tools",
       "name": "🛠 tools"
