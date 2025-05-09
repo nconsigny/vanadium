@@ -110,8 +110,6 @@ impl std::error::Error for MemorySegmentError {
 
 // Represents a memory segment stored by the client, using a MerkleAccumulator to provide proofs of integrity.
 struct MemorySegment {
-    start: u32,
-    end: u32,
     content: MerkleAccumulator<Sha256Hasher, Vec<u8>, 32>,
 }
 
@@ -151,8 +149,6 @@ impl MemorySegment {
         }
 
         Self {
-            start,
-            end,
             content: MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::new(pages),
         }
     }
