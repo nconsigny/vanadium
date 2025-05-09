@@ -169,6 +169,28 @@ jobs:
       builder: ledger-app-builder
       cargo_ledger_build_args: "--features run_tests"
 
+  # Build benchmark testcases
+  # Even if we don't run them in the CI, it's good to ensure they can at least compile
+  build_benchmark_test_cases:
+    name: benchmark test cases, Build on Risc-V target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: riscv32imc-unknown-none-elf
+          components: rustfmt, clippy
+          profile: minimal
+      - name: Clone
+        uses: actions/checkout@v4
+      - name: Build app
+        working-directory: bench
+        run: |
+          for case_dir in ./cases/*; do
+            (cd "$case_dir" && cargo +nightly build --release --target=riscv32imc-unknown-none-elf) || exit 1
+          done
+
   # VM app tests in speculos
   
   run_vanadium_app_speculos_tests:
