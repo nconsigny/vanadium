@@ -39,6 +39,11 @@ impl std::error::Error for BenchClientError {
     }
 }
 
+// This is the client for all the benchmark test V-Apps.
+// Each V-App expects a single message containing a big-endiang u64 number
+// which is the number of repetitions to run.
+// The V-App will perform the computation for the given number of repetitions,
+// then immediately exit.
 pub struct BenchClient {
     app_client: Box<dyn VAppClient + Send + Sync>,
 }
