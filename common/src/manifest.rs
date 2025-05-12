@@ -113,4 +113,14 @@ impl Manifest {
     pub fn n_stack_pages(&self) -> u32 {
         Self::n_pages(self.stack_start, self.stack_end)
     }
+
+    #[cfg(feature = "serde_json")]
+    pub fn to_json(&self) -> Result<alloc::string::String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    #[cfg(feature = "serde_json")]
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
 }

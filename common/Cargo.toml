@@ -12,6 +12,7 @@ vanadium_macros = { path = "../macros" }
 
 # Optional dependencies
 ledger_device_sdk = { version = "1.15.4", optional = true }
+serde_json = { version = "1.0.140", default-features = false, features = ["alloc"], optional = true }
 
 
 [dev-dependencies]
