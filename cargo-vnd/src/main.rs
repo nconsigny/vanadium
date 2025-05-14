@@ -10,7 +10,7 @@ It can be called with no arguments if called from the folder containing the Carg
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use client_sdk::elf::{ElfFile, get_app_metadata};
-use client_sdk::vanadium_client::MemorySegment;
+use client_sdk::memory::MemorySegment;
 use common::constants;
 use common::manifest::Manifest;
 use std::path::PathBuf;

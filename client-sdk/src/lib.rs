@@ -1,5 +1,6 @@
 mod apdu;
 pub mod elf;
+pub mod memory;
 
 #[cfg(feature = "transport")]
 pub mod comm;
