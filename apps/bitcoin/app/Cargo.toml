@@ -3,6 +3,10 @@ name = "vnd-bitcoin"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.vapp]
+name = "Bitcoin"
+stack_size = 65536
+
 [dependencies]
 bitcoin = { package = "vlib-bitcoin", path = "../../../libs/bitcoin", features = ["serde"] }
 common = { package = "vnd-bitcoin-common", path = "../common"}

@@ -3,9 +3,17 @@ name = "vanadium-client-sdk"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["cargo_toml"]
+
 [dependencies]
+
+# If enabled as a feature, the client will load "unpackaged" V-Apps by looking Cargo.toml
+# to reconstruct the manifest. Otherwise, only packaged V-Apps will be loaded.
+cargo_toml = { version = "0.22.1", optional = true }
+
 async-trait = "0.1.81"
-common = { path = "../common" }
+common = { path = "../common", features = ["serde_json"] }
 goblin = "0.8.2"
 hex = "0.4.3"
 hidapi = "2.6.3"

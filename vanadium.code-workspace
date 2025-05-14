@@ -75,6 +75,10 @@
       "name": "📊 benchmarks"
     },
     {
+      "path": "cargo-vnd",
+      "name": "🦀 cargo-vnd"
+    },
+    {
       "path": "tools",
       "name": "🛠 tools"
     }
