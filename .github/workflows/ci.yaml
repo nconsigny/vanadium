@@ -245,17 +245,26 @@ jobs:
           target: riscv32imc-unknown-none-elf
           components: rustfmt, clippy
           profile: minimal
+      - name: Install riscv64-unknown-elf-objcopy
+        run: |
+          sudo apt-get update && \
+          sudo apt-get install -y binutils-riscv64-unknown-elf  # needed for cargo-vnd
       - name: Clone
         uses: actions/checkout@v4
-      - name: Build app
+      - name: Install cargo-vnd tool
+        run: |
+          cargo install --path ./cargo-vnd
+      - name: Build and package app
         working-directory: apps/test/app
         run: |
+          set -e  # fail on any error
           cargo +nightly build --release --target riscv32imc-unknown-none-elf
+          cargo vnd package
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: vnd_test_riscv_binary
-          path: apps/test/app/target/riscv32imc-unknown-none-elf/release/vnd-test
+          path: apps/test/app/target/riscv32imc-unknown-none-elf/release/vnd-test.vapp
 
   vnd_test_speculos_integration_tests:
     name: vnd-test, Integration tests on Speculos
@@ -304,7 +313,7 @@ jobs:
         working-directory: apps/test/client
         env:
           VANADIUM_BINARY: ../../../vanadium_binaries/${{ matrix.model }}/release/app-vanadium
-          VAPP_BINARY: ../../../vnd_test_riscv_binary/vnd-test
+          VAPP_BINARY: ../../../vnd_test_riscv_binary/vnd-test.vapp
         run: |
           cargo test --features speculos-tests
 
@@ -320,17 +329,26 @@ jobs:
           target: riscv32imc-unknown-none-elf
           components: rustfmt, clippy
           profile: minimal
+      - name: Install riscv64-unknown-elf-objcopy
+        run: |
+          sudo apt-get update && \
+          sudo apt-get install -y binutils-riscv64-unknown-elf  # needed for cargo-vnd
       - name: Clone
         uses: actions/checkout@v4
-      - name: Build app
+      - name: Install cargo-vnd tool
+        run: |
+          cargo install --path ./cargo-vnd
+      - name: Build and package app
         working-directory: apps/sadik/app
         run: |
+          set -e  # fail on any error
           cargo +nightly build --release --target riscv32imc-unknown-none-elf
+          cargo vnd package
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: vnd_sadik_riscv_binary
-          path: apps/sadik/app/target/riscv32imc-unknown-none-elf/release/vnd-sadik
+          path: apps/sadik/app/target/riscv32imc-unknown-none-elf/release/vnd-sadik.vapp
 
   vnd_sadik_integration_tests:
     name: vnd-sadik, Integration tests on Speculos
@@ -379,7 +397,7 @@ jobs:
         working-directory: apps/sadik/client
         env:
           VANADIUM_BINARY: ../../../vanadium_binaries/${{ matrix.model }}/release/app-vanadium
-          VAPP_BINARY: ../../../vnd_sadik_riscv_binary/vnd-sadik
+          VAPP_BINARY: ../../../vnd_sadik_riscv_binary/vnd-sadik.vapp
         run: |
           cargo test --features speculos-tests
 
