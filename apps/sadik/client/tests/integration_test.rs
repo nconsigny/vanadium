@@ -423,5 +423,5 @@ async fn test_ticker() {
     // a simple test that verifies that ticker events are indeed received.
     let mut setup = test_common::setup().await;
     let result = setup.client.sleep(10).await.expect("Should not fail");
-    assert_eq!(result, vec![]);
+    assert_eq!(result, Vec::<u8>::new());
 }
