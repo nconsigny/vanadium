@@ -1,3 +1,4 @@
+use common::manifest::Manifest;
 use goblin::elf::program_header::{PF_R, PF_W, PF_X, PT_LOAD};
 use goblin::elf::{Elf, ProgramHeader};
 
@@ -6,6 +7,9 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
+
+// The section name where the V-App manifest is stored in a packaged ELF binary.
+const MANIFEST_SECTION_NAME: &str = ".manifest";
 
 #[derive(Debug)]
 pub struct Segment {
@@ -33,11 +37,14 @@ impl Segment {
     }
 }
 
+// TODO: we should rename to a more specific name like VAppElfFile
 #[derive(Debug)]
 pub struct ElfFile {
     pub code_segment: Segment,
     pub data_segment: Segment,
     pub entrypoint: u32,
+    // If the elf file has a .manifest section, the Manifest is parsed from it and stored here
+    pub manifest: Option<Manifest>,
 }
 
 impl ElfFile {
@@ -52,10 +59,30 @@ impl ElfFile {
         let (code_segment, data_segment) = Self::parse_segments(&elf, &buffer)?;
         let entrypoint = elf.header.e_entry as u32;
 
+        // extract the content of the .manifest section
+        let manifest_section = elf.section_headers.iter().find(|section| {
+            elf.shdr_strtab.get_at(section.sh_name).unwrap_or("") == MANIFEST_SECTION_NAME
+        });
+
+        let manifest = if let Some(section) = manifest_section {
+            let start = section.sh_offset as usize;
+            let size = section.sh_size as usize;
+            let manifest_data = &buffer[start..start + size];
+            let manifest_str =
+                std::str::from_utf8(manifest_data).expect("Manifest data is not valid UTF-8");
+            let manifest: Manifest =
+                Manifest::from_json(manifest_str).expect("Failed to parse manifest data");
+
+            Some(manifest)
+        } else {
+            None
+        };
+
         Ok(Self {
             code_segment,
             data_segment,
             entrypoint,
+            manifest,
         })
     }
 
@@ -90,6 +117,10 @@ impl ElfFile {
 
         let code_start = segments[0].p_offset as usize;
         let code_size = segments[0].p_filesz as usize;
+
+        // For the code section, we expect the memory size and the file size to be the same
+        assert_eq!(segments[0].p_memsz, segments[0].p_filesz);
+
         let code_seg = Segment::new(
             segments[0],
             &data[code_start..code_start + code_size],
@@ -106,4 +137,29 @@ impl ElfFile {
 
         Ok((code_seg, data_seg))
     }
+}
+
+#[cfg(feature = "cargo_toml")]
+pub fn get_app_metadata(
+    cargo_toml_path: &std::path::PathBuf,
+) -> Result<(String, String, cargo_toml::Value), &'static str> {
+    let manifest = cargo_toml::Manifest::from_path(&cargo_toml_path)
+        .map_err(|_| "Failed to load Cargo.toml")?;
+
+    let package = manifest
+        .package
+        .ok_or("Missing package section in Cargo.toml")?;
+
+    Ok((
+        package.name,
+        package
+            .version
+            .get()
+            .map_err(|_| "Failed to get package version")?
+            .clone(),
+        package
+            .metadata
+            .and_then(|metadata| metadata.get("vapp").cloned())
+            .ok_or("VApp metadata missing in Cargo.toml (add [package.metadata.vapp] section)")?,
+    ))
 }
