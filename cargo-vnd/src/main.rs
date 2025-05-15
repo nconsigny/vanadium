@@ -15,6 +15,7 @@ use common::constants;
 use common::manifest::Manifest;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
 #[command(name = "cargo-vnd", version, about = "Vanadium tools for cargo")]
@@ -167,7 +168,10 @@ fn create_vapp_package(
     let serialized_manifest = manifest.to_json()?;
 
     // Write the serialized manifest to a temporary file
-    let temp_manifest_path = std::env::temp_dir().join("manifest.json");
+    // Make sure the file name is unique
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+    let pid = std::process::id();
+    let temp_manifest_path = std::env::temp_dir().join(format!("manifest_{}_{}.json", pid, now));
     std::fs::write(&temp_manifest_path, serialized_manifest)
         .context("Failed to write manifest to temporary file")?;
 
@@ -203,7 +207,8 @@ fn create_vapp_package(
     let updated_serialized_manifest = manifest.to_json()?;
 
     // Write the updated manifest to a temporary file
-    let updated_temp_manifest_path = std::env::temp_dir().join("updated_manifest.json");
+    let updated_temp_manifest_path =
+        std::env::temp_dir().join(format!("updated_manifest_{}_{}.json", pid, now));
     std::fs::write(&updated_temp_manifest_path, updated_serialized_manifest)
         .context("Failed to write updated manifest to temporary file")?;
 
