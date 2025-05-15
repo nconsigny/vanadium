@@ -98,10 +98,14 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     let mut instr_count = 0;
 
     loop {
-        // TODO: handle errors
-        let instr = cpu
-            .fetch_instruction::<CommEcallError>()
-            .expect("Failed to fetch instruction");
+        // Handle instruction fetch errors
+        let instr = match cpu.fetch_instruction::<CommEcallError>() {
+            Ok(instr) => instr,
+            Err(e) => {
+                println!("Error fetching instruction: {:?}", e);
+                return Err(AppSW::VMRuntimeError);
+            }
+        };
 
         #[cfg(feature = "trace_full")]
         {

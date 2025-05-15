@@ -12,18 +12,16 @@ pub struct Manifest {
     pub manifest_version: u32,
     pub app_name: [u8; APP_NAME_LEN],
     pub app_version: [u8; APP_VERSION_LEN],
-    pub app_hash: [u8; 32],
     pub entrypoint: u32,
-    pub bss: u32,
     pub code_start: u32,
     pub code_end: u32,
     pub code_merkle_root: [u8; 32],
-    pub stack_start: u32,
-    pub stack_end: u32,
-    pub stack_merkle_root: [u8; 32],
     pub data_start: u32,
     pub data_end: u32,
     pub data_merkle_root: [u8; 32],
+    pub stack_start: u32,
+    pub stack_end: u32,
+    pub stack_merkle_root: [u8; 32],
 }
 
 impl Manifest {
@@ -32,18 +30,16 @@ impl Manifest {
         manifest_version: u32,
         app_name: &str,
         app_version: &str,
-        app_hash: [u8; 32],
         entrypoint: u32,
-        bss: u32,
         code_start: u32,
         code_end: u32,
         code_merkle_root: [u8; 32],
-        stack_start: u32,
-        stack_end: u32,
-        stack_merkle_root: [u8; 32],
         data_start: u32,
         data_end: u32,
         data_merkle_root: [u8; 32],
+        stack_start: u32,
+        stack_end: u32,
+        stack_merkle_root: [u8; 32],
     ) -> Result<Self, &'static str> {
         if app_name.len() > APP_NAME_LEN {
             return Err("app_name is too long");
@@ -65,18 +61,16 @@ impl Manifest {
             manifest_version,
             app_name: app_name_arr,
             app_version: app_version_arr,
-            app_hash,
             entrypoint,
-            bss,
             code_start,
             code_end,
             code_merkle_root,
-            stack_start,
-            stack_end,
-            stack_merkle_root,
             data_start,
             data_end,
             data_merkle_root,
+            stack_start,
+            stack_end,
+            stack_merkle_root,
         })
     }
 
@@ -112,5 +106,15 @@ impl Manifest {
     #[inline]
     pub fn n_stack_pages(&self) -> u32 {
         Self::n_pages(self.stack_start, self.stack_end)
+    }
+
+    #[cfg(feature = "serde_json")]
+    pub fn to_json(&self) -> Result<alloc::string::String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    #[cfg(feature = "serde_json")]
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
     }
 }
