@@ -9,3 +9,28 @@ pub const PAGE_MASK: u32 = !(PAGE_SIZE as u32 - 1);
 pub fn page_start(address: u32) -> u32 {
     address & !((PAGE_SIZE as u32) - 1)
 }
+
+pub const MIN_STACK_SIZE: usize = 1 << 14; // 16 KiB
+pub const DEFAULT_STACK_SIZE: usize = 1 << 16; // 64 KiB
+pub const MAX_STACK_SIZE: usize = 1 << 27; // 128 MiB
+
+/// Memory address where the stack begins by default.
+/// Note that the stack grows downwards, so this is the smallest
+/// acceptable address on the stack.
+pub const DEFAULT_STACK_START: u32 = 0xf0000000;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_stack_constants() {
+        // sanity checks on the constants
+        assert!(MIN_STACK_SIZE < DEFAULT_STACK_SIZE);
+        assert!(DEFAULT_STACK_SIZE < MAX_STACK_SIZE);
+        assert!(
+            (DEFAULT_STACK_START as u64) + (DEFAULT_STACK_SIZE as u64) <= 0x1_0000_0000,
+            "Stack extends beyond 32-bit address space"
+        );
+    }
+}

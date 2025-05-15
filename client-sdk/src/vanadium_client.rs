@@ -1,16 +1,12 @@
 use async_trait::async_trait;
-use common::vm::MemoryError;
 use std::cmp::min;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 
-use common::accumulator::{
-    AccumulatorError, HashOutput, Hasher, MerkleAccumulator, VectorAccumulator,
-};
 use common::client_commands::{
     ClientCommandCode, CommitPageContentMessage, CommitPageMessage,
     CommitPageProofContinuedMessage, CommitPageProofContinuedResponse, CommitPageProofResponse,
@@ -19,171 +15,16 @@ use common::client_commands::{
     ReceiveBufferMessage, ReceiveBufferResponse, SectionKind, SendBufferMessage,
     SendPanicBufferMessage,
 };
-use common::constants::{page_start, PAGE_SIZE};
+use common::constants::{DEFAULT_STACK_START, PAGE_SIZE};
 use common::manifest::Manifest;
-use sha2::{Digest, Sha256};
 
 use crate::apdu::{
     apdu_continue, apdu_continue_with_p1, apdu_register_vapp, apdu_run_vapp, APDUCommand,
     StatusWord,
 };
-use crate::elf::ElfFile;
+use crate::elf::{self, ElfFile};
+use crate::memory::{MemorySegment, MemorySegmentError};
 use crate::transport::Transport;
-
-pub struct Sha256Hasher {
-    hasher: Sha256,
-}
-
-impl Hasher<32> for Sha256Hasher {
-    fn new() -> Self {
-        Sha256Hasher {
-            hasher: Sha256::new(),
-        }
-    }
-
-    fn update(&mut self, data: &[u8]) -> &mut Self {
-        self.hasher.update(data);
-        self
-    }
-
-    fn digest(self, out: &mut [u8; 32]) {
-        let result = self.hasher.finalize();
-        out.copy_from_slice(&result);
-    }
-}
-
-// Serializes a page in the format expected for the content of the leaf in the MerkleAccumulator, as follows:
-// - Clear-text pages are serialized as a 0 byte, followed by 12 0 bytes, followed by PAGE_SIZE bytes (page plaintext).
-// - Encrypted pages are serialized as a 1 byte, followed by 12 bytes for the nonce, followed by PAGE_SIZE bytes (page ciphertext).
-fn get_serialized_page(data: &[u8], nonce: Option<&[u8; 12]>) -> Vec<u8> {
-    let mut serialized_page = Vec::<u8>::with_capacity(1 + 12 + PAGE_SIZE);
-    if let Some(nonce) = nonce {
-        serialized_page.push(1); // is_encrypted
-        serialized_page.extend_from_slice(nonce);
-    } else {
-        serialized_page.extend_from_slice(&[0; 13]); // 1 byte for is_encrypted, 12 bytes for nonce
-    }
-    serialized_page.extend_from_slice(data);
-    serialized_page
-}
-
-#[derive(Debug)]
-enum MemorySegmentError {
-    PageNotFound,
-    InvalidPageSize,
-    MemoryError(MemoryError),
-    AccumulatorError(AccumulatorError),
-}
-
-impl From<MemoryError> for MemorySegmentError {
-    fn from(e: MemoryError) -> Self {
-        MemorySegmentError::MemoryError(e)
-    }
-}
-
-impl From<AccumulatorError> for MemorySegmentError {
-    fn from(e: AccumulatorError) -> Self {
-        MemorySegmentError::AccumulatorError(e)
-    }
-}
-
-impl std::fmt::Display for MemorySegmentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            MemorySegmentError::PageNotFound => write!(f, "Page not found"),
-            MemorySegmentError::InvalidPageSize => write!(f, "Invalid page size"),
-            MemorySegmentError::MemoryError(e) => write!(f, "Memory error: {}", e),
-            MemorySegmentError::AccumulatorError(e) => write!(f, "Accumulator error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for MemorySegmentError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            MemorySegmentError::MemoryError(e) => Some(e),
-            MemorySegmentError::AccumulatorError(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-// Represents a memory segment stored by the client, using a MerkleAccumulator to provide proofs of integrity.
-struct MemorySegment {
-    content: MerkleAccumulator<Sha256Hasher, Vec<u8>, 32>,
-}
-
-impl MemorySegment {
-    fn new(start: u32, data: &[u8]) -> Self {
-        let end = start + data.len() as u32;
-
-        let mut pages: Vec<Vec<u8>> = Vec::new();
-
-        // current position, in terms of address; `start` needs to be subtracted for the position in `data`
-        let mut current_addr = start;
-        loop {
-            if current_addr >= end {
-                break;
-            }
-            let mut page_content: Vec<u8> = Vec::with_capacity(PAGE_SIZE);
-            let page_start_addr = page_start(current_addr as u32);
-            let page_end_addr = page_start_addr + PAGE_SIZE as u32;
-            let content_end_addr = min(page_end_addr, end);
-
-            // 0-pad with current_addr - page_start_addr bytes (always 0, except for the first page if unaligned to PAGE_SIZE)
-            page_content.extend_from_slice(&vec![0; (current_addr - page_start_addr) as usize]);
-
-            // copy content_end_addr - current_addr bytes from data
-            page_content.extend_from_slice(
-                &data[(current_addr - start) as usize..(content_end_addr - start) as usize],
-            );
-
-            // 0-pad with page_end_addr - content_end_addr bytes bytes (always 0, except possibly for last page)
-            page_content.extend_from_slice(&vec![0; (page_end_addr - content_end_addr) as usize]);
-
-            current_addr = page_end_addr;
-
-            let serialized_page = get_serialized_page(&page_content, None);
-
-            pages.push(serialized_page);
-        }
-
-        Self {
-            content: MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::new(pages),
-        }
-    }
-
-    fn get_page(
-        &self,
-        page_index: u32,
-    ) -> Result<(Vec<u8>, Vec<HashOutput<32>>), MemorySegmentError> {
-        let content = self
-            .content
-            .get(page_index as usize)
-            .ok_or(MemorySegmentError::PageNotFound)?
-            .clone();
-
-        let proof = self.content.prove(page_index as usize)?;
-
-        Ok((content, proof))
-    }
-
-    fn store_page(
-        &mut self,
-        page_index: u32,
-        content: &[u8],
-    ) -> Result<(Vec<HashOutput<32>>, HashOutput<32>), MemorySegmentError> {
-        if content.len() != 1 + 12 + PAGE_SIZE {
-            return Err(MemorySegmentError::InvalidPageSize);
-        }
-        let proof = self.content.update(page_index as usize, content.to_vec())?;
-        Ok(proof)
-    }
-
-    fn get_content_root(&self) -> &HashOutput<32> {
-        self.content.root()
-    }
-}
 
 enum VAppMessage {
     SendBuffer(Vec<u8>),
@@ -1028,6 +869,23 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> From<VAppEngineError<E>>
     }
 }
 
+// Helper to find the path of the Cargo.toml file based on the path of the its binary,
+// assuming standard Rust project structure for the V-App.
+fn get_cargo_toml_path(elf_path: &str) -> Option<PathBuf> {
+    let mut path = Path::new(elf_path);
+
+    // Loop until we find the 'target' folder
+    while let Some(parent) = path.parent() {
+        if path.file_name() == Some("target".as_ref()) {
+            // Go up one level to the parent directory
+            return Some(parent.join("Cargo.toml"));
+        }
+        path = parent;
+    }
+
+    None
+}
+
 impl<E: std::fmt::Debug + Send + Sync + 'static> VanadiumAppClient<E> {
     pub async fn new(
         elf_path: &str,
@@ -1037,42 +895,78 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VanadiumAppClient<E> {
         // Create ELF file and manifest
         let elf_file = ElfFile::new(Path::new(&elf_path))?;
 
-        let stack_end = 0xd47a2000;
-        let stack_start = stack_end - 65536;
+        let manifest = if let Some(m) = &elf_file.manifest {
+            // If the elf file is a packaged V-App, we use its manifest
+            m.clone()
+        } else {
+            // There is no Manifest in the elf file.
+            // Depending on the value of the cargo_toml feature, we either return an error or
+            // try to create a valid Manifest based on the Cargo.toml file.
 
-        let code_merkle_root: [u8; 32] =
-            MemorySegment::new(elf_file.code_segment.start, &elf_file.code_segment.data)
-                .get_content_root()
-                .clone()
-                .into();
-        let data_merkle_root: [u8; 32] =
-            MemorySegment::new(elf_file.data_segment.start, &elf_file.data_segment.data)
-                .get_content_root()
-                .clone()
-                .into();
-        let stack_merkle_root: [u8; 32] =
-            MemorySegment::new(stack_start, &vec![0u8; (stack_end - stack_start) as usize])
-                .get_content_root()
-                .clone()
-                .into();
+            #[cfg(not(feature = "cargo_toml"))]
+            {
+                return Err("No manifest found in the ELF file".into());
+            }
 
-        let manifest = Manifest::new(
-            0,
-            "Test",
-            "0.1.0",
-            [0u8; 32],
-            elf_file.entrypoint,
-            65536,
-            elf_file.code_segment.start,
-            elf_file.code_segment.end,
-            code_merkle_root,
-            stack_start,
-            stack_end,
-            stack_merkle_root,
-            elf_file.data_segment.start,
-            elf_file.data_segment.end,
-            data_merkle_root,
-        )?;
+            #[cfg(feature = "cargo_toml")]
+            {
+                // We create one based on the elf file and the apps's Cargo.toml.
+                // This is useful during development.
+
+                let cargo_toml_path =
+                    get_cargo_toml_path(elf_path).ok_or("Failed to find Cargo.toml")?;
+
+                let (_, app_version, app_metadata) = elf::get_app_metadata(&cargo_toml_path)?;
+
+                let app_name = app_metadata
+                    .get("name")
+                    .ok_or("App name missing in metadata")?
+                    .as_str()
+                    .ok_or("App name is not a string")?;
+
+                let stack_size = app_metadata
+                    .get("stack_size")
+                    .ok_or("Stack size missing in metadata")?
+                    .as_integer()
+                    .ok_or("Stack size is not a number")?;
+                let stack_size = stack_size as u32;
+
+                let stack_start = DEFAULT_STACK_START;
+                let stack_end = stack_start + stack_size;
+
+                let code_merkle_root: [u8; 32] =
+                    MemorySegment::new(elf_file.code_segment.start, &elf_file.code_segment.data)
+                        .get_content_root()
+                        .clone()
+                        .into();
+                let data_merkle_root: [u8; 32] =
+                    MemorySegment::new(elf_file.data_segment.start, &elf_file.data_segment.data)
+                        .get_content_root()
+                        .clone()
+                        .into();
+                let stack_merkle_root: [u8; 32] =
+                    MemorySegment::new(stack_start, &vec![0u8; (stack_end - stack_start) as usize])
+                        .get_content_root()
+                        .clone()
+                        .into();
+
+                Manifest::new(
+                    0,
+                    app_name,
+                    &app_version,
+                    elf_file.entrypoint,
+                    elf_file.code_segment.start,
+                    elf_file.code_segment.end,
+                    code_merkle_root,
+                    elf_file.data_segment.start,
+                    elf_file.data_segment.end,
+                    data_merkle_root,
+                    stack_start,
+                    stack_end,
+                    stack_merkle_root,
+                )?
+            }
+        };
 
         let mut client = GenericVanadiumClient::new();
 

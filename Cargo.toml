@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["app-sdk", "client-sdk", "macros", "common", "bench"]
+members = ["app-sdk", "client-sdk", "macros", "common", "bench", "cargo-vnd"]
