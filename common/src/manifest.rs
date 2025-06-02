@@ -1,6 +1,7 @@
 use alloc::string::{String, ToString};
 use serde::{self, Deserialize, Serialize};
 
+use crate::accumulator::Hasher;
 use crate::constants::{page_start, PAGE_SIZE};
 
 const APP_NAME_MAX_LEN: usize = 32;
@@ -123,5 +124,51 @@ impl Manifest {
     #[cfg(feature = "serde_json")]
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
+    }
+
+    /// Computes a hash of all the fields in the manifest.
+    ///
+    /// All the fields in any way for the execution of the V-App must be included in the hash.
+    /// This makes sure that the hash can be used to uniquely identify the exact V-App version.
+    ///
+    /// This function is generic over a hasher that implements the `Hasher` trait in order to allow compiling on any
+    /// target, but should only be used with a hasher for SHA-256 in order to produce the expected hashes.
+    pub fn get_vapp_hash<H: Hasher<OUTPUT_SIZE>, const OUTPUT_SIZE: usize>(
+        &self,
+    ) -> [u8; OUTPUT_SIZE] {
+        let mut hasher = H::new();
+
+        // Hash manifest_version
+        hasher.update(&self.manifest_version.to_be_bytes());
+
+        // Hash app_name (length prefixed, as it's variable length)
+        let name_len = self.app_name.len() as u8;
+        hasher.update(&[name_len]);
+        hasher.update(self.app_name.as_bytes());
+
+        // Hash app_version (length prefixed, as it's variable length)
+        let version_len = self.app_version.len() as u8;
+        hasher.update(&[version_len]);
+        hasher.update(self.app_version.as_bytes());
+
+        // Hash entrypoint
+        hasher.update(&self.entrypoint.to_be_bytes());
+
+        // Hash code section information
+        hasher.update(&self.code_start.to_be_bytes());
+        hasher.update(&self.code_end.to_be_bytes());
+        hasher.update(&self.code_merkle_root);
+
+        // Hash data section information
+        hasher.update(&self.data_start.to_be_bytes());
+        hasher.update(&self.data_end.to_be_bytes());
+        hasher.update(&self.data_merkle_root);
+
+        // Hash stack section information
+        hasher.update(&self.stack_start.to_be_bytes());
+        hasher.update(&self.stack_end.to_be_bytes());
+        hasher.update(&self.stack_merkle_root);
+
+        hasher.finalize()
     }
 }
