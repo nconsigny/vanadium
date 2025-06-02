@@ -102,16 +102,14 @@ async fn test_big_num_mod() {
         hex!("1657a819aad617cac89f35ff9d4890c66cc5675c70f2b66e974bc243b2e69116")
     );
 
-    // TODO: disabled until speculos is fixed as per https://github.com/LedgerHQ/speculos/pull/529
-    // powers: 0
-    // assert_eq!(
-    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00"), true).await.unwrap(),
-    //     one
-    // );
-    // assert_eq!(
-    //     setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, true).await.unwrap(),
-    //     one
-    // );
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &hex!("00"), true).await.unwrap(),
+        one
+    );
+    assert_eq!(
+        setup.client.bignum_operation(BigIntOperator::Pow, &hex!("a247598432980432940980983408039480095809832048509809580984320985"), &zero, true).await.unwrap(),
+        one
+    );
 
     // powers: 1
     assert_eq!(
