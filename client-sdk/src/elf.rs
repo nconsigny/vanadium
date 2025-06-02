@@ -68,12 +68,25 @@ impl ElfFile {
             let start = section.sh_offset as usize;
             let size = section.sh_size as usize;
             let manifest_data = &buffer[start..start + size];
-            let manifest_str =
-                std::str::from_utf8(manifest_data).expect("Manifest data is not valid UTF-8");
-            let manifest: Manifest =
-                Manifest::from_json(manifest_str).expect("Failed to parse manifest data");
 
-            Some(manifest)
+            // take the subslice without trailing null bytes (if any)
+            let manifest_data = manifest_data
+                .iter()
+                .take_while(|&&byte| byte != 0)
+                .cloned()
+                .collect::<Vec<u8>>();
+
+            if manifest_data.is_empty() {
+                // empty .manifest section
+                None
+            } else {
+                let manifest_str =
+                    std::str::from_utf8(&manifest_data).expect("Manifest data is not valid UTF-8");
+                let manifest: Manifest =
+                    Manifest::from_json(manifest_str).expect("Failed to parse manifest data");
+
+                Some(manifest)
+            }
         } else {
             None
         };
