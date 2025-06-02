@@ -17,6 +17,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const MANIFEST_SECTION_SIZE: usize = 4096; // Size of the .manifest section in bytes
+
 #[derive(Parser)]
 #[command(name = "cargo-vnd", version, about = "Vanadium tools for cargo")]
 struct Cli {
@@ -113,8 +115,6 @@ fn create_vapp_package(
     // Ensure objcopy is available
     which::which(OBJCOPY_BINARY).context(format!("`{}` not found in PATH", OBJCOPY_BINARY))?;
 
-    let elf_file = ElfFile::new(&input)?;
-
     let section_name = ".manifest";
 
     let app_name = app_metadata
@@ -144,19 +144,45 @@ fn create_vapp_package(
     let stack_start = constants::DEFAULT_STACK_START;
     let stack_end = stack_start + stack_size;
 
-    let (code_merkle_root, data_merkle_root, stack_merkle_root) =
-        compute_merkle_roots(&elf_file, stack_start, stack_size)?;
+    // Create a 4KB file filled with zeros for the empty .manifest section
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+    let pid = std::process::id();
+    let zero_file =
+        std::env::temp_dir().join(format!("manifest_zeroed_placeholder_{}_{}.bin", pid, now));
+    std::fs::write(&zero_file, vec![0u8; MANIFEST_SECTION_SIZE])
+        .context("Failed to write zero file")?;
 
-    let mut manifest = Manifest::new(
+    // Add the empty 4KB .manifest section to the input ELF, creating a temporary ELF file
+    let temp_elf = std::env::temp_dir().join(format!("temp_elf_{}_{}.elf", pid, now));
+    let status = Command::new(OBJCOPY_BINARY)
+        .arg("--add-section")
+        .arg(format!(".manifest={}", zero_file.display()))
+        .arg(input)
+        .arg(&temp_elf)
+        .status()
+        .context("Failed to run objcopy to add empty manifest section")?;
+    if !status.success() {
+        return Err(anyhow::anyhow!("objcopy command failed").into());
+    }
+
+    // Parse the temporary ELF file with the empty .manifest section
+    let elf_file_with_manifest = ElfFile::new(&temp_elf)?;
+
+    // Compute Merkle roots based on the ELF file with the empty section
+    let (code_merkle_root, data_merkle_root, stack_merkle_root) =
+        compute_merkle_roots(&elf_file_with_manifest, stack_start, stack_size)?;
+
+    // Create the manifest with the computed Merkle roots
+    let manifest = Manifest::new(
         0,
         app_name,
         app_version,
-        elf_file.entrypoint,
-        elf_file.code_segment.start,
-        elf_file.code_segment.end,
+        elf_file_with_manifest.entrypoint,
+        elf_file_with_manifest.code_segment.start,
+        elf_file_with_manifest.code_segment.end,
         code_merkle_root,
-        elf_file.data_segment.start,
-        elf_file.data_segment.end,
+        elf_file_with_manifest.data_segment.start,
+        elf_file_with_manifest.data_segment.end,
         data_merkle_root,
         stack_start,
         stack_end,
@@ -165,64 +191,34 @@ fn create_vapp_package(
     .map_err(|e| anyhow::anyhow!(e))
     .context("Failed to create VApp manifest")?;
 
+    // Serialize the manifest to JSON
     let serialized_manifest = manifest.to_json()?;
 
-    // Write the serialized manifest to a temporary file
-    // Make sure the file name is unique
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
-    let pid = std::process::id();
-    let temp_manifest_path = std::env::temp_dir().join(format!("manifest_{}_{}.json", pid, now));
-    std::fs::write(&temp_manifest_path, serialized_manifest)
-        .context("Failed to write manifest to temporary file")?;
-
-    // Run objcopy to add section
-    // Add the ".manifest" section to the ELF binary using objcopy
-    let status = Command::new(OBJCOPY_BINARY)
-        .arg("--add-section")
-        .arg(format!("{}={}", section_name, temp_manifest_path.display()))
-        .arg(input)
-        .arg(output)
-        .status()
-        .context("Failed to run objcopy")?;
-    if !status.success() {
-        return Err(anyhow::anyhow!("objcopy command failed").into());
+    // Pad the serialized manifest to 4KB with zeros
+    let mut padded_manifest = serialized_manifest.as_bytes().to_vec();
+    if padded_manifest.len() > MANIFEST_SECTION_SIZE {
+        return Err(anyhow::anyhow!("Serialized manifest exceeds maximum size").into());
     }
+    padded_manifest.resize(MANIFEST_SECTION_SIZE, 0);
 
-    // Hack: adding the manifest with objcopy seems to cause changes in the loadable content, possibly due
-    // to changes in the program headers. This affects the merkle roots.
-    // To fix this, we recompute the merkle roots and update the manifest.
-    // This is a workaround, and we should investigate if there is a way to add the .manifest section
-    // without affecting the loadable content.
+    // Write the padded manifest to a temporary file
+    let padded_manifest_file =
+        std::env::temp_dir().join(format!("padded_manifest_{}_{}.bin", pid, now));
+    std::fs::write(&padded_manifest_file, &padded_manifest)
+        .context("Failed to write padded manifest")?;
 
-    // Recompute merkle roots from the output file
-    let updated_elf_file = ElfFile::new(&output)?;
-    let (updated_code_merkle_root, updated_data_merkle_root, updated_stack_merkle_root) =
-        compute_merkle_roots(&updated_elf_file, stack_start, stack_size)?;
-
-    // Update the manifest with new merkle roots
-    manifest.code_merkle_root = updated_code_merkle_root;
-    manifest.data_merkle_root = updated_data_merkle_root;
-    manifest.stack_merkle_root = updated_stack_merkle_root;
-
-    let updated_serialized_manifest = manifest.to_json()?;
-
-    // Write the updated manifest to a temporary file
-    let updated_temp_manifest_path =
-        std::env::temp_dir().join(format!("updated_manifest_{}_{}.json", pid, now));
-    std::fs::write(&updated_temp_manifest_path, updated_serialized_manifest)
-        .context("Failed to write updated manifest to temporary file")?;
-
-    // Update the ".manifest" section in the output ELF binary
+    // Update the .manifest section in the temporary ELF file with the padded manifest
     let status = Command::new(OBJCOPY_BINARY)
         .arg("--update-section")
         .arg(format!(
             "{}={}",
             section_name,
-            updated_temp_manifest_path.display()
+            padded_manifest_file.display()
         ))
+        .arg(&temp_elf)
         .arg(output)
         .status()
-        .context("Failed to update manifest section in output binary")?;
+        .context("Failed to run objcopy to update manifest section")?;
     if !status.success() {
         return Err(anyhow::anyhow!("objcopy command failed during manifest update").into());
     }
