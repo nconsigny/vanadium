@@ -3,7 +3,6 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, vec, vec::Vec};
 use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulator};
 use common::vm::{Page, PagedMemory};
-use ledger_device_sdk::hash::HashInit;
 use ledger_device_sdk::io;
 
 use common::client_commands::{
@@ -15,6 +14,7 @@ use common::client_commands::{
 use common::constants::PAGE_SIZE;
 
 use crate::aes::AesCtr;
+use crate::hash::Sha256Hasher;
 use crate::{AppSW, Instruction};
 
 #[derive(Clone, Debug)]
@@ -115,25 +115,6 @@ where
         if let io::Event::Command(ins) = res {
             return ins;
         }
-    }
-}
-
-struct Sha256Hasher(ledger_device_sdk::hash::sha2::Sha2_256);
-impl Hasher<32> for Sha256Hasher {
-    #[inline]
-    fn new() -> Self {
-        Self(ledger_device_sdk::hash::sha2::Sha2_256::new())
-    }
-
-    #[inline]
-    fn update(&mut self, data: &[u8]) -> &mut Self {
-        self.0.update(data).unwrap();
-        self
-    }
-
-    #[inline]
-    fn digest(mut self, out: &mut [u8; 32]) {
-        self.0.finalize(out).unwrap();
     }
 }
 

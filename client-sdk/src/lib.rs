@@ -1,4 +1,6 @@
 mod apdu;
+mod hash;
+
 pub mod elf;
 pub mod memory;
 

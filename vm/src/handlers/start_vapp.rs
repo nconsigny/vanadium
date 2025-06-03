@@ -3,6 +3,7 @@ use core::cell::RefCell;
 use alloc::rc::Rc;
 use common::client_commands::SectionKind;
 use ledger_device_sdk::io;
+use subtle::ConstantTimeEq;
 
 use alloc::vec::Vec;
 use common::manifest::Manifest;
@@ -11,25 +12,28 @@ use common::vm::{Cpu, MemorySegment};
 use super::lib::outsourced_mem::OutsourcedMemory;
 use crate::aes::{AesCtr, AesKey};
 use crate::handlers::lib::ecall::{CommEcallError, CommEcallHandler};
+use crate::handlers::lib::vapp::get_vapp_hmac;
 use crate::{println, AppSW};
 
 pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     let data_raw = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
-    let (manifest, hmac) =
+    let (manifest, provided_hmac) =
         postcard::take_from_bytes::<Manifest>(data_raw).map_err(|_| AppSW::IncorrectData)?;
 
-    if hmac.len() != 32 {
+    if provided_hmac.len() != 32 {
         return Err(AppSW::IncorrectData);
     }
 
-    // TODO: actually check the HMAC (and use a constant-time comparison)
-    if hmac != [0x42u8; 32] {
+    let vapp_hmac = get_vapp_hmac(&manifest);
+
+    // It's critical to use a constant time comparison to prevent timing attacks
+    if provided_hmac.ct_ne(&vapp_hmac).into() {
         return Err(AppSW::SignatureFail);
     }
 
     println!("Running app with Manifest: {:?}", manifest);
-    println!("hmac: {:?}", hmac);
+    println!("hmac: {:?}", provided_hmac);
 
     let comm = Rc::new(RefCell::new(comm));
 
