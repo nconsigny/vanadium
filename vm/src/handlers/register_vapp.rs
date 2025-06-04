@@ -2,7 +2,11 @@ use crate::handlers::lib::vapp::get_vapp_hmac;
 use crate::{hash::Sha256Hasher, AppSW};
 use alloc::{vec, vec::Vec};
 use common::manifest::Manifest;
-use ledger_device_sdk::io;
+use include_gif::include_gif;
+use ledger_device_sdk::{
+    io,
+    nbgl::{Field, NbglGlyph, NbglReview},
+};
 
 pub fn handler_register_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
     let data_raw = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
@@ -14,12 +18,41 @@ pub fn handler_register_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         return Err(AppSW::IncorrectData); // extra data
     }
 
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    const VANADIUM_ICON: NbglGlyph =
+        NbglGlyph::from_include(include_gif!("vanadium_64x64.gif", NBGL));
+    #[cfg(any(target_os = "nanosplus", target_os = "nanox"))]
+    const VANADIUM_ICON: NbglGlyph =
+        NbglGlyph::from_include(include_gif!("vanadium_16x16.gif", NBGL));
+
     let vapp_hash = manifest.get_vapp_hash::<Sha256Hasher, 32>();
+    let vapp_hash_hex = hex::encode(vapp_hash);
+    let result = NbglReview::new()
+        .glyph(&VANADIUM_ICON)
+        .light()
+        .titles(
+            "Register V-App",
+            "Authorize the execution of this V-App",
+            "Confirm registration",
+        )
+        .show(&[
+            Field {
+                name: "App name",
+                value: manifest.get_app_name(),
+            },
+            Field {
+                name: "App version",
+                value: manifest.get_app_version(),
+            },
+            Field {
+                name: "Hash",
+                value: vapp_hash_hex.as_str(),
+            },
+        ]);
 
-    // TODO: show vapp_hash to user for confirmation
-
-    crate::println!("Registering V-App with Manifest: {:?}", manifest);
-    crate::println!("V-App hash: {:?}", vapp_hash);
+    if !result {
+        return Err(AppSW::Deny);
+    }
 
     let vapp_hmac = get_vapp_hmac(&manifest);
     comm.append(&vapp_hmac);
