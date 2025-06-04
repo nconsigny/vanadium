@@ -21,6 +21,7 @@
 mod aes;
 mod app_ui;
 mod handlers;
+mod hash;
 
 mod settings;
 

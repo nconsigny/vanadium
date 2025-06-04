@@ -17,6 +17,7 @@ zeroize = "1.8.1"
 ledger_device_sdk = { version = "1.21.0", features = ["debug"] }
 spin = "0.9.8"
 hex-literal = "0.4.1"
+subtle = { version = "2.6.0", default-features = false }
 
 [profile.release]
 opt-level = 3
