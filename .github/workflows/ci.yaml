@@ -159,6 +159,7 @@ jobs:
     with:
       upload_app_binaries_artifact: "vanadium_binaries"
       builder: ledger-app-builder
+      cargo_ledger_build_args: "--features blind_registration"
 
   # build a custom binary for the Vanadium VM app only for the tests
   build_vanadium_app_for_tests:
