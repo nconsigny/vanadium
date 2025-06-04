@@ -1,34 +1,11 @@
 use common::constants::page_start;
 use common::constants::PAGE_SIZE;
 use common::vm::MemoryError;
-use sha2::{Digest, Sha256};
 use std::cmp::min;
 
-use common::accumulator::{
-    AccumulatorError, HashOutput, Hasher, MerkleAccumulator, VectorAccumulator,
-};
+use common::accumulator::{AccumulatorError, HashOutput, MerkleAccumulator, VectorAccumulator};
 
-pub struct Sha256Hasher {
-    hasher: Sha256,
-}
-
-impl Hasher<32> for Sha256Hasher {
-    fn new() -> Self {
-        Sha256Hasher {
-            hasher: Sha256::new(),
-        }
-    }
-
-    fn update(&mut self, data: &[u8]) -> &mut Self {
-        self.hasher.update(data);
-        self
-    }
-
-    fn digest(self, out: &mut [u8; 32]) {
-        let result = self.hasher.finalize();
-        out.copy_from_slice(&result);
-    }
-}
+use crate::hash::Sha256Hasher;
 
 // Serializes a page in the format expected for the content of the leaf in the MerkleAccumulator, as follows:
 // - Clear-text pages are serialized as a 0 byte, followed by 12 0 bytes, followed by PAGE_SIZE bytes (page plaintext).

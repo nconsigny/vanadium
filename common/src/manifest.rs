@@ -1,17 +1,19 @@
+use alloc::string::{String, ToString};
 use serde::{self, Deserialize, Serialize};
 
+use crate::accumulator::Hasher;
 use crate::constants::{page_start, PAGE_SIZE};
 
-const APP_NAME_LEN: usize = 32; // Define a suitable length
-const APP_VERSION_LEN: usize = 32; // Define a suitable length
+const APP_NAME_MAX_LEN: usize = 32;
+const APP_VERSION_MAX_LEN: usize = 32;
 
 // TODO: copied from vanadium-legacy without much thought; fields are subject to change
 /// The manifest contains all the required info that the application needs in order to execute a V-App.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Manifest {
     pub manifest_version: u32,
-    pub app_name: [u8; APP_NAME_LEN],
-    pub app_version: [u8; APP_VERSION_LEN],
+    pub app_name: String,
+    pub app_version: String,
     pub entrypoint: u32,
     pub code_start: u32,
     pub code_end: u32,
@@ -41,26 +43,38 @@ impl Manifest {
         stack_end: u32,
         stack_merkle_root: [u8; 32],
     ) -> Result<Self, &'static str> {
-        if app_name.len() > APP_NAME_LEN {
+        if app_name.len() > APP_NAME_MAX_LEN {
             return Err("app_name is too long");
         }
-        if app_version.len() > APP_VERSION_LEN {
+        if app_version.len() > APP_VERSION_MAX_LEN {
             return Err("app_version is too long");
         }
-
-        let mut app_name_arr = [0u8; APP_NAME_LEN];
-        let mut app_version_arr = [0u8; APP_VERSION_LEN];
-
-        let name_bytes = app_name.as_bytes();
-        let version_bytes = app_version.as_bytes();
-
-        app_name_arr[..name_bytes.len()].copy_from_slice(name_bytes);
-        app_version_arr[..version_bytes.len()].copy_from_slice(version_bytes);
+        if entrypoint < code_start || entrypoint >= code_end {
+            return Err("entrypoint must be within the code section");
+        }
+        if entrypoint % 2 != 0 {
+            return Err("entrypoint must be 2-byte aligned");
+        }
+        if !app_name.chars().all(|c| c.is_ascii_graphic() || c == ' ') {
+            return Err("app_name contains non-printable ASCII characters");
+        }
+        if !app_version
+            .chars()
+            .all(|c| c.is_ascii_graphic() || c == ' ')
+        {
+            return Err("app_version contains non-printable ASCII characters");
+        }
+        if app_name.starts_with(' ') || app_name.ends_with(' ') {
+            return Err("app_name must not start or end with a space");
+        }
+        if app_version.starts_with(' ') || app_version.ends_with(' ') {
+            return Err("app_version must not start or end with a space");
+        }
 
         Ok(Self {
             manifest_version,
-            app_name: app_name_arr,
-            app_version: app_version_arr,
+            app_name: app_name.to_string(),
+            app_version: app_version.to_string(),
             entrypoint,
             code_start,
             code_end,
@@ -75,17 +89,11 @@ impl Manifest {
     }
 
     pub fn get_app_name(&self) -> &str {
-        core::str::from_utf8(
-            &self.app_name[..self.app_name.iter().position(|&c| c == 0).unwrap_or(32)],
-        )
-        .unwrap() // doesn't fail, as the new() function creates it from a valid string
+        &self.app_name
     }
 
     pub fn get_app_version(&self) -> &str {
-        core::str::from_utf8(
-            &self.app_version[..self.app_version.iter().position(|&c| c == 0).unwrap_or(32)],
-        )
-        .unwrap() // doesn't fail, as the new() function creates it from a valid string
+        &self.app_version
     }
 
     #[inline]
@@ -116,5 +124,51 @@ impl Manifest {
     #[cfg(feature = "serde_json")]
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
+    }
+
+    /// Computes a hash of all the fields in the manifest.
+    ///
+    /// All the fields in any way for the execution of the V-App must be included in the hash.
+    /// This makes sure that the hash can be used to uniquely identify the exact V-App version.
+    ///
+    /// This function is generic over a hasher that implements the `Hasher` trait in order to allow compiling on any
+    /// target, but should only be used with a hasher for SHA-256 in order to produce the expected hashes.
+    pub fn get_vapp_hash<H: Hasher<OUTPUT_SIZE>, const OUTPUT_SIZE: usize>(
+        &self,
+    ) -> [u8; OUTPUT_SIZE] {
+        let mut hasher = H::new();
+
+        // Hash manifest_version
+        hasher.update(&self.manifest_version.to_be_bytes());
+
+        // Hash app_name (length prefixed, as it's variable length)
+        let name_len = self.app_name.len() as u8;
+        hasher.update(&[name_len]);
+        hasher.update(self.app_name.as_bytes());
+
+        // Hash app_version (length prefixed, as it's variable length)
+        let version_len = self.app_version.len() as u8;
+        hasher.update(&[version_len]);
+        hasher.update(self.app_version.as_bytes());
+
+        // Hash entrypoint
+        hasher.update(&self.entrypoint.to_be_bytes());
+
+        // Hash code section information
+        hasher.update(&self.code_start.to_be_bytes());
+        hasher.update(&self.code_end.to_be_bytes());
+        hasher.update(&self.code_merkle_root);
+
+        // Hash data section information
+        hasher.update(&self.data_start.to_be_bytes());
+        hasher.update(&self.data_end.to_be_bytes());
+        hasher.update(&self.data_merkle_root);
+
+        // Hash stack section information
+        hasher.update(&self.stack_start.to_be_bytes());
+        hasher.update(&self.stack_end.to_be_bytes());
+        hasher.update(&self.stack_merkle_root);
+
+        hasher.finalize()
     }
 }
