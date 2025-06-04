@@ -12,8 +12,8 @@ serde-json-core = { git = "https://github.com/rust-embedded-community/serde-json
 hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
 numtoa = "0.2.4"
 postcard = { version = "1.1.1", default-features = false, features = ["alloc"] }
-ledger_device_sdk = { version = "1.22.7", features = ["debug", "nano_nbgl"] }
-ledger_secure_sdk_sys = { version = "1.8.2", features = ["nano_nbgl"] }
+ledger_device_sdk = { git = "https://github.com/LedgerHQ/ledger-device-rust-sdk.git", branch = "y333/set_tag_line_nbglHomeAndSettings", features = ["debug", "nano_nbgl"] }
+ledger_secure_sdk_sys = { git = "https://github.com/LedgerHQ/ledger-device-rust-sdk.git", branch = "y333/set_tag_line_nbglHomeAndSettings", features = ["nano_nbgl"] }
 zeroize = "1.8.1"
 spin = "0.9.8"
 hex-literal = "0.4.1"
