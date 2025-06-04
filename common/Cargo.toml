@@ -11,7 +11,7 @@ serde = { version = "1.0.204", default-features = false, features = [
 vanadium_macros = { path = "../macros" }
 
 # Optional dependencies
-ledger_device_sdk = { git = "https://github.com/LedgerHQ/ledger-device-rust-sdk.git", branch = "y333/set_tag_line_nbglHomeAndSettings", optional = true }
+ledger_device_sdk = { version = "1.22.8", optional = true }
 serde_json = { version = "1.0.140", default-features = false, features = ["alloc"], optional = true }
 
 
