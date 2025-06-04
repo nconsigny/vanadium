@@ -23,8 +23,6 @@ mod app_ui;
 mod handlers;
 mod hash;
 
-mod settings;
-
 #[cfg(feature = "run_tests")]
 mod app_tests;
 
@@ -35,11 +33,7 @@ use handlers::{
     start_vapp::handler_start_vapp,
 };
 use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
-#[cfg(feature = "pending_review_screen")]
-#[cfg(not(any(target_os = "stax", target_os = "flex")))]
-use ledger_device_sdk::ui::gadgets::display_pending_review;
 
-// Required for using String, Vec, format!...
 extern crate alloc;
 
 use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings};
