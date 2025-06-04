@@ -27,6 +27,8 @@ lto = true
 default = []
 pending_review_screen = []
 
+blind_registration = [] # allows blindly registering V-Apps. Only to be used in the CI.
+
 metrics = [] # Enable collection of performance metrics during execution
 
 # Features only for speculos
