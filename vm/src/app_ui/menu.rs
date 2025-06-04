@@ -13,9 +13,12 @@ pub fn ui_menu_main(_: &mut Comm) -> NbglHomeAndSettings {
         NbglGlyph::from_include(include_gif!("vanadium_16x16.gif", NBGL));
 
     // Display the home screen.
-    NbglHomeAndSettings::new().glyph(&VANADIUM_ICON).infos(
-        "Vanadium",
-        env!("CARGO_PKG_VERSION"),
-        env!("CARGO_PKG_AUTHORS"),
-    )
+    NbglHomeAndSettings::new()
+        .glyph(&VANADIUM_ICON)
+        .tagline("Unlimited power\nfor your apps\n(developer preview)")
+        .infos(
+            "Vanadium",
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_AUTHORS"),
+        )
 }
