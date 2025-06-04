@@ -27,30 +27,40 @@ pub fn handler_register_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let vapp_hash = manifest.get_vapp_hash::<Sha256Hasher, 32>();
     let vapp_hash_hex = hex::encode(vapp_hash);
-    let result = NbglReview::new()
-        .glyph(&VANADIUM_ICON)
-        .light()
-        .titles(
-            "Register V-App",
-            "Authorize the execution of this V-App",
-            "Confirm registration",
-        )
-        .show(&[
-            Field {
-                name: "App name",
-                value: manifest.get_app_name(),
-            },
-            Field {
-                name: "App version",
-                value: manifest.get_app_version(),
-            },
-            Field {
-                name: "Hash",
-                value: vapp_hash_hex.as_str(),
-            },
-        ]);
+    let approved = {
+        #[cfg(feature = "blind_registration")]
+        {
+            true
+        }
 
-    if !result {
+        #[cfg(not(feature = "blind_registration"))]
+        {
+            NbglReview::new()
+                .glyph(&VANADIUM_ICON)
+                .light()
+                .titles(
+                    "Register V-App",
+                    "Authorize the execution of this V-App",
+                    "Confirm registration",
+                )
+                .show(&[
+                    Field {
+                        name: "App name",
+                        value: manifest.get_app_name(),
+                    },
+                    Field {
+                        name: "App version",
+                        value: manifest.get_app_version(),
+                    },
+                    Field {
+                        name: "Hash",
+                        value: vapp_hash_hex.as_str(),
+                    },
+                ])
+        }
+    };
+
+    if !approved {
         return Err(AppSW::Deny);
     }
 
