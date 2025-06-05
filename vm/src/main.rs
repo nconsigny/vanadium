@@ -158,15 +158,10 @@ extern "C" fn sample_main() {
     // If any APDU with a wrong class value is received, comm will respond automatically with
     // BadCla status word.
     let mut comm = Comm::new().set_expected_cla(0xe0);
+    init_comm(&mut comm);
 
-    let mut home: NbglHomeAndSettings = {
-        // Initialize reference to Comm instance for NBGL
-        // API calls.
-        init_comm(&mut comm);
-        let mut home = ui_menu_main(&mut comm);
-        home.show_and_return();
-        home
-    };
+    let mut home = ui_menu_main(&mut comm);
+    home.show_and_return();
 
     loop {
         let ins: Instruction = comm.next_command();
