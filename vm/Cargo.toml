@@ -15,7 +15,6 @@ postcard = { version = "1.1.1", default-features = false, features = ["alloc"] }
 ledger_device_sdk = { version = "1.22.8", features = ["debug", "nano_nbgl"] }
 ledger_secure_sdk_sys = { version = "1.8.2", features = ["nano_nbgl"] }
 zeroize = "1.8.1"
-spin = "0.9.8"
 hex-literal = "0.4.1"
 subtle = { version = "2.6.0", default-features = false }
 

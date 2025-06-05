@@ -1,5 +1,4 @@
 use alloc::{ffi::CString, string::String, vec::Vec};
-use spin::Mutex;
 
 use ledger_secure_sdk_sys as sys;
 
@@ -16,19 +15,24 @@ const TOKEN_SKIP: u8 = 2;
 const TOKEN_NAVIGATION: u8 = 3;
 const TOKEN_TITLE: u8 = 4;
 
-static LAST_EVENT: Mutex<Option<(common::ux::EventCode, common::ux::EventData)>> = Mutex::new(None);
+static mut LAST_EVENT: Option<(common::ux::EventCode, common::ux::EventData)> = None;
 
 pub fn get_last_event() -> Option<(common::ux::EventCode, common::ux::EventData)> {
-    let mut lock = LAST_EVENT.lock();
-    lock.take()
+    // Safe in a single-threaded environment
+    #[allow(static_mut_refs)]
+    unsafe {
+        LAST_EVENT.take()
+    }
 }
 
 fn store_new_event(event_code: common::ux::EventCode, event_data: common::ux::EventData) {
     // We store the new event if there was no stored event, or there is just a ticker
     // Otherwise we drop the new event
-    let mut lock = LAST_EVENT.lock();
-    if lock.is_none() || lock.as_ref().unwrap().0 == common::ux::EventCode::Ticker {
-        *lock = Some((event_code, event_data));
+    #[allow(static_mut_refs)]
+    unsafe {
+        if LAST_EVENT.is_none() || LAST_EVENT.as_ref().unwrap().0 == common::ux::EventCode::Ticker {
+            LAST_EVENT = Some((event_code, event_data));
+        }
     }
 }
 
