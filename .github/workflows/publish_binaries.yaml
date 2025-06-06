@@ -34,7 +34,8 @@ jobs:
 
       - name: Archive vanadium_binaries folder
         run: |
-          zip -r vanadium_binaries.zip vanadium_binaries
+          cd vanadium_binaries
+          zip -r ../vanadium_binaries.zip .
         working-directory: .
 
       - name: Update or Create Release
