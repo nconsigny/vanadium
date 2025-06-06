@@ -40,6 +40,8 @@ If you are developing a V-App, adding a new folder under [apps](apps) is current
 
 Each app typically has at least a crate for the V-App, one for the client, and possibly other crates.
 
+The existing apps have a file with extension `.code-workspace` that opens all the relevant crates as a multi-root workspace.
+
 ## Vanadium developers
 
 In VSCode, opening the [vanadium.code-workspace](vanadium.code-workspace) is the most convenient way to work with this repository. This is a multi-root workspace that contains all the various crates of the Vanadium project.
