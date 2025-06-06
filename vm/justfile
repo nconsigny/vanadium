@@ -1,18 +1,19 @@
 run:
-  speculos build/nanos2/bin/app.elf
+  speculos target/flex/release/app-vanadium
 
 run-nanox:
-  speculos build/nanox/bin/app.elf
+  speculos target/nanox/release/app-vanadium
 
 run-nanosplus:
-  speculos build/nanos2/bin/app.elf
+  speculos target/nanosplus/release/app-vanadium
 
 run-flex:
-  speculos build/flex/bin/app.elf
+  speculos target/flex/release/app-vanadium
 
 run-stax:
-  speculos build/stax/bin/app.elf
+  speculos target/stax/release/app-vanadium
 
+# note: the load-* commands only work after compiling with the VSCode extension
 
 load-nanosplus:
   python3 -m ledgerblue.runScript  --scp --fileName build/nanos2/bin/app.apdu --elfFile build/nanos2/bin/app.elf
