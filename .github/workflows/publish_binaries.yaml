@@ -1,0 +1,49 @@
+# Every the master branch is updated, this workflow will build the binaries for the Vanadium app, and update the file in
+# the release tagged "latest".
+
+name: Update release with latest binaries
+
+on:
+  push:
+    branches:
+      - master
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_vanadium_app_for_prod:
+    name: Build application using the reusable workflow
+    uses: LedgerHQ/ledger-app-workflows/.github/workflows/reusable_build.yml@v1
+    with:
+      upload_app_binaries_artifact: "vanadium_binaries"
+      builder: ledger-app-builder
+
+  update-release:
+    name: Update GitHub Release with Binaries
+    needs: build_vanadium_app_for_prod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vanadium_binaries
+          path: vanadium_binaries
+
+      - name: Archive vanadium_binaries folder
+        run: |
+          zip -r vanadium_binaries.zip vanadium_binaries
+        working-directory: .
+
+      - name: Update or Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: latest
+          name: Latest Release
+          draft: false
+          prerelease: false
+          files: vanadium_binaries.zip
