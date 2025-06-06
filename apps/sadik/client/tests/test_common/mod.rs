@@ -17,7 +17,7 @@ pub struct TestSetup {
 impl TestSetup {
     async fn new() -> Self {
         let vanadium_binary = std::env::var("VANADIUM_BINARY")
-            .unwrap_or_else(|_| "../../../vm/build/nanos2/bin/app.elf".to_string());
+            .unwrap_or_else(|_| "../../../vm/target/flex/release/app-vanadium".to_string());
         let vapp_binary = std::env::var("VAPP_BINARY").unwrap_or_else(|_| {
             "../app/target/riscv32imc-unknown-none-elf/release/vnd-sadik".to_string()
         });
