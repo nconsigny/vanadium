@@ -26,15 +26,23 @@ This repository is organized in a monorepo structure.
 * [app-sdk](app-sdk) <small>[<tt>riscv</tt>], no_std</small> - Vanadium V-App SDK. It is used by V-Apps to access all the system services.
 * [client-sdk](client-sdk) <small>[<tt>native</tt>]</small> - Vanadium V-App client SDK. V-App Clients use it as a base for their own client crates.
 * [common](common) <small>[<tt>arm|riscv|native</tt>], no_std</small> - Any code that is shared among two or more of the above crates.
-* [apps](apps) - Complete V-Apps, and their clients
+* [apps](apps) - Complete V-Apps, and their clients.
   * [test](apps/test) - Simple V-App to test the Vanadium VM, implementing various computational tasks.
   * [sadik](apps/sadik) - A V-App specifically designed to test the various functionality of the Vanadium V-App SDK, and particularly the ECALLs.
-  * [bitcoin](apps/bitcoin) - Grandiose things will happen here, but it's mostly empty at this stage.
-* [libs](libs) - General purpose libraries that can be used by V-Apps
-  * [bitcoin](libs/bitcoin) - A custom clone of the [rust-bitcoin](https://github.com/rust-bitcoin/rust-bitcoin) library
+  * [bitcoin](apps/bitcoin) - A work-in-progess app for signing bitcoin transactions.
+* [libs](libs) - General purpose libraries that can be used by V-Apps.
+  * [bitcoin](libs/bitcoin) - A custom clone of the [rust-bitcoin](https://github.com/rust-bitcoin/rust-bitcoin) library.
 
 
-In VSCode, opening the [vanadium.code-workspace](vanadium.code-workspace) is the most convenient way to work with this repository.
+## V-App developers
+
+If you are developing a V-App, adding a new folder under [apps](apps) is currently the recommended way.
+
+Each app typically has at least a crate for the V-App, one for the client, and possibly other crates.
+
+## Vanadium developers
+
+In VSCode, opening the [vanadium.code-workspace](vanadium.code-workspace) is the most convenient way to work with this repository. This is a multi-root workspace that contains all the various crates of the Vanadium project.
 
 ## License
 
