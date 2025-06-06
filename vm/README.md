@@ -10,9 +10,22 @@ This is a boilerplate application written in Rust which can be forked to start a
 
 :warning: Nano S+ and Nano X support is in progress. For the time being, we recommend testing on the Flex and Stax targets.
 
-## Quick start guide
+# Quick start guide
 
-### With VS Code
+# Vanadium binaries
+
+You can download precompiled binaries, or compile them yourself as described below.
+
+## Precompiled binaries
+
+You can download the latest version of the binaries from GitHub by launching the `download_vanadium.sh` script in the `vm` folder:
+
+```bash
+$ cd vm
+$ bash download_vanadium.sh
+```
+
+## Build with the Ledger VS Code extension
 
 You can quickly setup a development environment on any platform (macOS, Linux or Windows) to build and test your application with [Ledger's VS Code extension](https://marketplace.visualstudio.com/items?itemName=LedgerHQ.ledger-dev-tools).
 
@@ -30,12 +43,12 @@ By using Ledger's own developer tools [Docker image](https://github.com/LedgerHQ
 
 We recommend not to run the Vanadium app from the VSCode extension. Instead, install the Speculos emulator locally.
 
-### Emulator
+## Emulator
 
-After building, you can run the app directly on the [Speculos emulator](https://github.com/LedgerHQ/speculos). For example, if you build the app for Flex:
+After downloading the binaries or building, you can run the app directly on the [Speculos emulator](https://github.com/LedgerHQ/speculos). For example, if you build the app for Flex:
 
 ```bash
-speculos build/flex/bin/app.elf
+speculos target/flex/release/app-vanadium
 ```
 
 If you use [just](https://github.com/casey/just), you can also run:
