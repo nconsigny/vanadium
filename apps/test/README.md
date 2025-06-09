@@ -25,7 +25,27 @@ In order to build the app for the native target, enter the `app` folder and run:
 
 ## Run the V-App
 
-Make sure you built the V-App for the Risc-V target.
+### Native target
+
+Make sure you built the V-App for the native target.
+
+On a terminal in the `app` folder, simply run:
+
+   ```sh
+   cargo run
+   ```
+
+On a different terminal in the `client` folder, run:
+
+   ```sh
+   cargo run -- --native
+   ```
+
+Note: you can customize the hostname and port of the app by setting the `VAPP_ADDRESS` environment variable.
+
+### RISC-V
+
+Make sure you built the V-App for the RISC-V target.
 
 Launch Vanadium on speculos. Then execute:
 
@@ -48,7 +68,8 @@ If you want to run the V-app natively, after building it for the native target, 
    ```
 
 
-### Client commands
+
+## Client commands
 
 Once the client is running, these are the available commands:
 
