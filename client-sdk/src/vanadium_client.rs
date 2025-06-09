@@ -1,11 +1,15 @@
 use async_trait::async_trait;
-use std::cmp::min;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{ChildStdin, ChildStdout};
-use tokio::sync::{mpsc, Mutex};
-use tokio::task::JoinHandle;
+use std::{
+    cmp::min,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    sync::{mpsc, Mutex},
+    task::JoinHandle,
+};
 
 use common::client_commands::{
     ClientCommandCode, CommitPageContentMessage, CommitPageMessage,
@@ -994,107 +998,55 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppClient for VanadiumAppClien
     }
 }
 
-/// Implementation of a VAppClient for a native app running on the host, and communicating
-/// via standard input and output.
+/// Client that talks to the V-App over a length-prefixed TCP stream.
 pub struct NativeAppClient {
-    child: tokio::process::Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    stream: TcpStream,
 }
 
 impl NativeAppClient {
-    pub async fn new(bin_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let mut child = tokio::process::Command::new(bin_path)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .spawn()?;
+    /// `addr` is something like `"127.0.0.1:5555"`.
+    pub async fn new(addr: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let stream = TcpStream::connect(addr).await?;
+        stream.set_nodelay(true)?;
+        Ok(Self { stream })
+    }
 
-        let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
-        let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
-        let stdout = BufReader::new(stdout);
-
-        Ok(Self {
-            child,
-            stdin,
-            stdout,
-        })
+    /// Convenience for turning any I/O error into the right enum.
+    fn map_err(e: std::io::Error) -> VAppExecutionError {
+        use std::io::ErrorKind::*;
+        match e.kind() {
+            UnexpectedEof | ConnectionReset | BrokenPipe => VAppExecutionError::AppExited(-1),
+            _ => VAppExecutionError::Other(Box::new(e)),
+        }
     }
 }
 
 #[async_trait]
 impl VAppClient for NativeAppClient {
     async fn send_message(&mut self, msg: &[u8]) -> Result<Vec<u8>, VAppExecutionError> {
-        // Check if the child process has exited
-        if let Some(status) = self
-            .child
-            .try_wait()
-            .map_err(|e| VAppExecutionError::Other(Box::new(e)))?
-        {
-            return Err(VAppExecutionError::AppExited(status.code().unwrap_or(-1)));
-        }
-
-        // Encode message as hex and append a newline
-        let hex_msg = hex::encode(msg);
-        let hex_msg_newline = format!("{}\n", hex_msg);
-
-        // Write hex-encoded message to stdin
-        self.stdin
-            .write_all(hex_msg_newline.as_bytes())
+        // ---------- WRITE ----------
+        let len = msg.len() as u32;
+        self.stream
+            .write_all(&len.to_be_bytes())
             .await
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::BrokenPipe {
-                    VAppExecutionError::AppExited(-1)
-                } else {
-                    VAppExecutionError::Other(Box::new(e))
-                }
-            })?;
+            .map_err(Self::map_err)?;
+        self.stream.write_all(msg).await.map_err(Self::map_err)?;
+        self.stream.flush().await.map_err(Self::map_err)?;
 
-        // Flush the stdin to ensure the message is sent
-        self.stdin.flush().await.map_err(|e| {
-            if e.kind() == std::io::ErrorKind::BrokenPipe {
-                VAppExecutionError::AppExited(-1)
-            } else {
-                VAppExecutionError::Other(Box::new(e))
-            }
-        })?;
-
-        // Read response from stdout until a newline
-        let mut response_line = String::new();
-        let bytes_read = self
-            .stdout
-            .read_line(&mut response_line)
+        // ---------- READ ----------
+        let mut len_buf = [0u8; 4];
+        self.stream
+            .read_exact(&mut len_buf)
             .await
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                    VAppExecutionError::AppExited(-1)
-                } else {
-                    VAppExecutionError::Other(Box::new(e))
-                }
-            })?;
+            .map_err(Self::map_err)?;
+        let resp_len = u32::from_be_bytes(len_buf) as usize;
 
-        if bytes_read == 0 {
-            println!("EOF reached");
-            // read the exit code
-            let status = self
-                .child
-                .wait()
-                .await
-                .map_err(|e| VAppExecutionError::Other(Box::new(e)))?
-                .code()
-                .unwrap_or(-1);
+        let mut resp = vec![0u8; resp_len];
+        self.stream
+            .read_exact(&mut resp)
+            .await
+            .map_err(Self::map_err)?;
 
-            return Err(VAppExecutionError::AppExited(status));
-        }
-
-        // Remove any trailing newline or carriage return characters
-        response_line = response_line
-            .trim_end_matches(&['\r', '\n'][..])
-            .to_string();
-
-        // Decode the hex-encoded response
-        let response =
-            hex::decode(&response_line).map_err(|e| VAppExecutionError::Other(Box::new(e)))?;
-
-        Ok(response)
+        Ok(resp)
     }
 }
