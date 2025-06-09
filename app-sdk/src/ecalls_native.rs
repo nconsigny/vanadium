@@ -45,7 +45,18 @@ unsafe fn copy_result(r: *mut u8, result_bytes: &[u8], len: usize) -> () {
     );
 }
 
+// This should be called in show_page if there is no action for the user after showing the page.s
+fn epilogue_noaction() {
+    // no action, just print the closing line
+    println!("\n+=========================================+");
+}
+
 fn prompt_for_action(actions: &[(char, String)]) -> char {
+    assert!(
+        !actions.is_empty(),
+        "This method requires at least one action"
+    );
+
     let mut seen = std::collections::HashSet::new();
     for (ch, _) in actions {
         if !seen.insert(ch) {
@@ -53,12 +64,19 @@ fn prompt_for_action(actions: &[(char, String)]) -> char {
         }
     }
 
+    println!("-------------------------------------------\n");
+    println!("Actions:");
+    for (c, desc) in actions {
+        println!(" - {} : {}", desc, c);
+    }
+    // this assumes that prompt_for_action is called in show_page as the last thing after
+    // showing the page; therefore, we print the closing line here.
+    println!("\n+=========================================+");
+
     loop {
-        println!("Actions:");
-        for (c, desc) in actions {
-            println!(" - {} : {}", desc, c);
-        }
         let mut input = String::new();
+        print!("$ ");
+        io::stdout().flush().expect("Failed to flush stdout");
         io::stdin()
             .read_line(&mut input)
             .expect("Failed to read line");
@@ -69,6 +87,15 @@ fn prompt_for_action(actions: &[(char, String)]) -> char {
                 return ch;
             }
         }
+        // show error and print the list of valid actions (only the character)
+        print!("Invalid action. Valid actions are: ");
+        for (i, (c, _)) in actions.iter().enumerate() {
+            if i > 0 {
+                print!(", ");
+            }
+            print!("{}", c);
+        }
+        println!();
     }
 }
 
@@ -204,12 +231,16 @@ impl EcallsInterface for Ecall {
         match page_desc {
             common::ux::Page::Spinner { text } => {
                 println!("{}...", text);
+                epilogue_noaction();
             }
-            common::ux::Page::Info { icon, text } => match icon {
-                common::ux::Icon::None => println!("{}", text),
-                common::ux::Icon::Success => println!("✓ {}", text),
-                common::ux::Icon::Failure => println!("❌ {}", text),
-            },
+            common::ux::Page::Info { icon, text } => {
+                match icon {
+                    common::ux::Icon::None => println!("{}", text),
+                    common::ux::Icon::Success => println!("✓ {}", text),
+                    common::ux::Icon::Failure => println!("❌ {}", text),
+                }
+                epilogue_noaction();
+            }
             common::ux::Page::ConfirmReject {
                 title,
                 text,
@@ -281,7 +312,7 @@ impl EcallsInterface for Ecall {
                     }
 
                     println!(
-                        "Page {} of {}",
+                        "\nPage {} of {}\n",
                         navigation_info.active_page + 1,
                         navigation_info.n_pages
                     );
@@ -306,6 +337,9 @@ impl EcallsInterface for Ecall {
                             },
                         },
                     );
+                } else {
+                    // no actions, just print the closing line
+                    epilogue_noaction();
                 }
             }
         }
