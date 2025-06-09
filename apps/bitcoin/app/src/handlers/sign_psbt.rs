@@ -59,12 +59,20 @@ fn display_warning_unverified_inputs() -> bool {
 
 #[cfg(not(test))]
 fn display_transaction(pairs: &[TagValue]) -> bool {
+    // message on speculos or real device
+    #[cfg(target_arch = "riscv32")]
+    let button_text = "Hold to sign";
+
+    // message for native interface on the shell
+    #[cfg(not(target_arch = "riscv32"))]
+    let button_text = "Confirm";
+
     sdk::ux::review_pairs(
         "Review transaction to send Bitcoin",
         "",
         pairs,
         "Sign transaction",
-        "Reject",
+        button_text,
         true,
     )
 }
