@@ -45,7 +45,7 @@ unsafe fn copy_result(r: *mut u8, result_bytes: &[u8], len: usize) -> () {
     );
 }
 
-// This should be called in show_page if there is no action for the user after showing the page.s
+// This should be called in show_page if there is no action for the user after showing the page.
 fn epilogue_noaction() {
     // no action, just print the closing line
     println!("\n+=========================================+");
