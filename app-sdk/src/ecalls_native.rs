@@ -1,9 +1,13 @@
 use core::panic;
 use lazy_static::lazy_static;
 use rand::TryRngCore;
-use std::io;
-use std::io::Write;
-use std::sync::Mutex;
+use std::{
+    io::{self, Read, Write},
+    net::{TcpListener, TcpStream},
+    sync::Mutex,
+    thread::sleep,
+    time::Duration,
+};
 
 use crate::ecalls::EcallsInterface;
 use common::ecall_constants::{CurveKind, MAX_BIGNUMBER_SIZE};
@@ -70,9 +74,40 @@ fn prompt_for_action(actions: &[(char, String)]) -> char {
 
 pub struct Ecall;
 
+/// Wait for the client to connect
+fn wait_for_client() -> TcpStream {
+    let addr = std::env::var("VAPP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:2323".into());
+
+    loop {
+        match TcpListener::bind(&addr) {
+            Ok(listener) => {
+                eprintln!("V-App listening on {addr}, waiting for client...");
+
+                // block until client connects
+                match listener.accept() {
+                    Ok((stream, remote)) => {
+                        eprintln!("Client {remote} connected");
+                        let _ = stream.set_nodelay(true);
+                        return stream;
+                    }
+                    Err(err) => {
+                        eprintln!("Accept failed ({err}). Retrying...");
+                        sleep(Duration::from_millis(250));
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("Can’t bind {addr} ({err}). Retrying...");
+                sleep(Duration::from_millis(250));
+            }
+        }
+    }
+}
+
 lazy_static! {
     static ref LAST_EVENT: Mutex<Option<(common::ux::EventCode, common::ux::EventData)>> =
         Mutex::new(None);
+    static ref TCP_CONN: Mutex<TcpStream> = Mutex::new(wait_for_client());
 }
 
 pub fn get_last_event() -> Option<(common::ux::EventCode, common::ux::EventData)> {
@@ -106,45 +141,37 @@ impl EcallsInterface for Ecall {
     }
 
     fn xsend(buffer: *const u8, size: usize) {
-        let slice = unsafe { std::slice::from_raw_parts(buffer, size) };
-        for byte in slice {
-            print!("{:02x}", byte);
-        }
-        print!("\n");
-        io::stdout().flush().expect("Failed to flush stdout");
+        // SAFETY: caller guarantees [buffer, buffer+size) is valid.
+        let data = unsafe { std::slice::from_raw_parts(buffer, size) };
+
+        // Length-prefix: 4-byte big-endian, then raw payload.
+        let mut stream = TCP_CONN.lock().expect("TCP mutex poisoned");
+        stream
+            .write_all(&(size as u32).to_be_bytes())
+            .and_then(|_| stream.write_all(data))
+            .and_then(|_| stream.flush())
+            .expect("TCP write failed");
     }
 
     fn xrecv(buffer: *mut u8, max_size: usize) -> usize {
-        // Request a hex string from the user; repeat until the input is valid
-        // and at most max_size bytes long
-        let (n_bytes_to_copy, bytes) = loop {
-            let mut input = String::new();
-            io::stdout().flush().expect("Failed to flush stdout");
-            io::stdin()
-                .read_line(&mut input)
-                .expect("Failed to read line");
+        let mut stream = TCP_CONN.lock().expect("TCP mutex poisoned");
 
-            let input = input.trim();
+        // Read the 4-byte length header first.
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).expect("TCP read failed");
+        let expected = u32::from_be_bytes(len_buf) as usize;
 
-            let Ok(bytes) = hex::decode(input) else {
-                println!(
-                    "Input too large, max size is {} bytes, please try again.",
-                    max_size
-                );
-                continue;
-            };
-            if bytes.len() <= max_size {
-                break (bytes.len(), bytes);
-            }
-            println!("Input too large, please try again.");
-        };
-
-        // copy to the destination buffer
-        unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer, n_bytes_to_copy);
+        if expected > max_size {
+            panic!(
+                "Peer wants to send {} bytes but caller only provided {}-byte buffer",
+                expected, max_size
+            );
         }
 
-        return n_bytes_to_copy;
+        // Read the payload.
+        let slice = unsafe { std::slice::from_raw_parts_mut(buffer, expected) };
+        stream.read_exact(slice).expect("TCP read failed");
+        expected
     }
 
     fn get_event(data: *mut EventData) -> u32 {
