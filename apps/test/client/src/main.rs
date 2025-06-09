@@ -125,8 +125,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_path_str = args.app.unwrap_or(default_app_path.to_string());
 
     let mut test_client = if args.native {
+        let tcp_addr = std::env::var("VAPP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:2323".into());
         TestClient::new(Box::new(
-            NativeAppClient::new(&app_path_str)
+            NativeAppClient::new(&tcp_addr)
                 .await
                 .map_err(|_| "Failed to create client")?,
         ))
