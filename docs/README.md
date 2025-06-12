@@ -32,4 +32,6 @@ A V-App called `foo` should contain three crates:
 
 # Other documentation
 
+* [V-App Manifest](manifest.md)
+* [Security considerations](security.md)
 * [ECALLs](ecalls.md)
