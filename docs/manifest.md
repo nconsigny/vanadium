@@ -22,7 +22,7 @@ The name is shown when the V-App is registered onto the device.
 ```
 [package.metadata.vapp]
 name = "My App"
-stack_size = 65536
+stack_size = 131072
 ```
 
-If omitted, the stack size 
+If omitted, the stack size defaults to 65536 bytes.
