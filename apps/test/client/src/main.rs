@@ -1,17 +1,13 @@
 use clap::Parser;
 use client::TestClient;
-use hidapi::HidApi;
-use ledger_transport_hid::TransportNativeHID;
 
-use sdk::transport::{Transport, TransportHID, TransportTcp, TransportWrapper};
-use sdk::vanadium_client::{NativeAppClient, VanadiumAppClient};
+use sdk::vanadium_client::client_utils::{create_default_client, ClientType};
 
 mod commands;
 
 mod client;
 
 use std::io::BufRead;
-use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "Vanadium", about = "Run a V-App on Vanadium")]
@@ -116,46 +112,14 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let default_app_path = if args.native {
-        "../app/target/x86_64-unknown-linux-gnu/release/vnd-test"
+    let client_type = if args.hid {
+        ClientType::Hid
+    } else if args.native {
+        ClientType::Native
     } else {
-        "../app/target/riscv32imc-unknown-none-elf/release/vnd-test"
+        ClientType::Tcp
     };
-
-    let app_path_str = args.app.unwrap_or(default_app_path.to_string());
-
-    let mut test_client = if args.native {
-        let tcp_addr = std::env::var("VAPP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:2323".into());
-        TestClient::new(Box::new(
-            NativeAppClient::new(&tcp_addr)
-                .await
-                .map_err(|_| "Failed to create client")?,
-        ))
-    } else {
-        let transport_raw: Arc<
-            dyn Transport<Error = Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
-        > = if args.hid {
-            Arc::new(TransportHID::new(
-                TransportNativeHID::new(
-                    &HidApi::new().expect("Unable to get connect to the device"),
-                )
-                .unwrap(),
-            ))
-        } else {
-            Arc::new(
-                TransportTcp::new()
-                    .await
-                    .expect("Unable to get TCP transport. Is speculos running?"),
-            )
-        };
-        let transport = TransportWrapper::new(transport_raw.clone());
-
-        let (client, _) = VanadiumAppClient::new(&app_path_str, Arc::new(transport), None)
-            .await
-            .map_err(|_| "Failed to create client")?;
-
-        TestClient::new(Box::new(client))
-    };
+    let mut test_client = TestClient::new(create_default_client("vnd-test", client_type).await?);
 
     loop {
         println!("Enter a command:");

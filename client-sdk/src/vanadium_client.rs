@@ -1050,3 +1050,140 @@ impl VAppClient for NativeAppClient {
         Ok(resp)
     }
 }
+
+/// Utility functions to simplify client creation
+///
+/// This module provides convenient functions to create different types of VApp clients
+/// without the boilerplate of setting up transports and wrappers manually.
+///
+pub mod client_utils {
+    use super::*;
+    use crate::transport::{TransportHID, TransportTcp, TransportWrapper};
+    use ledger_transport_hid::TransportNativeHID;
+
+    #[derive(Debug, Clone)]
+    pub enum ClientUtilsError {
+        /// Failed to connect to native app
+        NativeConnectionFailed(String),
+        /// Failed to create TCP transport
+        TcpTransportFailed(String),
+        /// Failed to create HID transport
+        HidTransportFailed(String),
+        /// Failed to create Vanadium app client
+        VanadiumClientFailed(String),
+    }
+
+    impl std::fmt::Display for ClientUtilsError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                ClientUtilsError::NativeConnectionFailed(msg) => {
+                    write!(f, "Native connection failed: {}", msg)
+                }
+                ClientUtilsError::TcpTransportFailed(msg) => {
+                    write!(f, "TCP transport failed: {}", msg)
+                }
+                ClientUtilsError::HidTransportFailed(msg) => {
+                    write!(f, "HID transport failed: {}", msg)
+                }
+                ClientUtilsError::VanadiumClientFailed(msg) => {
+                    write!(f, "Vanadium client failed: {}", msg)
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for ClientUtilsError {}
+
+    /// Creates a client for a V-App compiled using the native target. Uses TCP for communication
+    pub async fn create_native_client(
+        tcp_addr: Option<&str>,
+    ) -> Result<Box<dyn VAppClient + Send + Sync>, ClientUtilsError> {
+        let addr = tcp_addr.unwrap_or("127.0.0.1:2323");
+        let client = NativeAppClient::new(addr)
+            .await
+            .map_err(|e| ClientUtilsError::NativeConnectionFailed(e.to_string()))?;
+        Ok(Box::new(client))
+    }
+
+    /// Creates a Vanadium client using TCP transport (for Speculos)
+    pub async fn create_tcp_client(
+        app_path: &str,
+        app_hmac: Option<[u8; 32]>,
+    ) -> Result<(Box<dyn VAppClient + Send + Sync>, [u8; 32]), ClientUtilsError> {
+        let transport_raw = Arc::new(TransportTcp::new().await.map_err(|e| {
+            ClientUtilsError::TcpTransportFailed(format!(
+                "Unable to get TCP transport. Is speculos running? {}",
+                e
+            ))
+        })?);
+        let transport = TransportWrapper::new(transport_raw);
+
+        let (client, hmac) = VanadiumAppClient::new(app_path, Arc::new(transport), app_hmac)
+            .await
+            .map_err(|e| ClientUtilsError::VanadiumClientFailed(e.to_string()))?;
+        Ok((Box::new(client), hmac))
+    }
+
+    /// Creates a Vanadium client using HID transport (for real device)
+    pub async fn create_hid_client(
+        app_path: &str,
+        app_hmac: Option<[u8; 32]>,
+    ) -> Result<(Box<dyn VAppClient + Send + Sync>, [u8; 32]), ClientUtilsError> {
+        let hid_api = hidapi::HidApi::new().map_err(|e| {
+            ClientUtilsError::HidTransportFailed(format!("Unable to create HID API: {}", e))
+        })?;
+        let transport_raw = Arc::new(TransportHID::new(
+            TransportNativeHID::new(&hid_api).map_err(|e| {
+                ClientUtilsError::HidTransportFailed(format!(
+                    "Unable to connect to the device: {}",
+                    e
+                ))
+            })?,
+        ));
+        let transport = TransportWrapper::new(transport_raw);
+
+        let (client, hmac) = VanadiumAppClient::new(app_path, Arc::new(transport), app_hmac)
+            .await
+            .map_err(|e| ClientUtilsError::VanadiumClientFailed(e.to_string()))?;
+        Ok((Box::new(client), hmac))
+    }
+
+    pub enum ClientType {
+        /// Native client using TCP transport
+        Native,
+        /// Vanadium client using TCP transport (for Speculos)
+        Tcp,
+        /// Vanadium client using HID transport (for real device)
+        Hid,
+    }
+
+    /// Creates a default client based on the specified `ClientType`, using the default paths or environment variables.
+    /// This function simplifies the process of creating a client for a V-App, allowing it to run the client for an
+    /// app running either natively, with Vanadium or Speculos using TCP transport, or with Vanadium on a real device
+    /// using HID transport.
+    ///
+    /// When running natively, it uses the `VAPP_ADDRESS` environment variable to determine the TCP address, or defaults
+    /// to "127.0.0.1:2323" if not set
+    /// When running with Vanadium, it expects the app to be compiled to a specific path, following the standard
+    /// project structure used for V-Apps in the Vanadium repository.
+    ///
+    /// This function is mostly meant for testing and development purposes, as a production release would likely
+    /// have more specific requirements.
+    pub async fn create_default_client(
+        app_name: &str,
+        client_type: ClientType,
+    ) -> Result<Box<dyn VAppClient + Send + Sync>, ClientUtilsError> {
+        let app_path = format!(
+            "../app/target/riscv32imc-unknown-none-elf/release/{}",
+            app_name
+        );
+
+        let tcp_addr = std::env::var("VAPP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:2323".into());
+
+        match client_type {
+            ClientType::Native => create_native_client(Some(&tcp_addr)).await,
+            ClientType::Tcp => create_tcp_client(&app_path, None).await.map(|(c, _hmac)| c),
+            ClientType::Hid => create_hid_client(&app_path, None).await.map(|(c, _hmac)| c),
+        }
+    }
+}
