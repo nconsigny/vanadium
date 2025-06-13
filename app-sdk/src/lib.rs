@@ -12,6 +12,7 @@ pub mod bignum;
 pub mod comm;
 pub mod curve;
 pub mod hash;
+pub mod rand;
 pub mod ux;
 
 pub use app::App;
