@@ -196,6 +196,17 @@ pub(crate) trait EcallsInterface {
     /// 1 on success, 0 on error.
     fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32;
 
+    /// Generates `size` random bytes using a cryptographically secure random number generator,
+    /// and writes them to the provided buffer.
+    ///
+    /// # Parameters
+    /// - `buffer`: Pointer to the buffer where the random bytes will be written.
+    /// - `size`: The number of random bytes to generate.
+    ///
+    /// # Returns
+    /// 1 on success, 0 on error.
+    fn get_random_bytes(buffer: *mut u8, size: usize) -> u32;
+
     /// Signs a message hash using ECDSA.
     ///
     /// # Warning
