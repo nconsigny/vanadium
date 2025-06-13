@@ -9,16 +9,12 @@ use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Context, Editor, Helper};
 
 use client::BitcoinClient;
-use hidapi::HidApi;
-use ledger_transport_hid::TransportNativeHID;
-
-use sdk::transport::{Transport, TransportHID, TransportTcp, TransportWrapper};
-use sdk::vanadium_client::{NativeAppClient, VanadiumAppClient};
 
 mod client;
 
+use sdk::vanadium_client::client_utils::{create_default_client, ClientType};
+
 use std::borrow::Cow;
-use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "vnd-bitcoin-cli")]
@@ -319,46 +315,15 @@ async fn handle_cli_command(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let default_app_path = if args.native {
-        "../app/target/x86_64-unknown-linux-gnu/release/vnd-bitcoin"
+    let client_type = if args.hid {
+        ClientType::Hid
+    } else if args.native {
+        ClientType::Native
     } else {
-        "../app/target/riscv32imc-unknown-none-elf/release/vnd-bitcoin"
+        ClientType::Tcp
     };
-
-    let app_path_str = args.app.unwrap_or(default_app_path.to_string());
-
-    let mut bitcoin_client = if args.native {
-        let addr = std::env::var("VAPP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:2323".into());
-        BitcoinClient::new(Box::new(
-            NativeAppClient::new(&addr)
-                .await
-                .map_err(|_| "Failed to create client")?,
-        ))
-    } else {
-        let transport_raw: Arc<
-            dyn Transport<Error = Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
-        > = if args.hid {
-            Arc::new(TransportHID::new(
-                TransportNativeHID::new(
-                    &HidApi::new().expect("Unable to get connect to the device"),
-                )
-                .unwrap(),
-            ))
-        } else {
-            Arc::new(
-                TransportTcp::new()
-                    .await
-                    .expect("Unable to get TCP transport. Is speculos running?"),
-            )
-        };
-        let transport = TransportWrapper::new(transport_raw.clone());
-
-        let (client, _) = VanadiumAppClient::new(&app_path_str, Arc::new(transport), None)
-            .await
-            .map_err(|_| "Failed to create client")?;
-
-        BitcoinClient::new(Box::new(client))
-    };
+    let mut bitcoin_client =
+        BitcoinClient::new(create_default_client("vnd-bitcoin", client_type).await?);
 
     let mut rl = Editor::<CommandCompleter, rustyline::history::DefaultHistory>::new()?;
     rl.set_helper(Some(CommandCompleter));
