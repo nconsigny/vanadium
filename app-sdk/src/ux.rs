@@ -8,8 +8,8 @@ use crate::{
 use alloc::vec::Vec;
 
 pub use common::ux::{
-    Action, Event, EventCode, EventData, Icon, NavInfo, NavigationInfo, Page, PageContent,
-    PageContentInfo, Deserializable, TagValue,
+    Action, Deserializable, Event, EventCode, EventData, Icon, NavInfo, NavigationInfo, Page,
+    PageContent, PageContentInfo, TagValue,
 };
 
 use crate::ux_generated;
@@ -162,7 +162,7 @@ pub fn show_spinner(text: &str) {
 
 pub fn show_info(icon: Icon, text: &str) {
     ux_generated::show_info(icon, text);
-    wait(20); // Wait for 20 ticker events (about 2 seconds)
+    wait(50); // Wait for 50 ticker events (about 5 seconds)
 }
 
 #[inline(always)]
