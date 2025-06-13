@@ -1012,6 +1012,39 @@ impl<'a> CommEcallHandler<'a> {
         Ok(1)
     }
 
+    fn handle_get_random_bytes<E: fmt::Debug>(
+        &self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        buffer: GuestPointer,
+        size: usize,
+    ) -> Result<u32, CommEcallError> {
+        if size == 0 {
+            return Ok(1); // nothing to do
+        }
+        if size > 256 {
+            return Err(CommEcallError::InvalidParameters(
+                "size is too large, must be <= 256",
+            ));
+        }
+
+        if buffer.0.checked_add(size as u32).is_none() {
+            return Err(CommEcallError::Overflow);
+        }
+
+        let segment = cpu.get_segment::<E>(buffer.0)?;
+
+        // generate random bytes
+        let mut random_bytes = vec![0u8; size];
+        unsafe {
+            sys::cx_rng_no_throw(random_bytes.as_mut_ptr(), size);
+        }
+
+        // copy random bytes to V-App memory
+        segment.write_buffer(buffer.0, &random_bytes)?;
+
+        Ok(1)
+    }
+
     fn handle_ecdsa_sign<E: fmt::Debug>(
         &self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
@@ -1529,6 +1562,14 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                     GPreg!(A3),
                     reg!(A4) as usize,
                 )?;
+            }
+
+            ECALL_GET_RANDOM_BYTES => {
+                reg!(A0) = self.handle_get_random_bytes::<CommEcallError>(
+                    cpu,
+                    GPreg!(A0),
+                    reg!(A1) as usize,
+                )? as u32;
             }
 
             ECALL_ECDSA_SIGN => {

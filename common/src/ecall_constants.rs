@@ -57,6 +57,10 @@ pub const ECALL_HASH_DIGEST: u32 = 152;
 pub const ECALL_ECFP_ADD_POINT: u32 = 160;
 pub const ECALL_ECFP_SCALAR_MULT: u32 = 161;
 
+// Random number generation
+pub const ECALL_GET_RANDOM_BYTES: u32 = 170;
+
+// Signatures
 pub const ECALL_ECDSA_SIGN: u32 = 180;
 pub const ECALL_ECDSA_VERIFY: u32 = 181;
 pub const ECALL_SCHNORR_SIGN: u32 = 182;
