@@ -162,6 +162,7 @@ pub fn show_spinner(text: &str) {
 
 pub fn show_info(icon: Icon, text: &str) {
     ux_generated::show_info(icon, text);
+    wait(20); // Wait for 20 ticker events (about 2 seconds)
 }
 
 #[inline(always)]
