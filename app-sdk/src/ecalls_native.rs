@@ -611,6 +611,26 @@ impl EcallsInterface for Ecall {
         1
     }
 
+    fn get_random_bytes(buffer: *mut u8, size: usize) -> u32 {
+        if size == 0 {
+            return 1;
+        }
+        if size > 256 {
+            panic!("size is too large");
+        }
+
+        let mut rng = rand::rngs::OsRng::default();
+        let mut random_bytes = [0u8; 256];
+        rng.try_fill_bytes(&mut random_bytes[..size])
+            .expect("Failed to generate random bytes");
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(random_bytes.as_ptr(), buffer, size);
+        }
+
+        1
+    }
+
     fn ecdsa_sign(
         curve: u32,
         mode: u32,
