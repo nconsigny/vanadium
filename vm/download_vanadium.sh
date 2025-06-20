@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Downloads the latest Vanadium binaries from GitHub and unzips them into the target folder,
 # in the same location as if they were built from source.
 
