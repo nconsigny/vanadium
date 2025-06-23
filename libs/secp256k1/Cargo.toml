@@ -22,6 +22,8 @@ default = ["alloc"]
 # allow use of Secp256k1::new and related API that requires an allocator
 alloc = []
 lowmemory = []
+# Note that unlike upstream, this doesn't require `std` on vanadium
+global-context = []
 
 [dependencies]
 
