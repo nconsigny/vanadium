@@ -158,6 +158,8 @@ extern crate test;
 
 #[cfg(feature = "hashes")]
 pub extern crate hashes;
+#[cfg(feature = "rand")]
+pub extern crate rand;
 
 #[macro_use]
 mod macros;

@@ -35,6 +35,7 @@ serde = { version = "1.0.103", default-features = false, optional = true }
 # the respective -std feature e.g., hashes-std
 hashes = { package = "bitcoin_hashes", version = "0.14.0", optional = true, default-features = false }
 subtle = { version = "2.6.1", default-features = false }
+rand = { version = "0.8", default-features = false, optional = true }
 
 [dev-dependencies]
 serde_cbor = "0.10.0"
