@@ -9,7 +9,7 @@ use common::ux::EventData;
 macro_rules! ecall0v {
     // ECALL with no arguments and no return value
     ($fn_name:ident, $syscall_number:expr) => {
-        pub fn $fn_name() {
+        pub unsafe fn $fn_name() {
             unsafe {
                 asm!(
                     "ecall",
@@ -22,7 +22,7 @@ macro_rules! ecall0v {
 macro_rules! ecall0 {
     // ECALL with no arguments and returning a value
     ($fn_name:ident, $syscall_number:expr, $ret_type:ty) => {
-        pub fn $fn_name() -> $ret_type {
+        pub unsafe fn $fn_name() -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -38,7 +38,7 @@ macro_rules! ecall0 {
 macro_rules! ecall1v {
     // ECALL with 1 argument and no return value
     ($fn_name:ident, $syscall_number:expr, ($arg1:ident: $arg1_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type) {
+        pub unsafe fn $fn_name($arg1: $arg1_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -52,7 +52,7 @@ macro_rules! ecall1v {
 macro_rules! ecall1 {
     // ECALL with 1 argument and returning a value
     ($fn_name:ident, $syscall_number:expr, ($arg1:ident: $arg1_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -71,7 +71,7 @@ macro_rules! ecall2v {
     ($fn_name:ident, $syscall_number:expr,
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -88,7 +88,7 @@ macro_rules! ecall2 {
     ($fn_name:ident, $syscall_number:expr,
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -109,7 +109,7 @@ macro_rules! ecall3v {
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty),
      ($arg3:ident: $arg3_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -128,7 +128,7 @@ macro_rules! ecall3 {
      ($arg1:ident: $arg1_type:ty),
      ($arg2:ident: $arg2_type:ty),
      ($arg3:ident: $arg3_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -152,7 +152,7 @@ macro_rules! ecall4v {
      ($arg2:ident: $arg2_type:ty),
      ($arg3:ident: $arg3_type:ty),
      ($arg4:ident: $arg4_type:ty)) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) {
             unsafe {
                 asm!(
                     "ecall",
@@ -173,7 +173,7 @@ macro_rules! ecall4 {
      ($arg2:ident: $arg2_type:ty),
      ($arg3:ident: $arg3_type:ty),
      ($arg4:ident: $arg4_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -199,7 +199,7 @@ macro_rules! ecall5 {
      ($arg3:ident: $arg3_type:ty),
      ($arg4:ident: $arg4_type:ty),
      ($arg5:ident: $arg5_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -227,7 +227,7 @@ macro_rules! ecall6 {
      ($arg4:ident: $arg4_type:ty),
      ($arg5:ident: $arg5_type:ty),
      ($arg6:ident: $arg6_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -257,7 +257,7 @@ macro_rules! ecall7 {
      ($arg5:ident: $arg5_type:ty),
      ($arg6:ident: $arg6_type:ty),
      ($arg7:ident: $arg7_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type, $arg7: $arg7_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type, $arg7: $arg7_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -289,7 +289,7 @@ macro_rules! ecall8 {
      ($arg6:ident: $arg6_type:ty),
      ($arg7:ident: $arg7_type:ty),
      ($arg8:ident: $arg8_type:ty), $ret_type:ty) => {
-        pub fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type, $arg7: $arg7_type, $arg8: $arg8_type) -> $ret_type {
+        pub unsafe fn $fn_name($arg1: $arg1_type, $arg2: $arg2_type, $arg3: $arg3_type, $arg4: $arg4_type, $arg5: $arg5_type, $arg6: $arg6_type, $arg7: $arg7_type, $arg8: $arg8_type) -> $ret_type {
             let ret: $ret_type;
             unsafe {
                 asm!(
@@ -314,12 +314,12 @@ macro_rules! ecall8 {
 macro_rules! delegate_ecall {
     ($vis:vis $name:ident $(, ($arg_name:ident: $arg_type:ty))*) => {
         $vis fn $name($($arg_name: $arg_type),*) {
-            $name($($arg_name),*)
+            unsafe { $name($($arg_name),*) }
         }
     };
     ($vis:vis $name:ident, $ret:ty $(, ($arg_name:ident: $arg_type:ty))*) => {
         $vis fn $name($($arg_name: $arg_type),*) -> $ret {
-            $name($($arg_name),*)
+            unsafe { $name($($arg_name),*) }
         }
     };
 }
@@ -363,7 +363,7 @@ impl Ecall {
 }
 
 // fatal() and exit() are diverging, therefore we can't use the macro
-pub fn exit(status: i32) -> ! {
+pub unsafe fn exit(status: i32) -> ! {
     unsafe {
         asm!(
             "ecall",
@@ -374,7 +374,7 @@ pub fn exit(status: i32) -> ! {
     }
 }
 
-pub fn fatal(msg: *const u8, size: usize) -> ! {
+pub unsafe fn fatal(msg: *const u8, size: usize) -> ! {
     unsafe {
         asm!(
             "ecall",
