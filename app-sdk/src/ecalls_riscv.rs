@@ -43,7 +43,7 @@ impl EcallsInterface for Ecall {
 
     delegate_ecall!(ecdsa_sign, usize, (curve: u32), (mode: u32), (hash_id: u32), (privkey: *const u8), (msg_hash: *const u8), (signature: *mut u8));
     delegate_ecall!(ecdsa_verify, u32, (curve: u32), (pubkey: *const u8), (msg_hash: *const u8), (signature: *const u8), (signature_len: usize));
-    delegate_ecall!(schnorr_sign, usize, (curve: u32), (mode: u32), (hash_id: u32), (privkey: *const u8), (msg: *const u8), (msg_len: usize), (signature: *mut u8));
+    delegate_ecall!(schnorr_sign, usize, (curve: u32), (mode: u32), (hash_id: u32), (privkey: *const u8), (msg: *const u8), (msg_len: usize), (signature: *mut u8), (entropy: *const [u8; 32]));
     delegate_ecall!(schnorr_verify, u32, (curve: u32), (mode: u32), (hash_id: u32), (pubkey: *const u8), (msg: *const u8), (msg_len: usize), (signature: *const u8), (signature_len: usize));
 }
 
