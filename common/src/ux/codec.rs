@@ -1,20 +1,23 @@
 use alloc::{string::String, vec::Vec};
-use core::convert::TryInto;
+use core::{convert::TryInto, mem::MaybeUninit};
 
 pub trait Serializable {
     fn get_serialized_length(&self) -> usize;
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize);
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize);
 
     #[inline(always)]
     fn serialized(&self) -> Vec<u8> {
         let len = self.get_serialized_length();
         let mut buf = Vec::with_capacity(len);
+        let slice = buf.spare_capacity_mut();
+        let mut pos = 0;
+        self.serialize(slice, &mut pos);
+
         unsafe {
             // we don't bother initializing the content, since it will be overwritten
             buf.set_len(len);
         }
-        let mut pos = 0;
-        self.serialize(&mut buf, &mut pos);
+
         buf
     }
 }
@@ -26,7 +29,7 @@ impl<T: Serializable + ?Sized> Serializable for &T {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         T::serialize(self, buf, pos);
     }
 }
@@ -51,8 +54,8 @@ impl Serializable for bool {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        buf[*pos] = *self as u8;
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
+        buf[*pos].write(*self as u8);
         *pos += 1;
     }
 }
@@ -75,8 +78,8 @@ impl Serializable for u8 {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
-        buf[*pos] = *self;
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
+        buf[*pos].write(*self);
         *pos += 1;
     }
 }
@@ -97,11 +100,11 @@ impl Serializable for u16 {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         // we avoid using to_be_bytes() and copy_from_slice to make it easier for the compiler to
         // optimize this when serializing a fixed known constant.
-        buf[*pos] = (*self >> 8) as u8;
-        buf[*pos + 1] = (*self & 0xFF) as u8;
+        buf[*pos].write((*self >> 8) as u8);
+        buf[*pos + 1].write((*self & 0xFF) as u8);
         *pos += 2;
     }
 }
@@ -125,13 +128,13 @@ impl Serializable for u32 {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         // we avoid using to_be_bytes() and copy_from_slice to make it easier for the compiler to
         // optimize this when serializing a fixed known constant.
-        buf[*pos] = (*self >> 24) as u8;
-        buf[*pos + 1] = ((*self >> 16) & 0xFF) as u8;
-        buf[*pos + 2] = ((*self >> 8) & 0xFF) as u8;
-        buf[*pos + 3] = (*self & 0xFF) as u8;
+        buf[*pos].write((*self >> 24) as u8);
+        buf[*pos + 1].write(((*self >> 16) & 0xFF) as u8);
+        buf[*pos + 2].write(((*self >> 8) & 0xFF) as u8);
+        buf[*pos + 3].write((*self & 0xFF) as u8);
         *pos += 4;
     }
 }
@@ -155,7 +158,7 @@ impl Serializable for String {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         Serializable::serialize(self.as_str(), buf, pos);
     }
 }
@@ -183,15 +186,15 @@ impl<T: Serializable> Serializable for Option<T> {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         match self {
             Some(value) => {
-                buf[*pos] = 1;
+                buf[*pos].write(1);
                 *pos += 1;
                 value.serialize(buf, pos);
             }
             None => {
-                buf[*pos] = 0;
+                buf[*pos].write(0);
                 *pos += 1;
             }
         }
@@ -219,7 +222,7 @@ impl<T: Serializable> Serializable for Vec<T> {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         Serializable::serialize(self.as_slice(), buf, pos);
     }
 }
@@ -244,14 +247,17 @@ impl Serializable for str {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         let bytes = self.as_bytes();
         let len = self.len();
         let Ok(casted_len) = TryInto::<u16>::try_into(len) else {
             panic!("slice too long");
         };
         Serializable::serialize(&casted_len, buf, pos);
-        buf[*pos..][..len].copy_from_slice(bytes);
+        for (i, &byte) in bytes.iter().enumerate() {
+            buf[*pos + i].write(byte);
+        }
+
         *pos += len;
     }
 }
@@ -266,7 +272,7 @@ impl<T: Serializable> Serializable for [T] {
     }
 
     #[inline(always)]
-    fn serialize(&self, buf: &mut [u8], pos: &mut usize) {
+    fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize) {
         let Ok(len) = TryInto::<u32>::try_into(self.len()) else {
             panic!("slice too long");
         };
@@ -323,9 +329,14 @@ impl<T: Serializable> WrappedSerializable for MaybeConst<T> {
     fn serialize_wrapped(&self) -> Vec<SerializedPart> {
         match self {
             MaybeConst::Const(value) => {
-                let mut buf = alloc::vec![0; value.get_serialized_length()];
+                let len = value.get_serialized_length();
+                let mut buf = Vec::with_capacity(len);
+                let slice = buf.spare_capacity_mut();
                 let mut pos = 0;
-                value.serialize(&mut buf, &mut pos);
+                value.serialize(slice, &mut pos);
+                unsafe {
+                    buf.set_len(len);
+                }
                 alloc::vec![SerializedPart::Static(buf)]
             }
             MaybeConst::Runtime { arg_name, arg_type } => {
