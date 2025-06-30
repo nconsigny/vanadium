@@ -10,6 +10,9 @@
       "path": "client-sdk"
     },
     {
+      "path": "ecalls"
+    },
+    {
       "path": "app-sdk"
     },
     {
@@ -20,19 +23,19 @@
     },
     {
       "path": "libs/bitcoin-hashes",
-      "name": "₿ vlib-bitcoin-hashes"
+      "name": "₿ libs/bitcoin-hashes"
     },
     {
       "path": "libs/base58",
-      "name": "₿ vlib-base58"
+      "name": "₿ libs/base58"
     },
     {
       "path": "libs/secp256k1",
-      "name": "₿ vlib-secp256k1"
+      "name": "₿ libs/secp256k1"
     },
     {
       "path": "libs/bitcoin",
-      "name": "₿ vlib-bitcoin"
+      "name": "₿ libs/bitcoin"
     },
     {
       "path": "apps/bitcoin/docs",
