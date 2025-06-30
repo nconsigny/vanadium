@@ -445,7 +445,11 @@ impl EcfpPrivateKey<Secp256k1, 32> {
     /// The length of the signature is always 64 bytes.
     ///
     /// * `Err(&'static str)` - An error message if the signing fails.
-    pub fn schnorr_sign(&self, msg: &[u8], entropy: Option<&[u8; 32]>) -> Result<Vec<u8>, &'static str> {
+    pub fn schnorr_sign(
+        &self,
+        msg: &[u8],
+        entropy: Option<&[u8; 32]>,
+    ) -> Result<Vec<u8>, &'static str> {
         let mut result = [0u8; 64];
         let sig_size = Ecall::schnorr_sign(
             Secp256k1::get_curve_kind() as u32,
@@ -455,7 +459,9 @@ impl EcfpPrivateKey<Secp256k1, 32> {
             msg.as_ptr(),
             msg.len(),
             result.as_mut_ptr(),
-            entropy.map(|entropy| entropy as *const _).unwrap_or(core::ptr::null()),
+            entropy
+                .map(|entropy| entropy as *const _)
+                .unwrap_or(core::ptr::null()),
         );
         if sig_size != 64 {
             panic!("Schnorr signatures per BIP-340 must be exactly 64 bytes");
@@ -657,6 +663,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_secp256k1_ecdsa_sign_verify() {
         let privkey = EcfpPrivateKey::<Secp256k1, 32> {
             curve_marker: PhantomData,
@@ -683,7 +690,7 @@ mod tests {
         };
         let msg = "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
 
-        let signature = privkey.schnorr_sign(msg.as_bytes()).unwrap();
+        let signature = privkey.schnorr_sign(msg.as_bytes(), None).unwrap();
 
         let pubkey = privkey.to_public_key();
         pubkey.schnorr_verify(msg.as_bytes(), &signature).unwrap();
