@@ -224,7 +224,7 @@ fn process_message(_app: &mut App, msg: &[u8]) -> Vec<u8> {
             Curve::Secp256k1 => {
                 let privkey: EcfpPrivateKey<sdk::curve::Secp256k1, 32> =
                     EcfpPrivateKey::new(privkey.as_slice().try_into().expect("invalid privkey"));
-                privkey.schnorr_sign(&msg).unwrap()
+                privkey.schnorr_sign(&msg, None).unwrap()
             }
         },
         Command::SchnorrVerify {
