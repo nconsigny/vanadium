@@ -166,7 +166,7 @@ fn sign_input_schnorr(
         EcfpPrivateKey::new(tweaked_keypair.to_inner().secret_bytes())
     };
 
-    let mut signature = signing_privkey.schnorr_sign(sighash.as_ref())?;
+    let mut signature = signing_privkey.schnorr_sign(sighash.as_ref(), None)?;
 
     if sighash_type != TapSighashType::Default {
         signature.push(sighash_type as u8)
