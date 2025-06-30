@@ -86,7 +86,7 @@ fn derive_enum(
                 let get_field_length = spread_fields.clone();
                 quote! {
                     Self::#variant_ident { #(#spread_fields,)* } => 1 #(
-                        + Serializable::get_serialized_length(#get_field_length)
+                        + Serializable::get_serialized_length(&#get_field_length)
                     )*
                 }
             }
@@ -99,7 +99,7 @@ fn derive_enum(
                     .collect::<Vec<_>>();
                 quote! {
                     Self::#variant_ident(#(#field_names),*) => 1 #(
-                        + Serializable::get_serialized_length(#field_names)
+                        + Serializable::get_serialized_length(&#field_names)
                     )*
                 }
             }
@@ -185,10 +185,10 @@ fn derive_enum(
                     let fields = fields_names.clone();
                     quote! {
                         Self::#variant_ident { #(#fields_names,)* } => {
-                            __buff[*__pos] = #discriminant;
+                            __buff[*__pos].write(#discriminant);
                             *__pos += 1;
                             #(
-                                Serializable::serialize(#fields, __buff, __pos);
+                                Serializable::serialize(&#fields, __buff, __pos);
                             )*
                         }
                     }
@@ -203,17 +203,17 @@ fn derive_enum(
 
                     quote! {
                         Self::#variant_ident(#(#field_names),*) => {
-                            __buff[*__pos] = #discriminant;
+                            __buff[*__pos].write(#discriminant);
                             *__pos += 1;
                             #(
-                                Serializable::serialize(#field_names, __buff, __pos);
+                                Serializable::serialize(&#field_names, __buff, __pos);
                             )*
                         }
                     }
                 }
                 Fields::Unit => quote! {
                     Self::#variant_ident => {
-                        __buff[*__pos] = #discriminant;
+                        __buff[*__pos].write(#discriminant);
                         *__pos += 1;
                     }
                 },
@@ -255,7 +255,7 @@ fn derive_enum(
                     });
                     let serialize_field = fields_named.named.iter().map(|field| {
                         let name = &field.ident;
-                        quote!(Serializable::serialize(&#name, &mut __buff, &mut __pos))
+                        quote!(Serializable::serialize(&#name, __slice, &mut __pos))
                     });
                     (
                         quote!(#(#args),*),
@@ -263,7 +263,7 @@ fn derive_enum(
                             1 #( + #get_fields_len)*
                         }),
                         quote!({
-                            __buff[__pos] = #discriminant;
+                            __slice[__pos].write(#discriminant);
                             __pos += 1;
                             #(
                                 #serialize_field;
@@ -283,7 +283,7 @@ fn derive_enum(
                         .map(|(name, ty)| quote!(#name: <#ty as Makeable>::ArgType));
                     let serialize_field = fields
                         .iter()
-                        .map(|(name, _)| quote!(Serializable::serialize(&#name, &mut __buff, &mut __pos)));
+                        .map(|(name, _)| quote!(Serializable::serialize(&#name, __slice, &mut __pos)));
                     let get_fields_len = fields
                         .iter()
                         .map(|(name, _)| quote!(Serializable::get_serialized_length(&#name)));
@@ -293,7 +293,7 @@ fn derive_enum(
                             1 #( + #get_fields_len)*
                         }),
                         quote!({
-                            __buff[__pos] = #discriminant;
+                            __slice[__pos].write(#discriminant);
                             __pos += 1;
                             #(
                                 #serialize_field;
@@ -305,7 +305,7 @@ fn derive_enum(
                     quote!(),
                     quote!(1usize),
                     quote! {
-                        __buff[__pos] = #discriminant;
+                        __slice[__pos].write(#discriminant);
                         __pos += 1;
                     },
                 ),
@@ -314,12 +314,13 @@ fn derive_enum(
             quote! {
                 pub fn #fn_make_ident(#args) -> Vec<u8> {
                     let __len = #get_len;
-                    let mut __buff = Vec::with_capacity(__len);
+                    let mut __buff = Vec::<u8>::with_capacity(__len);
+                    let __slice = __buff.spare_capacity_mut();
+                    let mut __pos = 0;
+                    #serialize
                     unsafe {
                         __buff.set_len(__len);
                     }
-                    let mut __pos = 0;
-                    #serialize
                     __buff
                 }
             }
@@ -336,7 +337,7 @@ fn derive_enum(
                 }
             }
 
-            fn serialize(&self, __buff: &mut [u8], __pos: &mut usize) {
+            fn serialize(&self, __buff: &mut [core::mem::MaybeUninit<u8>], __pos: &mut usize) {
                 match self {
                     #(
                         #serialize_match_arms,
@@ -562,12 +563,13 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
             impl #ident {
                 pub fn #make_fn_ident(#args) -> Vec<u8> {
                     let __len = #get_len;
-                    let mut __buff = Vec::with_capacity(__len);
+                    let mut __buff = Vec::<u8>::with_capacity(__len);
+                    let __slice = __buff.spare_capacity_mut();
+                    let mut __pos = 0;
+                    #serialize
                     unsafe {
                         __buff.set_len(__len);
                     }
-                    let mut __pos = 0;
-                    #serialize
                     __buff
                 }
             }
@@ -606,7 +608,7 @@ fn derive_struct(vis: &Visibility, ident: &Ident, data: &DataStruct, wrapped_ide
                 0 #(+ Serializable::get_serialized_length(&self.#fields))*
             }
 
-            fn serialize(&self, __buff: &mut [u8], __pos: &mut usize) {
+            fn serialize(&self, __buff: &mut [core::mem::MaybeUninit<u8>], __pos: &mut usize) {
                 #(
                     #serialized_fields;
                 )*
