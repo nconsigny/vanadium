@@ -74,18 +74,20 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                     file,
                     "    let total_len: usize = {}.get_serialized_length();
     let mut serialized = Vec::<u8>::with_capacity(total_len);
-    unsafe {{
-        serialized.set_len(total_len);
-    }}
+    let slice = serialized.spare_capacity_mut();
     let mut cur: usize = 0;
-    {}.serialize(&mut serialized, &mut cur);",
+    {}.serialize(slice, &mut cur);",
                     arg_name, arg_name
                 )
                 .expect("Could not write");
             }
         }
 
-        writeln!(file, "    show_page_raw(&serialized);").expect("Could not write");
+        // Note: We could use core::mem::MaybeUninit::slice_assume_init_ref, but it requires the unstable feature maybe_uninit_slice
+        // https://github.com/rust-lang/rust/issues/63569
+        writeln!(file, "    let bytes = unsafe {{ core::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&serialized[0..total_len]) }};").expect("Could not write");
+
+        writeln!(file, "    show_page_raw(bytes);").expect("Could not write");
     } else {
         writeln!(file, "    let mut total_len: usize = 0;").expect("Could not write");
 
@@ -119,9 +121,8 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
 
         writeln!(
             file,
-            "        let mut buffer: MaybeUninit<[u8; MAX_STATIC_LEN]> = MaybeUninit::uninit();
-        let buffer_ptr = buffer.as_mut_ptr() as *mut u8;
-        let mut serialized = unsafe {{ core::slice::from_raw_parts_mut(buffer_ptr, MAX_STATIC_LEN) }};
+            "        let mut serialized: [MaybeUninit<u8>; MAX_STATIC_LEN] = [MaybeUninit::uninit(); MAX_STATIC_LEN];
+        
         let mut cur: usize = 0;"
         )
         .expect("Could not write");
@@ -133,7 +134,13 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                         file,
                         "
         let next_len = {};
-        serialized[cur..cur + next_len].copy_from_slice(&{});
+        unsafe {{
+            core::ptr::copy_nonoverlapping(
+                {}.as_ptr(),
+                serialized[cur..].as_mut_ptr() as *mut u8,
+                next_len
+            );
+        }}
         cur += next_len;",
                         vec.len(),
                         gen_u8_slice(&vec)
@@ -155,8 +162,11 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
             }
         }
 
-        writeln!(file, "        show_page_raw(&serialized[0..total_len]);")
-            .expect("Could not write");
+        // Note: We could use core::mem::MaybeUninit::slice_assume_init_ref, but it requires the unstable feature maybe_uninit_slice
+        // https://github.com/rust-lang/rust/issues/63569
+        writeln!(file, "        let bytes = unsafe {{ core::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&serialized[0..total_len]) }};").expect("Could not write");
+
+        writeln!(file, "        show_page_raw(bytes);").expect("Could not write");
 
         writeln!(file, "    }} else {{").expect("Could not write");
 
@@ -165,9 +175,7 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
         writeln!(
             file,
             "        let mut serialized = Vec::<u8>::with_capacity(total_len);
-        unsafe {{
-            serialized.set_len(total_len);
-        }}
+        let slice = serialized.spare_capacity_mut();
 
         let mut cur: usize = 0;"
         )
@@ -180,7 +188,13 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                         file,
                         "
         let next_len = {};
-        serialized[cur..cur + next_len].copy_from_slice(&{});
+        unsafe {{
+            core::ptr::copy_nonoverlapping(
+                {}.as_ptr(),
+                slice[cur..].as_mut_ptr() as *mut u8,
+                next_len
+            );
+        }}
         cur += next_len;",
                         vec.len(),
                         gen_u8_slice(&vec)
@@ -194,14 +208,15 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                     writeln!(
                         file,
                         "
-        {}.serialize(&mut serialized, &mut cur);\n",
+        {}.serialize(slice, &mut cur);\n",
                         arg_name
                     )
                     .expect("Could not write");
                 }
             }
         }
-
+        writeln!(file, "        unsafe {{ serialized.set_len(total_len); }}")
+            .expect("Could not write");
         writeln!(file, "        show_page_raw(&serialized);").expect("Could not write");
         writeln!(file, "    }}").expect("Could not write");
     }
@@ -239,10 +254,7 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
     writeln!(
         file,
         "    let mut serialized = Vec::<u8>::with_capacity(total_len);
-    unsafe {{
-        serialized.set_len(total_len);
-    }}
-
+    let slice = serialized.spare_capacity_mut();
     let mut cur: usize = 0;"
     )
     .expect("Could not write");
@@ -254,7 +266,10 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                     file,
                     "
     let next_len = {};
-    serialized[cur..cur + next_len].copy_from_slice(&{});
+    let slice_content = {};
+    for i in 0..next_len {{
+        slice[cur + i].write(slice_content[i]);
+    }}
     cur += next_len;",
                     vec.len(),
                     gen_u8_slice(&vec)
@@ -268,13 +283,14 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                 writeln!(
                     file,
                     "
-    {}.serialize(&mut serialized, &mut cur);\n",
+    {}.serialize(slice, &mut cur);\n",
                     arg_name
                 )
                 .expect("Could not write");
             }
         }
     }
+    writeln!(file, "    unsafe {{ serialized.set_len(total_len); }}").expect("Could not write");
     writeln!(file, "    serialized").expect("Could not write");
     writeln!(file, "}}\n").expect("Could not write");
 }
