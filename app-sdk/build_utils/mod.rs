@@ -134,9 +134,12 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                         file,
                         "
         let next_len = {};
-        let slice_content = {};
-        for i in 0..next_len {{
-            serialized[cur + i].write(slice_content[i]);
+        unsafe {{
+            core::ptr::copy_nonoverlapping(
+                {}.as_ptr(),
+                serialized[cur..].as_mut_ptr() as *mut u8,
+                next_len
+            );
         }}
         cur += next_len;",
                         vec.len(),
@@ -185,9 +188,12 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
                         file,
                         "
         let next_len = {};
-        let slice_content = {};
-        for i in 0..next_len {{
-            slice[cur + i].write(slice_content[i]);
+        unsafe {{
+            core::ptr::copy_nonoverlapping(
+                {}.as_ptr(),
+                slice[cur..].as_mut_ptr() as *mut u8,
+                next_len
+            );
         }}
         cur += next_len;",
                         vec.len(),
