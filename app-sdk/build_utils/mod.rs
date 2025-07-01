@@ -83,7 +83,10 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
             }
         }
 
+        // Note: We could use core::mem::MaybeUninit::slice_assume_init_ref, but it requires the unstable feature maybe_uninit_slice
+        // https://github.com/rust-lang/rust/issues/63569
         writeln!(file, "    let bytes = unsafe {{ core::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&serialized[0..total_len]) }};").expect("Could not write");
+
         writeln!(file, "    show_page_raw(bytes);").expect("Could not write");
     } else {
         writeln!(file, "    let mut total_len: usize = 0;").expect("Could not write");
@@ -156,7 +159,10 @@ pub fn make_page_maker(file: &mut File, parts: &[SerializedPart], fn_name: &str)
             }
         }
 
+        // Note: We could use core::mem::MaybeUninit::slice_assume_init_ref, but it requires the unstable feature maybe_uninit_slice
+        // https://github.com/rust-lang/rust/issues/63569
         writeln!(file, "        let bytes = unsafe {{ core::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&serialized[0..total_len]) }};").expect("Could not write");
+
         writeln!(file, "        show_page_raw(bytes);").expect("Could not write");
 
         writeln!(file, "    }} else {{").expect("Could not write");

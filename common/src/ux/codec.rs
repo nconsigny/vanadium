@@ -2,7 +2,17 @@ use alloc::{string::String, vec::Vec};
 use core::{convert::TryInto, mem::MaybeUninit};
 
 pub trait Serializable {
+    /// Returns the length of the serialized representation of this value.
     fn get_serialized_length(&self) -> usize;
+
+    /// Serializes the value into the provided buffer, starting at the position indicated by `pos`.
+    /// The position is updated to reflect the new position after serialization.
+    /// Implementations must guarantee that exactly `get_serialized_length()` bytes will be written to the buffer,
+    /// starting from the position indicated by `pos`.
+    ///
+    /// # Safety
+    /// The caller must ensure that `is a valid index into the buffer, and that the buffer has enough space to hold
+    /// the serialized data.
     fn serialize(&self, buf: &mut [MaybeUninit<u8>], pos: &mut usize);
 
     #[inline(always)]
