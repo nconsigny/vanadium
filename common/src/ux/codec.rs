@@ -264,10 +264,13 @@ impl Serializable for str {
             panic!("slice too long");
         };
         Serializable::serialize(&casted_len, buf, pos);
-        for (i, &byte) in bytes.iter().enumerate() {
-            buf[*pos + i].write(byte);
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                buf.as_mut_ptr().add(*pos) as *mut u8,
+                len,
+            );
         }
-
         *pos += len;
     }
 }
