@@ -63,6 +63,15 @@ pub(crate) trait EcallsInterface {
     /// 1 on success, 0 on error.
     fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32;
 
+    /// Retrieves device information based on the requested property type.
+    ///
+    /// # Parameters
+    /// - `property_id`: The property identifier
+    ///
+    /// # Returns
+    /// The requested property value. It will panic if the property is not supported.
+    fn get_device_property(property_id: u32) -> u32;
+
     /// Computes the remainder of dividing `n` by `m`, storing the result in `r`.
     ///
     /// # Parameters

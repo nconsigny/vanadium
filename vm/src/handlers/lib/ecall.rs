@@ -34,6 +34,46 @@ mod bitmaps;
 
 use ux_handler::*;
 
+const VENDOR_ID: u16 = 0x2C97; // Ledger vendor ID
+
+#[cfg(target_os = "nanox")]
+mod device_props {
+    pub const PRODUCT_ID: u16 = 0x40;
+    pub const SCREEN_WIDTH: u16 = 128;
+    pub const SCREEN_HEIGHT: u16 = 64;
+}
+
+#[cfg(target_os = "nanosplus")]
+mod device_props {
+    pub const PRODUCT_ID: u16 = 0x50;
+    pub const SCREEN_WIDTH: u16 = 128;
+    pub const SCREEN_HEIGHT: u16 = 64;
+}
+
+#[cfg(target_os = "stax")]
+mod device_props {
+    pub const PRODUCT_ID: u16 = 0x60;
+    pub const SCREEN_WIDTH: u16 = 400;
+    pub const SCREEN_HEIGHT: u16 = 672;
+}
+
+#[cfg(target_os = "flex")]
+mod device_props {
+    pub const PRODUCT_ID: u16 = 0x70;
+    pub const SCREEN_WIDTH: u16 = 480;
+    pub const SCREEN_HEIGHT: u16 = 600;
+}
+
+#[cfg(not(any(
+    target_os = "nanox",
+    target_os = "nanosplus",
+    target_os = "stax",
+    target_os = "flex"
+)))]
+compile_error!("Unsupported target OS. Only nanox, nanosplus, stax, and flex are supported.");
+
+use device_props::*;
+
 // BIP32 supports up to 255, but we don't want that many, and it would be very slow anyway
 const MAX_BIP32_PATH: usize = 16;
 
@@ -114,6 +154,10 @@ impl Register {
             Register::T6 => 31,
         }
     }
+}
+
+pub fn pack_u16(high: u16, low: u16) -> u32 {
+    ((high as u32) << 16) | (low as u32)
 }
 
 // A pointer in the V-app's address space
@@ -1381,6 +1425,19 @@ impl<'a> CommEcallHandler<'a> {
         self.ux_handler.show_page(&page)?;
         Ok(1)
     }
+
+    fn handle_get_device_property<E: fmt::Debug>(
+        &mut self,
+        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        property: u32,
+    ) -> Result<u32, CommEcallError> {
+        match property {
+            DEVICE_PROPERTY_ID => Ok(pack_u16(VENDOR_ID, PRODUCT_ID)),
+            DEVICE_PROPERTY_SCREEN_SIZE => Ok(pack_u16(SCREEN_WIDTH, SCREEN_HEIGHT)),
+            DEVICE_PROPERTY_FEATURES => Ok(0),
+            _ => Err(CommEcallError::InvalidParameters("Unknown device property")),
+        }
+    }
 }
 
 // Processes all events until a ticker is received, then returns
@@ -1466,6 +1523,11 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
                 self.handle_show_page::<CommEcallError>(cpu, GPreg!(A0), reg!(A1) as usize)?;
 
                 reg!(A0) = 1;
+            }
+            ECALL_GET_DEVICE_PROPERTY => {
+                reg!(A0) = self
+                    .handle_get_device_property::<CommEcallError>(cpu, reg!(A0))
+                    .map_err(|_| CommEcallError::GenericError("get_device_property failed"))?;
             }
             ECALL_MODM => {
                 self.handle_bn_modm::<CommEcallError>(
