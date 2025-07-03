@@ -7,6 +7,16 @@ pub const ECALL_EXIT: u32 = 4;
 
 pub const ECALL_GET_EVENT: u32 = 10;
 pub const ECALL_SHOW_PAGE: u32 = 11;
+pub const ECALL_GET_DEVICE_PROPERTY: u32 = 15;
+
+// Constants used for GET_DEVICE_PROPERTY
+
+// device id (vendor_id: u16, product_id: u16)
+pub const DEVICE_PROPERTY_ID: u32 = 0x01;
+// (screen_width: u16, screen_height: u16)
+pub const DEVICE_PROPERTY_SCREEN_SIZE: u32 = 0x02;
+// bitmask of device features (to be defined)
+pub const DEVICE_PROPERTY_FEATURES: u32 = 0x03;
 
 // Big numbers
 pub const ECALL_MODM: u32 = 110;

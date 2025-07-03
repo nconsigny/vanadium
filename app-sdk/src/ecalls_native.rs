@@ -347,6 +347,17 @@ impl EcallsInterface for Ecall {
         1
     }
 
+    fn get_device_property(property: u32) -> u32 {
+        match property {
+            common::ecall_constants::DEVICE_PROPERTY_ID => 0,
+            common::ecall_constants::DEVICE_PROPERTY_SCREEN_SIZE => {
+                0 // TODO: what to return when executing in a shell?
+            }
+            common::ecall_constants::DEVICE_PROPERTY_FEATURES => 0,
+            _ => panic!("Unsupported device property: {}", property),
+        }
+    }
+
     fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> u32 {
         if len > MAX_BIGNUMBER_SIZE || len_m > MAX_BIGNUMBER_SIZE {
             return 0;
