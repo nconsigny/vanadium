@@ -515,11 +515,8 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitcoin::{
-        base64::{engine::general_purpose::STANDARD, Engine as _},
-        secp256k1::schnorr::Signature,
-        XOnlyPublicKey,
-    };
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use bitcoin::{secp256k1::schnorr::Signature, XOnlyPublicKey};
     use common::{
         bip388::{KeyPlaceholder, WalletPolicy},
         psbt::fill_psbt_with_bip388_coordinates,
