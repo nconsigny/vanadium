@@ -478,15 +478,24 @@ pub fn fill_psbt_with_bip388_coordinates(
 
 #[cfg(test)]
 mod tests {
-    use core::str::FromStr;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
 
     use super::*;
 
     const TEST_PSBT: &'static str = "cHNidP8BAFUCAAAAAVEiws3mgj5VdUF1uSycV6Co4ayDw44Xh/06H/M0jpUTAQAAAAD9////AXhBDwAAAAAAGXapFBPX1YFmlGw+wCKTQGbYwNER0btBiKwaBB0AAAEA+QIAAAAAAQHsIw5TCVJWBSokKCcO7ASYlEsQ9vHFePQxwj0AmLSuWgEAAAAXFgAUKBU5gg4t6XOuQbpgBLQxySHE2G3+////AnJydQAAAAAAF6kUyLkGrymMcOYDoow+/C+uGearKA+HQEIPAAAAAAAZdqkUy65bUM+Tnm9TG4prer14j+FLApeIrAJHMEQCIDfstCSDYar9T4wR5wXw+npfvc1ZUXL81WQ/OxG+/11AAiACDG0yb2w31jzsra9OszX67ffETgX17x0raBQLAjvRPQEhA9rIL8Cs/Pw2NI1KSKRvAc6nfyuezj+MO0yZ0LCy+ZXShPIcACIGAu6GCCB+IQKEJvaedkR9fj1eB3BJ9eaDwxNsIxR2KkcYGPWswv0sAACAAQAAgAAAAIAAAAAAAAAAAAAA";
 
+    fn psbt_from_str(psbt: &str) -> Result<Psbt, String> {
+        let decoded = STANDARD
+            .decode(psbt)
+            .map_err(|e| format!("Failed to decode PSBT: {}", e))?;
+        let psbt = Psbt::deserialize(&decoded)
+            .map_err(|e| format!("Failed to deserialize PSBT: {}", e))?;
+        Ok(psbt)
+    }
+
     #[test]
     fn test_set_and_get_account_name() {
-        let mut psbt = Psbt::from_str(TEST_PSBT).unwrap();
+        let mut psbt = psbt_from_str(TEST_PSBT).unwrap();
         let account_id = 0;
         let valid_name = "TestAccount";
         assert!(psbt.set_account_name(account_id, valid_name).is_ok());
@@ -497,7 +506,7 @@ mod tests {
     #[test]
     fn test_invalid_account_name() {
         // setting invalid account names should fail
-        let mut psbt = Psbt::from_str(TEST_PSBT).unwrap();
+        let mut psbt = psbt_from_str(TEST_PSBT).unwrap();
         let account_id = 0;
 
         let long_name = "a".repeat(65);
@@ -516,7 +525,7 @@ mod tests {
 
     #[test]
     fn test_set_and_get_proof_of_registration() {
-        let mut psbt = Psbt::from_str(TEST_PSBT).unwrap();
+        let mut psbt = psbt_from_str(TEST_PSBT).unwrap();
         let account_id = 0;
         let por: Vec<u8> = vec![1, 2, 3, 4];
         assert!(psbt
@@ -528,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_set_and_get_account() {
-        let mut psbt = Psbt::from_str(TEST_PSBT).unwrap();
+        let mut psbt = psbt_from_str(TEST_PSBT).unwrap();
         let wallet_policy = WalletPolicy::new(
             "pkh(@0/**)",
             [
@@ -554,7 +563,7 @@ mod tests {
 
     #[test]
     fn test_get_nonexistent_account() {
-        let psbt = Psbt::from_str(TEST_PSBT).unwrap();
+        let psbt = psbt_from_str(TEST_PSBT).unwrap();
         let retrieved = psbt.get_account(99).unwrap();
         assert!(retrieved.is_none());
     }
@@ -597,7 +606,7 @@ mod tests {
             "[f5acc2fd/84'/1'/0']tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P".try_into().unwrap()
         ].to_vec()).unwrap();
         let psbt_str = "cHNidP8BAKYCAAAAAp4s/ifwrYe3iiN9XXQF1KMGZso2HVhaRnsN/kImK020AQAAAAD9////r7+uBlkPdB/xr1m2rEYRJjNqTEqC21U99v76tzesM/MAAAAAAP3///8CqDoGAAAAAAAWABTrOPqbgSj4HybpXtsMX/rqg2kP5OCTBAAAAAAAIgAgP6lmyd3Nwv2W5KXhvHZbn69s6LPrTxEEqta993Mk5b4AAAAAAAEAcQIAAAABk2qy4BBy95PP5Ml3VN4bYf4D59tlNsiy8h3QtXQsSEUBAAAAAP7///8C3uHHAAAAAAAWABTreNfEC/EGOw4/zinDVltonIVZqxAnAAAAAAAAFgAUIxjWb4T+9cSHX5M7A43GODH42hP5lx4AAQEfECcAAAAAAAAWABQjGNZvhP71xIdfkzsDjcY4MfjaEyIGA0Ve587cl7C6Q1uABm/JLJY6NMYAMXmB0TUzDE7kOsejGPWswv1UAACAAQAAgAAAAIAAAAAAAQAAAAABAHEBAAAAAQ5HHvTpLBrLUe/IZg+NP2mTbqnJsr/3L/m8gcUe/PRkAQAAAAAAAAAAAmCuCgAAAAAAFgAUNcbg3W08hLFrqIXcpzrIY9C1k+yvBjIAAAAAABYAFNwobgzS5r03zr6ew0n7XwiQVnL8AAAAAAEBH2CuCgAAAAAAFgAUNcbg3W08hLFrqIXcpzrIY9C1k+wiBgJxtbd5rYcIOFh3l7z28MeuxavnanCdck9I0uJs+HTwoBj1rML9VAAAgAEAAIAAAACAAQAAAAAAAAAAIgICKexHcnEx7SWIogxG7amrt9qm9J/VC6/nC5xappYcTswY9azC/VQAAIABAACAAAAAgAEAAAAKAAAAAAA=";
-        let mut psbt = Psbt::from_str(psbt_str).unwrap();
+        let mut psbt = psbt_from_str(psbt_str).unwrap();
 
         let placeholders: Vec<KeyPlaceholder> = wallet_policy
             .descriptor_template
