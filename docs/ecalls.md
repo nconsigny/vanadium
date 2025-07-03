@@ -20,7 +20,7 @@ Each new ECALL requires:
 - adding the appropriate constants in [`common/src/ecall_constants.rs`](../common/src/ecall_constants.rs);
 - add the prototype of the ECALL to the <code>EcallsInterface</code> in [`app-sdk/src/ecalls.rs`](../app-sdk/src/ecalls.rs);
 - implementing the ECALL for native compilation in [`app-sdk/src/ecalls_native.rs`](../app-sdk/src/ecalls_native.rs);
-- implementing the ECALL code generation via the macros in [`app-sdk/src/ecalls_riscv.rs`](../app-sdk/src/ecalls_riscv.rs);
+- implementing the ECALL code generation via the macros in [`app-sdk/src/ecalls_riscv.rs`](../app-sdk/src/ecalls_riscv.rs) and [`ecalls/src/lib.rs`](../ecalls/src/lib.rs);
 - implementing the ECALL handler in the Vanadium VM in [`vm/src/handlers/lib/ecall.rs`](../vm/src/handlers/lib/ecall.rs);
 - expose the functionality of the ECALL via the appropriate abstraction in the app-sdk;
 - add code to the [sadik V-App](../apps/sadik/) in order to test the new ECALLs.
