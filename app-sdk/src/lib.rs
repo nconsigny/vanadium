@@ -113,6 +113,10 @@ pub fn xsend(buffer: &[u8]) {
     Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
 }
 
+pub fn get_device_property(property_id: u32) -> u32 {
+    Ecall::get_device_property(property_id)
+}
+
 /// Initialization boilerplate for the application that is called before the main function, for
 /// targets that need it.
 #[macro_export]

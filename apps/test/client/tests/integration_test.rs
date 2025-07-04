@@ -86,3 +86,16 @@ async fn test_nprimes() {
         assert_eq!(setup.client.nprimes(input).await.unwrap(), expected);
     }
 }
+
+#[tokio::test]
+async fn test_deviceprop() {
+    let mut setup = common::setup().await;
+
+    let device_id = setup.client.device_props(1).await.unwrap();
+    assert_eq!(device_id >> 16, 0x2C97); // Ledger vendor_id
+    assert!(device_id & 0xFFFF > 0); // product_id, different for each device
+    let screen_size = setup.client.device_props(2).await.unwrap();
+    let width = screen_size >> 16;
+    let height = screen_size & 0xFFFF;
+    assert!(width > 0 && height > 0);
+}

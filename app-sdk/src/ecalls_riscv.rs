@@ -26,6 +26,7 @@ impl EcallsInterface for Ecall {
 
     delegate_ecall!(get_event, u32, (data: *mut EventData));
     delegate_ecall!(show_page, u32, (page_desc: *const u8), (page_desc_len: usize));
+    delegate_ecall!(get_device_property, u32, (property: u32));
 
     delegate_ecall!(bn_modm, u32, (r: *mut u8), (n: *const u8), (len: usize), (m: *const u8), (len_m: usize));
     delegate_ecall!(bn_addm, u32, (r: *mut u8), (a: *const u8), (b: *const u8), (m: *const u8), (len: usize));
@@ -53,4 +54,3 @@ impl Ecall {
     delegate_ecall!(pub hash_update, u32, (hash_id: u32), (ctx: *mut u8), (data: *const u8), (len: usize));
     delegate_ecall!(pub hash_final, u32, (hash_id: u32), (ctx: *mut u8), (digest: *const u8));
 }
-
