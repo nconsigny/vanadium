@@ -5,10 +5,27 @@ use crate::ecalls_riscv as ecalls_module;
 use crate::ecalls_native as ecalls_module;
 
 use common::ux::EventData;
-pub(crate) use ecalls_module::*;
 
-/// Trait defining the interface for all the ecalls.
-pub(crate) trait EcallsInterface {
+/// Macro to forward function calls to the `ecalls_module`.
+/// This approach ensures that the actual implementations are consistent across native and riscv targets.
+macro_rules! forward_to_ecall {
+    (
+        $(
+            $(#[$meta:meta])*
+            pub fn $name:ident ( $($arg:ident : $ty:ty),* $(,)? ) $(-> $ret:ty)? ;
+        )*
+    ) => {
+        $(
+            $(#[$meta])*
+            #[inline(always)]
+            pub fn $name($($arg : $ty),*) $(-> $ret)? {
+                ecalls_module::$name($($arg),*)
+            }
+        )*
+    }
+}
+
+forward_to_ecall! {
     /// Exits the V-App with the specified status code.
     ///
     /// # Parameters
@@ -16,7 +33,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// This function does not return.
-    fn exit(status: i32) -> !;
+    pub fn exit(status: i32) -> !;
 
     /// Prints a fatal error message and exits the V-App.
     ///
@@ -26,14 +43,14 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// This function does not return.
-    fn fatal(msg: *const u8, size: usize) -> !;
+    pub fn fatal(msg: *const u8, size: usize) -> !;
 
     /// Sends a buffer to the host.
     ///
     /// # Parameters
     /// - `buffer`: Pointer to the buffer to send.
     /// - `size`: Size of the buffer.
-    fn xsend(buffer: *const u8, size: usize);
+    pub fn xsend(buffer: *const u8, size: usize);
 
     /// Receives a buffer from the host.
     ///
@@ -43,7 +60,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// The number of bytes received.
-    fn xrecv(buffer: *mut u8, max_size: usize) -> usize;
+    pub fn xrecv(buffer: *mut u8, max_size: usize) -> usize;
 
     /// Waits for the next event.
     ///
@@ -51,7 +68,7 @@ pub(crate) trait EcallsInterface {
     /// - `data`: Pointer to a 16-byte buffer to receive the event data (if any).
     /// # Returns
     /// The event code.
-    fn get_event(data: *mut EventData) -> u32;
+    pub fn get_event(data: *mut EventData) -> u32;
 
     /// Shows a page.
     ///
@@ -61,7 +78,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32;
+    pub fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32;
 
     /// Retrieves device information based on the requested property type.
     ///
@@ -70,7 +87,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// The requested property value. It will panic if the property is not supported.
-    fn get_device_property(property_id: u32) -> u32;
+    pub fn get_device_property(property_id: u32) -> u32;
 
     /// Computes the remainder of dividing `n` by `m`, storing the result in `r`.
     ///
@@ -83,7 +100,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> u32;
+    pub fn bn_modm(r: *mut u8, n: *const u8, len: usize, m: *const u8, len_m: usize) -> u32;
 
     /// Adds two big numbers `a` and `b` modulo `m`, storing the result in `r`.
     ///
@@ -96,7 +113,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn bn_addm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
+    pub fn bn_addm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
 
     /// Subtracts two big numbers `a` and `b` modulo `m`, storing the result in `r`.
     ///
@@ -109,7 +126,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn bn_subm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
+    pub fn bn_subm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
 
     /// Multiplies two big numbers `a` and `b` modulo `m`, storing the result in `r`.
     ///
@@ -122,7 +139,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn bn_multm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
+    pub fn bn_multm(r: *mut u8, a: *const u8, b: *const u8, m: *const u8, len: usize) -> u32;
 
     /// Computes `a` to the power of `e` modulo `m`, storing the result in `r`.
     ///
@@ -136,7 +153,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn bn_powm(
+    pub fn bn_powm(
         r: *mut u8,
         a: *const u8,
         e: *const u8,
@@ -159,7 +176,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Panics
     /// This function panics if the curve is not supported.
-    fn derive_hd_node(
+    pub fn derive_hd_node(
         curve: u32,
         path: *const u32,
         path_len: usize,
@@ -178,7 +195,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Panics
     /// This function panics if the curve is not supported.
-    fn get_master_fingerprint(curve: u32) -> u32;
+    pub fn get_master_fingerprint(curve: u32) -> u32;
 
     /// Adds two elliptic curve points `p` and `q`, storing the result in `r`.
     ///
@@ -190,7 +207,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn ecfp_add_point(curve: u32, r: *mut u8, p: *const u8, q: *const u8) -> u32;
+    pub fn ecfp_add_point(curve: u32, r: *mut u8, p: *const u8, q: *const u8) -> u32;
 
     /// Multiplies an elliptic curve point `p` by a scalar `k`, storing the result in `r`.
     ///
@@ -203,7 +220,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32;
+    pub fn ecfp_scalar_mult(curve: u32, r: *mut u8, p: *const u8, k: *const u8, k_len: usize) -> u32;
 
     /// Generates `size` random bytes using a cryptographically secure random number generator,
     /// and writes them to the provided buffer.
@@ -214,7 +231,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn get_random_bytes(buffer: *mut u8, size: usize) -> u32;
+    pub fn get_random_bytes(buffer: *mut u8, size: usize) -> u32;
 
     /// Signs a message hash using ECDSA.
     ///
@@ -231,7 +248,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// The length of the signature on success, 0 on error.
-    fn ecdsa_sign(
+    pub fn ecdsa_sign(
         curve: u32,
         mode: u32,
         hash_id: u32,
@@ -254,7 +271,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn ecdsa_verify(
+    pub fn ecdsa_verify(
         curve: u32,
         pubkey: *const u8,
         msg_hash: *const u8,
@@ -279,7 +296,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// The length of the signature (always 64) on success, 0 on error.
-    fn schnorr_sign(
+    pub fn schnorr_sign(
         curve: u32,
         mode: u32,
         hash_id: u32,
@@ -307,7 +324,7 @@ pub(crate) trait EcallsInterface {
     ///
     /// # Returns
     /// 1 on success, 0 on error.
-    fn schnorr_verify(
+    pub fn schnorr_verify(
         curve: u32,
         mode: u32,
         hash_id: u32,
@@ -317,6 +334,13 @@ pub(crate) trait EcallsInterface {
         signature: *const u8,
         signature_len: usize,
     ) -> u32;
+}
+
+#[cfg(target_arch = "riscv32")]
+forward_to_ecall! {
+    pub fn hash_init(hash_id: u32, ctx: *mut u8);
+    pub fn hash_update(hash_id: u32, ctx: *mut u8, data: *const u8, len: usize) -> u32;
+    pub fn hash_final(hash_id: u32, ctx: *mut u8, digest: *const u8) -> u32;
 }
 
 #[cfg(test)]

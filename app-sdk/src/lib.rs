@@ -27,8 +27,6 @@ mod ecalls_native;
 
 mod ux_generated;
 
-use ecalls::{Ecall, EcallsInterface};
-
 #[cfg(target_arch = "riscv32")]
 use embedded_alloc::Heap;
 
@@ -69,11 +67,11 @@ pub extern "C" fn rust_init_heap() {
 }
 
 pub fn fatal(msg: &str) -> ! {
-    Ecall::fatal(msg.as_ptr(), msg.len());
+    ecalls::fatal(msg.as_ptr(), msg.len());
 }
 
 pub fn exit(status: i32) -> ! {
-    Ecall::exit(status);
+    ecalls::exit(status);
 }
 
 #[cfg(target_arch = "riscv32")]
@@ -101,20 +99,20 @@ pub fn xrecv(size: usize) -> Vec<u8> {
         buffer.set_len(size);
     }
 
-    let recv_size = Ecall::xrecv(buffer.as_mut_ptr(), buffer.len());
+    let recv_size = ecalls::xrecv(buffer.as_mut_ptr(), buffer.len());
     buffer[0..recv_size].to_vec()
 }
 
 pub fn xrecv_to(buf: &mut [u8]) -> usize {
-    Ecall::xrecv(buf.as_mut_ptr(), buf.len())
+    ecalls::xrecv(buf.as_mut_ptr(), buf.len())
 }
 
 pub fn xsend(buffer: &[u8]) {
-    Ecall::xsend(buffer.as_ptr(), buffer.len() as usize)
+    ecalls::xsend(buffer.as_ptr(), buffer.len() as usize)
 }
 
 pub fn get_device_property(property_id: u32) -> u32 {
-    Ecall::get_device_property(property_id)
+    ecalls::get_device_property(property_id)
 }
 
 /// Initialization boilerplate for the application that is called before the main function, for
