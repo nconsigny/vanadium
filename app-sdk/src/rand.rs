@@ -1,6 +1,6 @@
 use alloc::{vec, vec::Vec};
 
-use crate::{Ecall, EcallsInterface};
+use crate::ecalls;
 
 /// Generates cryptographically secure random bytes.
 pub fn random_bytes(len: usize) -> Vec<u8> {
@@ -10,7 +10,7 @@ pub fn random_bytes(len: usize) -> Vec<u8> {
     let mut offset = 0;
     while offset < len {
         let size = usize::min(max_chunk_size, len - offset);
-        let res = Ecall::get_random_bytes(bytes[offset..].as_mut_ptr(), size);
+        let res = ecalls::get_random_bytes(bytes[offset..].as_mut_ptr(), size);
         if res == 0 {
             panic!("Failed to generate random bytes");
         }

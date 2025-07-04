@@ -1,5 +1,5 @@
 use crate::{
-    ecalls::{Ecall, EcallsInterface},
+    ecalls,
     ux_generated::{
         make_review_pairs_content, make_review_pairs_final_confirmationbutton,
         make_review_pairs_final_longpress, make_review_pairs_intro,
@@ -8,22 +8,22 @@ use crate::{
 use alloc::vec::Vec;
 
 pub use common::ux::{
-    Action, Event, EventCode, EventData, Icon, NavInfo, NavigationInfo, Page, PageContent,
-    PageContentInfo, Deserializable, TagValue,
+    Action, Deserializable, Event, EventCode, EventData, Icon, NavInfo, NavigationInfo, Page,
+    PageContent, PageContentInfo, TagValue,
 };
 
 use crate::ux_generated;
 
 #[inline(always)]
 fn show_page_raw(page: &[u8]) {
-    Ecall::show_page(page.as_ptr(), page.len());
+    ecalls::show_page(page.as_ptr(), page.len());
 }
 
 /// Blocks until an event is received, then returns it.
 pub fn get_event() -> Event {
     loop {
         let mut event_data = EventData::default();
-        let event_code = EventCode::from(Ecall::get_event(&mut event_data));
+        let event_code = EventCode::from(ecalls::get_event(&mut event_data));
         match event_code {
             EventCode::Ticker => {
                 return Event::Ticker;
@@ -46,7 +46,7 @@ pub fn wait(n: u32) {
     let mut n_tickers = 0u32;
     loop {
         let mut event_data = EventData::default();
-        let event_code = EventCode::from(Ecall::get_event(&mut event_data));
+        let event_code = EventCode::from(ecalls::get_event(&mut event_data));
         match event_code {
             EventCode::Ticker => {
                 n_tickers += 1;
