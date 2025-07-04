@@ -45,6 +45,13 @@ pub fn main() {
             Command::Sha256 => handle_sha256(&msg[1..]),
             Command::CountPrimes => handle_count_primes(&msg[1..]),
             Command::ShowUxScreen => handle_show_ux_screen(&msg[1..]),
+            Command::DeviceProp => {
+                if msg.len() != 5 {
+                    panic!("Invalid input for device properties");
+                }
+                let property_id = u32::from_be_bytes([msg[1], msg[2], msg[3], msg[4]]);
+                sdk::get_device_property(property_id).to_be_bytes().to_vec()
+            }
             Command::Panic => {
                 let panic_msg = core::str::from_utf8(&msg[1..]).unwrap();
                 panic!("{}", panic_msg);
