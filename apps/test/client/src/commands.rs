@@ -9,6 +9,7 @@ pub enum Command {
     Sha256,
     CountPrimes,
     ShowUxScreen = 0x80,
+    DeviceProp = 0x81,
     Panic = 0xff,
 }
 
@@ -23,6 +24,7 @@ impl TryFrom<u8> for Command {
             0x03 => Ok(Command::Sha256),
             0x04 => Ok(Command::CountPrimes),
             0x80 => Ok(Command::ShowUxScreen),
+            0x81 => Ok(Command::DeviceProp),
             0xff => Ok(Command::Panic),
             _ => Err(()),
         }

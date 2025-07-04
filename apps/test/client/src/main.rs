@@ -31,6 +31,7 @@ enum CliCommand {
     B58Enc(Vec<u8>),
     NPrimes(u32),
     Ux(u8),
+    DeviceProp(u32),
     Panic(String),
     Exit,
 }
@@ -93,6 +94,13 @@ fn parse_command(line: &str) -> Result<CliCommand, String> {
                 let id = parse_u8(arg).map_err(|e| e.to_string())?;
                 Ok(CliCommand::Ux(id))
             }
+            "deviceprop" => {
+                let arg = tokens
+                    .next()
+                    .ok_or_else(|| format!("'{}' requires a u32 integer argument", command))?;
+                let property_id = parse_u32(arg).map_err(|e| e.to_string())?;
+                Ok(CliCommand::DeviceProp(property_id))
+            }
             "panic" => {
                 // find where the word "panic" ends and the message starts
                 let msg = line
@@ -154,6 +162,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 CliCommand::Ux(id) => {
                     test_client.ux(id).await?;
+                }
+                CliCommand::DeviceProp(property) => {
+                    let value = test_client.device_props(property).await?;
+                    println!("Value for property {}: 0x{:08x}", property, value);
                 }
                 CliCommand::Panic(msg) => {
                     test_client.panic(&msg).await?;

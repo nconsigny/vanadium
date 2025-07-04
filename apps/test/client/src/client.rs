@@ -109,6 +109,19 @@ impl TestClient {
         Ok(())
     }
 
+    pub async fn device_props(&mut self, property_id: u32) -> Result<u32, TestClientError> {
+        let mut msg: Vec<u8> = Vec::new();
+        msg.extend_from_slice(&[Command::DeviceProp as u8]);
+        msg.extend_from_slice(&property_id.to_be_bytes());
+
+        let result_raw = self.app_client.send_message(&msg).await?;
+
+        if result_raw.len() != 4 {
+            return Err("Invalid response length".into());
+        }
+        Ok(u32::from_be_bytes(result_raw.try_into().unwrap()))
+    }
+
     pub async fn panic(&mut self, panic_msg: &str) -> Result<(), TestClientError> {
         let mut msg: Vec<u8> = Vec::new();
         msg.extend_from_slice(&[Command::Panic as u8]);
