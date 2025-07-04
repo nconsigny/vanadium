@@ -11,7 +11,7 @@ use core::{
     panic,
 };
 
-use crate::ecalls::{Ecall, EcallsInterface};
+use crate::ecalls;
 
 use common::ecall_constants::MAX_BIGNUMBER_SIZE;
 use subtle::ConstantTimeEq;
@@ -217,7 +217,7 @@ impl<const N: usize, M: ModulusProvider<N>> BigNumMod<N, M> {
     pub fn from_be_bytes(buffer: [u8; N]) -> Self {
         // reduce the buffer by the modulus
         let mut buffer = buffer;
-        if 1 != Ecall::bn_modm(buffer.as_mut_ptr(), buffer.as_ptr(), N, M::M.as_ptr(), N) {
+        if 1 != ecalls::bn_modm(buffer.as_mut_ptr(), buffer.as_ptr(), N, M::M.as_ptr(), N) {
             panic!("bn_modm failed")
         }
 
@@ -276,7 +276,7 @@ impl<const N: usize, M: ModulusProvider<N>> BigNumMod<N, M> {
     /// Returns a new `BigNumMod` representing `(self ^ exponent) mod modulus`.
     pub fn pow<const N_EXP: usize>(&self, exponent: &BigNum<N_EXP>) -> Self {
         let mut result = [0u8; N];
-        let res = Ecall::bn_powm(
+        let res = ecalls::bn_powm(
             result.as_mut_ptr(),
             self.buffer.as_ptr(),
             exponent.buffer.as_ptr(),
@@ -313,7 +313,7 @@ impl<const N: usize, M: ModulusProvider<N>> Add for &BigNumMod<N, M> {
 
     fn add(self, other: Self) -> BigNumMod<N, M> {
         let mut result = [0u8; N];
-        let res = Ecall::bn_addm(
+        let res = ecalls::bn_addm(
             result.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -354,7 +354,7 @@ impl<const N: usize, M: ModulusProvider<N>> Add<BigNumMod<N, M>> for BigNumMod<N
 impl<const N: usize, M: ModulusProvider<N>> AddAssign for BigNumMod<N, M> {
     #[inline]
     fn add_assign(&mut self, other: Self) {
-        let res = Ecall::bn_addm(
+        let res = ecalls::bn_addm(
             self.buffer.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -370,7 +370,7 @@ impl<const N: usize, M: ModulusProvider<N>> AddAssign for BigNumMod<N, M> {
 impl<const N: usize, M: ModulusProvider<N>> AddAssign<&BigNumMod<N, M>> for BigNumMod<N, M> {
     #[inline]
     fn add_assign(&mut self, other: &BigNumMod<N, M>) {
-        let res = Ecall::bn_addm(
+        let res = ecalls::bn_addm(
             self.buffer.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -418,7 +418,7 @@ impl<const N: usize, M: ModulusProvider<N>> Sub for &BigNumMod<N, M> {
 
     fn sub(self, other: Self) -> BigNumMod<N, M> {
         let mut result = [0u8; N];
-        let res = Ecall::bn_subm(
+        let res = ecalls::bn_subm(
             result.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -458,7 +458,7 @@ impl<const N: usize, M: ModulusProvider<N>> Sub<BigNumMod<N, M>> for BigNumMod<N
 
 impl<const N: usize, M: ModulusProvider<N>> SubAssign for BigNumMod<N, M> {
     fn sub_assign(&mut self, other: Self) {
-        let res = Ecall::bn_subm(
+        let res = ecalls::bn_subm(
             self.buffer.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -473,7 +473,7 @@ impl<const N: usize, M: ModulusProvider<N>> SubAssign for BigNumMod<N, M> {
 
 impl<const N: usize, M: ModulusProvider<N>> SubAssign<&BigNumMod<N, M>> for BigNumMod<N, M> {
     fn sub_assign(&mut self, other: &BigNumMod<N, M>) {
-        let res = Ecall::bn_subm(
+        let res = ecalls::bn_subm(
             self.buffer.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -529,7 +529,7 @@ impl<const N: usize, M: ModulusProvider<N>> core::ops::Mul for &BigNumMod<N, M> 
 
     fn mul(self, other: Self) -> BigNumMod<N, M> {
         let mut result = [0u8; N];
-        let res = Ecall::bn_multm(
+        let res = ecalls::bn_multm(
             result.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),
@@ -569,7 +569,7 @@ impl<const N: usize, M: ModulusProvider<N>> core::ops::Mul for BigNumMod<N, M> {
 
 impl<const N: usize, M: ModulusProvider<N>> MulAssign<&Self> for BigNumMod<N, M> {
     fn mul_assign(&mut self, other: &Self) {
-        let res = Ecall::bn_multm(
+        let res = ecalls::bn_multm(
             self.buffer.as_mut_ptr(),
             self.buffer.as_ptr(),
             other.buffer.as_ptr(),

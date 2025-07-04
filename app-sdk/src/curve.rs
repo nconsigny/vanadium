@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 
 use common::ecall_constants::{CurveKind, EcdsaSignMode, HashId, SchnorrSignMode};
 
-use crate::ecalls::{Ecall, EcallsInterface};
+use crate::ecalls;
 
 /// A trait representing a cryptographic curve with hierarchical deterministic (HD) key derivation capabilities.
 ///
@@ -93,7 +93,7 @@ where
         let curve_kind = C::get_curve_kind();
         let mut result = HDPrivNode::default();
 
-        if 1 != Ecall::derive_hd_node(
+        if 1 != ecalls::derive_hd_node(
             curve_kind as u32,
             path.as_ptr(),
             path.len(),
@@ -108,7 +108,7 @@ where
 
     fn get_master_fingerprint() -> u32 {
         let curve_kind = C::get_curve_kind();
-        Ecall::get_master_fingerprint(curve_kind as u32)
+        ecalls::get_master_fingerprint(curve_kind as u32)
     }
 }
 
@@ -346,7 +346,7 @@ where
     fn add(self, other: Self) -> Self::Output {
         let mut result = Point::default();
 
-        if 1 != Ecall::ecfp_add_point(
+        if 1 != ecalls::ecfp_add_point(
             C::get_curve_kind() as u32,
             result.as_mut_ptr(),
             self.as_ptr(),
@@ -368,7 +368,7 @@ where
     fn mul(self, scalar: &[u8; SCALAR_LENGTH]) -> Self::Output {
         let mut result = Point::default();
 
-        if 1 != Ecall::ecfp_scalar_mult(
+        if 1 != ecalls::ecfp_scalar_mult(
             C::get_curve_kind() as u32,
             result.as_mut_ptr(),
             self.as_ptr(),
@@ -419,7 +419,7 @@ impl EcfpPrivateKey<Secp256k1, 32> {
     /// * `Err(&'static str)` - An error message if the signing fails.
     pub fn ecdsa_sign_hash(&self, msg_hash: &[u8; 32]) -> Result<Vec<u8>, &'static str> {
         let mut result = [0u8; 71];
-        let sig_size = Ecall::ecdsa_sign(
+        let sig_size = ecalls::ecdsa_sign(
             Secp256k1::get_curve_kind() as u32,
             EcdsaSignMode::RFC6979 as u32,
             HashId::Sha256 as u32,
@@ -451,7 +451,7 @@ impl EcfpPrivateKey<Secp256k1, 32> {
         entropy: Option<&[u8; 32]>,
     ) -> Result<Vec<u8>, &'static str> {
         let mut result = [0u8; 64];
-        let sig_size = Ecall::schnorr_sign(
+        let sig_size = ecalls::schnorr_sign(
             Secp256k1::get_curve_kind() as u32,
             SchnorrSignMode::BIP340 as u32,
             HashId::Sha256 as u32,
@@ -476,7 +476,7 @@ impl EcfpPublicKey<Secp256k1, 32> {
         msg_hash: &[u8; 32],
         signature: &[u8],
     ) -> Result<(), &'static str> {
-        if 1 != Ecall::ecdsa_verify(
+        if 1 != ecalls::ecdsa_verify(
             Secp256k1::get_curve_kind() as u32,
             self.public_key.as_ptr(),
             msg_hash.as_ptr(),
@@ -489,7 +489,7 @@ impl EcfpPublicKey<Secp256k1, 32> {
     }
 
     pub fn schnorr_verify(&self, msg: &[u8], signature: &[u8]) -> Result<(), &'static str> {
-        if 1 != Ecall::schnorr_verify(
+        if 1 != ecalls::schnorr_verify(
             Secp256k1::get_curve_kind() as u32,
             SchnorrSignMode::BIP340 as u32,
             HashId::Sha256 as u32,

@@ -40,7 +40,7 @@ mod hashers {
 #[cfg(target_arch = "riscv32")]
 mod hashers {
     use super::*;
-    use crate::Ecall;
+    use crate::ecalls;
     use common::ecall_constants::HashId;
 
     #[derive(Clone, PartialEq, Eq, Debug)]
@@ -84,13 +84,13 @@ mod hashers {
                     let mut res = core::mem::MaybeUninit::<Self>::uninit();
 
                     unsafe {
-                        Ecall::hash_init(HashId::$name as u32, res.as_mut_ptr() as *mut u8);
+                        ecalls::hash_init(HashId::$name as u32, res.as_mut_ptr() as *mut u8);
                         res.assume_init()
                     }
                 }
 
                 fn update(&mut self, data: &[u8]) -> &mut Self {
-                    if 0 == Ecall::hash_update(
+                    if 0 == ecalls::hash_update(
                         HashId::$name as u32,
                         &mut self.0 as *mut _ as *mut u8,
                         data.as_ptr(),
@@ -108,7 +108,7 @@ mod hashers {
                     }
                     // TODO: how to avoid the clone here?
                     let mut self_clone = self.clone();
-                    if 0 == Ecall::hash_final(
+                    if 0 == ecalls::hash_final(
                         HashId::$name as u32,
                         &mut self_clone.0 as *mut _ as *mut u8,
                         digest.as_mut_ptr(),
