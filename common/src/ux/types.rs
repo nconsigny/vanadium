@@ -66,8 +66,10 @@ pub enum Event {
 #[cfg_attr(feature = "wrapped_serializable", wrapped(maybe_const))]
 pub enum Icon {
     None,
-    Success,
-    Failure,
+    Success, // only for flex/stax
+    Failure, // only for flex/stax
+    Confirm, // only for nanos+/nanox
+    Reject,  // only for nanos+/nanox
 }
 
 // Structured types
@@ -146,6 +148,26 @@ pub enum Page {
     GenericPage {
         navigation_info: Option<NavigationInfo>,
         page_content_info: PageContentInfo,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedStep))]
+pub enum Step {
+    /// A step showing a spinner and some text.
+    #[maker(make_text_subtext)]
+    TextSubtext {
+        pos: u8,
+        text: String,
+        subtext: String,
+        // TODO: style
+    },
+    #[maker(make_centered_info)]
+    CenteredInfo {
+        pos: u8,
+        text: Option<String>,
+        subtext: Option<String>,
+        icon: Icon,
     },
 }
 
