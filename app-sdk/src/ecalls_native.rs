@@ -234,6 +234,10 @@ pub fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32 {
                 common::ux::Icon::None => println!("{}", text),
                 common::ux::Icon::Success => println!("✓ {}", text),
                 common::ux::Icon::Failure => println!("❌ {}", text),
+                // The following should not happen on the native target, since they are used for
+                // small devices that implement the step UX model.
+                common::ux::Icon::Confirm => println!("{}", text),
+                common::ux::Icon::Reject => println!("{}", text),
             }
             epilogue_noaction();
         }
@@ -341,6 +345,10 @@ pub fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32 {
     }
 
     1
+}
+
+pub fn show_step(_step_desc: *const u8, _step_desc_len: usize) -> u32 {
+    panic!("The native target implements the page UX model, not the step UX model.");
 }
 
 pub fn get_device_property(property: u32) -> u32 {
