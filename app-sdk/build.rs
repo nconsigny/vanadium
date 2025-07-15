@@ -129,6 +129,7 @@ const STEP_MAKERS: &[(&'static str, WrappedStep)] = &[
             pos: rt("pos", "u8"),
             text: rt_str("text", "&str"),
             subtext: rt_str("subtext", "&str"),
+            style: ct(REGULAR_INFO),
         },
     ),
     (
@@ -138,6 +139,7 @@ const STEP_MAKERS: &[(&'static str, WrappedStep)] = &[
             text: Some(ct_str("Confirm")),
             subtext: None,
             icon: ct(Icon::Confirm),
+            style: ct(BOLD_TEXT1_INFO),
         },
     ),
     (
@@ -147,6 +149,7 @@ const STEP_MAKERS: &[(&'static str, WrappedStep)] = &[
             text: Some(ct_str("Reject")),
             subtext: None,
             icon: ct(Icon::Reject),
+            style: ct(BOLD_TEXT1_INFO),
         },
     ),
 ];
@@ -196,6 +199,7 @@ fn make_const_steps(file: &mut File) {
             pos: 0, // SINGLE_STEP
             text: "Application".into(),
             subtext: "is ready".into(),
+            style: REGULAR_INFO,
         },
     )];
 

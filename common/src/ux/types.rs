@@ -151,6 +151,11 @@ pub enum Page {
     },
 }
 
+// styles for centered info steps
+pub const REGULAR_INFO: u8 = 0;
+pub const BOLD_TEXT1_INFO: u8 = 1;
+pub const BUTTON_INFO: u8 = 2;
+
 #[derive(Debug, PartialEq, Eq, Clone, Serializable)]
 #[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedStep))]
 pub enum Step {
@@ -160,7 +165,7 @@ pub enum Step {
         pos: u8,
         text: String,
         subtext: String,
-        // TODO: style
+        style: u8,
     },
     #[maker(make_centered_info)]
     CenteredInfo {
@@ -168,6 +173,7 @@ pub enum Step {
         text: Option<String>,
         subtext: Option<String>,
         icon: Icon,
+        style: u8,
     },
 }
 
