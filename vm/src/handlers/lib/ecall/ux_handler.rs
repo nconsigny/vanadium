@@ -467,7 +467,12 @@ impl UxHandler {
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
     pub fn show_step(&mut self, step: &Step) -> Result<(), CommEcallError> {
         match step {
-            Step::TextSubtext { pos, text, subtext } => {
+            Step::TextSubtext {
+                pos,
+                text,
+                subtext,
+                style,
+            } => {
                 self.clear_cstrings();
                 self.release_handle();
                 unsafe {
@@ -477,8 +482,8 @@ impl UxHandler {
                         core::ptr::null_mut(), // ticker (todo)
                         self.alloc_cstring(Some(text))?,
                         self.alloc_cstring(Some(subtext))?,
-                        0,     // style
-                        false, // not modal
+                        *style, // style
+                        false,  // not modal
                     );
                 }
 
@@ -489,6 +494,7 @@ impl UxHandler {
                 text,
                 subtext,
                 icon,
+                style,
             } => {
                 self.clear_cstrings();
                 self.release_handle();
@@ -503,7 +509,7 @@ impl UxHandler {
                             text1: self.alloc_cstring(text.as_ref())?,
                             text2: self.alloc_cstring(subtext.as_ref())?,
                             onTop: false,
-                            style: 0,
+                            style: *style,
                         }, // info
                         false,                 // not modal
                     );
