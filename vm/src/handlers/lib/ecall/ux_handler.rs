@@ -7,7 +7,7 @@ use ledger_secure_sdk_sys as sys;
 
 use common::ux::{Page, Step};
 
-use super::bitmaps;
+use super::bitmaps::ToIconDetails;
 
 use super::CommEcallError;
 
@@ -214,13 +214,7 @@ impl UxHandler {
                         text1: self.alloc_cstring(Some(text))?,
                         text2: core::ptr::null(),
                         text3: core::ptr::null(),
-                        icon: match icon {
-                            common::ux::Icon::None => core::ptr::null(),
-                            common::ux::Icon::Success => &bitmaps::CHECK_CIRCLE_64PX,
-                            common::ux::Icon::Failure => &bitmaps::DENIED_CIRCLE_64PX,
-                            common::ux::Icon::Accept => core::ptr::null(), // only for small screen devices
-                            common::ux::Icon::Reject => core::ptr::null(), // only for small screen devices
-                        },
+                        icon: icon.to_icon_details(),
                         onTop: false,
                         style: sys::LARGE_CASE_INFO,
                         offsetY: 0,
@@ -505,14 +499,7 @@ impl UxHandler {
                         None,                  // callback (todo)
                         core::ptr::null_mut(), // ticker (todo)
                         &mut ledger_secure_sdk_sys::nbgl_layoutCenteredInfo_t {
-                            icon: match icon {
-                                common::ux::Icon::None => core::ptr::null(),
-                                common::ux::Icon::Success => core::ptr::null(), // only for large screen devices
-                                common::ux::Icon::Failure => core::ptr::null(), // only for large screen devices
-                                common::ux::Icon::Confirm => &bitmaps::VALIDATE_14PX,
-                                common::ux::Icon::Reject => &bitmaps::CROSSMARK_14PX,
-                            },
-
+                            icon: icon.to_icon_details(),
                             text1: self.alloc_cstring(text.as_ref())?,
                             text2: self.alloc_cstring(subtext.as_ref())?,
                             onTop: false,

@@ -1,5 +1,11 @@
+use ledger_secure_sdk_sys::nbgl_icon_details_t;
+pub trait ToIconDetails {
+    fn to_icon_details(&self) -> *const nbgl_icon_details_t;
+}
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 mod large_screen {
+    use super::*;
     use ledger_secure_sdk_sys::{nbgl_icon_details_t, NBGL_BPP_4};
 
     const CHECK_CIRCLE_64PX_BITMAP: [u8; 571] = [
@@ -43,7 +49,7 @@ mod large_screen {
         0xc8, 0x72, 0xfe, 0x1f, 0xaf, 0x6c, 0xfc, 0x02, 0x24, 0x14, 0x5a, 0xc5, 0x00, 0x08, 0x00,
         0x00,
     ];
-    pub const CHECK_CIRCLE_64PX: nbgl_icon_details_t = nbgl_icon_details_t {
+    const CHECK_CIRCLE_64PX: nbgl_icon_details_t = nbgl_icon_details_t {
         width: 64,
         height: 64,
         bpp: NBGL_BPP_4,
@@ -92,13 +98,25 @@ mod large_screen {
         0x3f, 0x3e, 0xd9, 0xf8, 0x03, 0x70, 0xa7, 0x85, 0x84, 0x00, 0x08, 0x00, 0x00,
     ];
 
-    pub const DENIED_CIRCLE_64PX: nbgl_icon_details_t = nbgl_icon_details_t {
+    const DENIED_CIRCLE_64PX: nbgl_icon_details_t = nbgl_icon_details_t {
         width: 64,
         height: 64,
         bpp: NBGL_BPP_4,
         isFile: true,
         bitmap: &DENIED_CIRCLE_64PX_BITMAP as *const u8,
     };
+
+    impl ToIconDetails for common::ux::Icon {
+        fn to_icon_details(&self) -> *const nbgl_icon_details_t {
+            match self {
+                common::ux::Icon::None => core::ptr::null(),
+                common::ux::Icon::Success => &CHECK_CIRCLE_64PX,
+                common::ux::Icon::Failure => &DENIED_CIRCLE_64PX,
+                common::ux::Icon::Confirm => core::ptr::null(), // only for small screen devices
+                common::ux::Icon::Reject => core::ptr::null(),  // only for small screen devices
+            }
+        }
+    }
 }
 
 #[cfg(any(target_os = "stax", target_os = "flex"))]
@@ -106,13 +124,14 @@ pub use large_screen::*;
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 mod small_screen {
+    use super::*;
     use ledger_secure_sdk_sys::{nbgl_icon_details_t, NBGL_BPP_1};
 
     const VALIDATE_14X14_BITMAP: [u8; 23] = [
         0x0e, 0x00, 0x0e, 0x00, 0x02, 0x0f, 0x00, 0x00, 0x32, 0xc3, 0xc3, 0xc3, 0xc3, 0xc3, 0xc3,
         0xc3, 0xb3, 0xa3, 0xa3, 0xa3, 0xb2, 0xf0, 0x50,
     ];
-    pub const VALIDATE_14PX: nbgl_icon_details_t = nbgl_icon_details_t {
+    const VALIDATE_14PX: nbgl_icon_details_t = nbgl_icon_details_t {
         width: 14,
         height: 14,
         bpp: NBGL_BPP_1,
@@ -125,13 +144,25 @@ mod small_screen {
         0xc0, 0x73, 0x83, 0x87, 0x1c, 0x0e, 0x60, 0x18, 0x00, 0x00,
     ];
 
-    pub const CROSSMARK_14PX: nbgl_icon_details_t = nbgl_icon_details_t {
+    const CROSSMARK_14PX: nbgl_icon_details_t = nbgl_icon_details_t {
         width: 14,
         height: 14,
         bpp: NBGL_BPP_1,
         isFile: false,
         bitmap: &CROSSMARK_14X14_BITMAP as *const u8,
     };
+
+    impl ToIconDetails for common::ux::Icon {
+        fn to_icon_details(&self) -> *const nbgl_icon_details_t {
+            match self {
+                common::ux::Icon::None => core::ptr::null(),
+                common::ux::Icon::Success => core::ptr::null(), // only for large screen devices
+                common::ux::Icon::Failure => core::ptr::null(), // only for large screen devices
+                common::ux::Icon::Confirm => &VALIDATE_14PX,
+                common::ux::Icon::Reject => &CROSSMARK_14PX,
+            }
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
