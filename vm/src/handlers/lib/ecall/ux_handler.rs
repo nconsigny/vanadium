@@ -27,7 +27,7 @@ pub fn get_last_event() -> Option<(common::ux::EventCode, common::ux::EventData)
     }
 }
 
-pub fn store_new_event(event_code: common::ux::EventCode, event_data: common::ux::EventData) {
+fn store_new_event(event_code: common::ux::EventCode, event_data: common::ux::EventData) {
     // We store the new event if there was no stored event, or there is just a ticker
     // Otherwise we drop the new event
     #[allow(static_mut_refs)]
@@ -68,6 +68,31 @@ unsafe extern "C" fn layout_touch_callback(token: core::ffi::c_int, index: u8) {
         (TOKEN_TITLE, _) => common::ux::Action::TitleBack,
         _ => {
             crate::println!("Event unhandled");
+            return;
+        }
+    };
+
+    store_new_event(
+        common::ux::EventCode::Action,
+        common::ux::EventData { action },
+    );
+}
+
+// nbgl_stepButtonCallback_t
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+unsafe extern "C" fn step_button_callback(
+    _layout: *mut c_void,
+    button_event: ledger_secure_sdk_sys::nbgl_buttonEvent_t,
+) {
+    // crate::println!("step_button_callback with button={}", button_event as u8);
+
+    let action = match button_event {
+        // see nbgl_buttonEvent_t
+        0 => common::ux::Action::PreviousPage,
+        1 => common::ux::Action::NextPage,
+        4 => common::ux::Action::Confirm,
+        _ => {
+            crate::println!("Unhandled button event: {:?}", button_event);
             return;
         }
     };
@@ -478,8 +503,8 @@ impl UxHandler {
                 unsafe {
                     self.step_handle = sys::nbgl_stepDrawText(
                         *pos,
-                        None,                  // callback (todo)
-                        core::ptr::null_mut(), // ticker (todo)
+                        Some(step_button_callback), // callback
+                        core::ptr::null_mut(),      // ticker (todo)
                         self.alloc_cstring(Some(text))?,
                         self.alloc_cstring(Some(subtext))?,
                         *style, // style
@@ -502,8 +527,8 @@ impl UxHandler {
                 unsafe {
                     self.step_handle = sys::nbgl_stepDrawCenteredInfo(
                         *pos,
-                        None,                  // callback (todo)
-                        core::ptr::null_mut(), // ticker (todo)
+                        Some(step_button_callback), // callback
+                        core::ptr::null_mut(),      // ticker (todo)
                         &mut ledger_secure_sdk_sys::nbgl_layoutCenteredInfo_t {
                             icon: icon.to_icon_details(),
                             text1: self.alloc_cstring(text.as_ref())?,
@@ -511,7 +536,7 @@ impl UxHandler {
                             onTop: false,
                             style: *style,
                         }, // info
-                        false,                 // not modal
+                        false,                      // not modal
                     );
                 }
 

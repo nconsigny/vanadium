@@ -218,21 +218,25 @@ fn __step_review_pairs(
             }
         }
 
-        match get_event() {
-            Event::Action(action) => {
-                if action == Action::NextPage && cur_step < n_steps - 1 {
-                    cur_step += 1;
-                } else if action == Action::PreviousPage && cur_step > 0 {
-                    cur_step -= 1;
-                } else if action == Action::Confirm {
-                    if cur_step == n_pair_steps + 1 {
-                        return true; // Confirm
-                    } else if cur_step == n_pair_steps + 2 {
-                        return false; // Reject
+        loop {
+            match get_event() {
+                Event::Action(action) => {
+                    if action == Action::NextPage && cur_step < n_steps - 1 {
+                        cur_step += 1;
+                        break;
+                    } else if action == Action::PreviousPage && cur_step > 0 {
+                        cur_step -= 1;
+                        break;
+                    } else if action == Action::Confirm {
+                        if cur_step == n_pair_steps + 1 {
+                            return true; // Confirm
+                        } else if cur_step == n_pair_steps + 2 {
+                            return false; // Reject
+                        }
                     }
                 }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
@@ -326,21 +330,25 @@ pub fn show_confirm_reject(title: &str, text: &str, confirm: &str, reject: &str)
                 }
             }
 
-            match get_event() {
-                Event::Action(action) => {
-                    if action == Action::NextPage && cur_step < n_steps - 1 {
-                        cur_step += 1;
-                    } else if action == Action::PreviousPage && cur_step > 0 {
-                        cur_step -= 1;
-                    } else if action == Action::Confirm {
-                        if cur_step == 1 {
-                            return true; // Confirm
-                        } else if cur_step == 2 {
-                            return false; // Reject
+            loop {
+                match get_event() {
+                    Event::Action(action) => {
+                        if action == Action::NextPage && cur_step < n_steps - 1 {
+                            cur_step += 1;
+                            break;
+                        } else if action == Action::PreviousPage && cur_step > 0 {
+                            cur_step -= 1;
+                            break;
+                        } else if action == Action::Confirm {
+                            if cur_step == 1 {
+                                return true; // Confirm
+                            } else if cur_step == 2 {
+                                return false; // Reject
+                            }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }

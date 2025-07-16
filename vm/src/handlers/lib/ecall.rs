@@ -1487,37 +1487,10 @@ fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
             ledger_device_sdk::io::Event::Command(_e) => {
                 panic!("We don't expect to receive APDUs here.");
             }
-            // TODO: this is a bit weird. Can we do the same with nbgl callbacks, instead?
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-            ledger_device_sdk::io::Event::Button(button) => match button {
-                ledger_device_sdk::buttons::ButtonEvent::LeftButtonPress => {}
-                ledger_device_sdk::buttons::ButtonEvent::RightButtonPress => {}
-                ledger_device_sdk::buttons::ButtonEvent::BothButtonsPress => {}
-                ledger_device_sdk::buttons::ButtonEvent::LeftButtonRelease => {
-                    store_new_event(
-                        common::ux::EventCode::Action,
-                        common::ux::EventData {
-                            action: common::ux::Action::PreviousPage,
-                        },
-                    );
-                }
-                ledger_device_sdk::buttons::ButtonEvent::RightButtonRelease => {
-                    store_new_event(
-                        common::ux::EventCode::Action,
-                        common::ux::EventData {
-                            action: common::ux::Action::NextPage,
-                        },
-                    );
-                }
-                ledger_device_sdk::buttons::ButtonEvent::BothButtonsRelease => {
-                    store_new_event(
-                        common::ux::EventCode::Action,
-                        common::ux::EventData {
-                            action: common::ux::Action::Confirm,
-                        },
-                    );
-                }
-            },
+            ledger_device_sdk::io::Event::Button(button) => {
+                // nothing to do here; we handle button events using the callbacks
+            }
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             ledger_device_sdk::io::Event::TouchEvent => {
                 crate::println!("Touch event. Unhandled");
