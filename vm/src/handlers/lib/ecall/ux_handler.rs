@@ -11,10 +11,15 @@ use super::bitmaps::ToIconDetails;
 
 use super::CommEcallError;
 
+#[cfg(any(target_os = "stax", target_os = "flex"))]
 const TOKEN_CONFIRM_REJECT: u8 = 0;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
 const TOKEN_QUIT: u8 = 1;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
 const TOKEN_SKIP: u8 = 2;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
 const TOKEN_NAVIGATION: u8 = 3;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
 const TOKEN_TITLE: u8 = 4;
 
 static mut LAST_EVENT: Option<(common::ux::EventCode, common::ux::EventData)> = None;
@@ -134,6 +139,7 @@ pub fn init_ux_handler() -> &'static mut UxHandler {
     }
 }
 
+#[cfg(any(target_os = "stax", target_os = "flex"))]
 pub fn get_ux_handler() -> &'static mut UxHandler {
     unsafe {
         if !UX_HANDLER_INITIALIZED {
@@ -213,7 +219,7 @@ impl UxHandler {
     }
 
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-    pub fn show_page(&mut self, page: &Page) -> Result<(), CommEcallError> {
+    pub fn show_page(&mut self, _page: &Page) -> Result<(), CommEcallError> {
         Err(CommEcallError::UnhandledEcall)
     }
 
@@ -485,7 +491,7 @@ impl UxHandler {
     }
 
     #[cfg(any(target_os = "stax", target_os = "flex"))]
-    pub fn show_step(&mut self, step: &Step) -> Result<(), CommEcallError> {
+    pub fn show_step(&mut self, _step: &Step) -> Result<(), CommEcallError> {
         Err(CommEcallError::UnhandledEcall)
     }
 

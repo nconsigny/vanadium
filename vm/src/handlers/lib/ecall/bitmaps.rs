@@ -120,9 +120,6 @@ mod large_screen {
     }
 }
 
-#[cfg(any(target_os = "stax", target_os = "flex"))]
-pub use large_screen::*;
-
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 mod small_screen {
     use super::*;
@@ -178,6 +175,3 @@ mod small_screen {
         }
     }
 }
-
-#[cfg(not(any(target_os = "stax", target_os = "flex")))]
-pub use small_screen::*;
