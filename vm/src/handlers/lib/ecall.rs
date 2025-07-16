@@ -1450,7 +1450,7 @@ impl<'a> CommEcallHandler<'a> {
 
     fn handle_get_device_property<E: fmt::Debug>(
         &mut self,
-        cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        _cpu: &mut Cpu<OutsourcedMemory<'_>>,
         property: u32,
     ) -> Result<u32, CommEcallError> {
         match property {
@@ -1488,7 +1488,7 @@ fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
                 panic!("We don't expect to receive APDUs here.");
             }
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-            ledger_device_sdk::io::Event::Button(button) => {
+            ledger_device_sdk::io::Event::Button(_button) => {
                 // nothing to do here; we handle button events using the callbacks
             }
             #[cfg(any(target_os = "stax", target_os = "flex"))]
