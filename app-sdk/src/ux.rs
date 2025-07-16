@@ -89,8 +89,8 @@ pub fn get_action() -> Action {
     }
 }
 
-// Temporary function; similar to nbgl_useCaseReview
-pub fn review_pairs(
+// implementation of review_pairs() for the page API
+fn __page_review_pairs(
     intro_text: &str,
     intro_subtext: &str,
     pairs: &[TagValue],
@@ -177,6 +177,96 @@ pub fn review_pairs(
     }
 }
 
+// implementation of review_pairs() for the step API
+fn __step_review_pairs(
+    intro_text: &str,
+    intro_subtext: &str,
+    pairs: &[TagValue],
+    final_text: &str,
+    _final_button_text: &str,
+    _long_press: bool,
+) -> bool {
+    // Calculate total number of pages
+    let n_pair_steps = pairs.len() as u32; // TODO: this doesn't quite work for pairs that are split into multiple screens
+    let n_steps = 3 + n_pair_steps; // intro + pair steps + confirm + reject
+
+    let mut cur_step = 0;
+
+    loop {
+        let pos = step_pos(n_steps, cur_step);
+        match cur_step {
+            0 => {
+                ux_generated::show_step_text_subtext(
+                    step_pos(n_steps, 0),
+                    intro_text,
+                    intro_subtext,
+                );
+            }
+            step if step >= 1 && step <= n_pair_steps => {
+                let pair_index = cur_step - 1;
+                let pair = pairs.get(pair_index as usize).unwrap();
+                ux_generated::show_step_text_subtext(pos, &pair.tag, &pair.value);
+            }
+            step if step == n_pair_steps + 1 => {
+                ux_generated::show_step_centered_info_nosubtext(pos, final_text, Icon::Confirm);
+            }
+            step if step == n_pair_steps + 2 => {
+                ux_generated::show_step_reject(pos);
+            }
+            _ => {
+                panic!("Invalid step");
+            }
+        }
+
+        match get_event() {
+            Event::Action(action) => {
+                if action == Action::NextPage && cur_step < n_steps - 1 {
+                    cur_step += 1;
+                } else if action == Action::PreviousPage && cur_step > 0 {
+                    cur_step -= 1;
+                } else if action == Action::Confirm {
+                    if cur_step == n_pair_steps + 1 {
+                        return true; // Confirm
+                    } else if cur_step == n_pair_steps + 2 {
+                        return false; // Reject
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+// Temporary function; similar to nbgl_useCaseReview
+pub fn review_pairs(
+    intro_text: &str,
+    intro_subtext: &str,
+    pairs: &[TagValue],
+    final_text: &str,
+    final_button_text: &str,
+    long_press: bool,
+) -> bool {
+    if has_page_api() {
+        __page_review_pairs(
+            intro_text,
+            intro_subtext,
+            pairs,
+            final_text,
+            final_button_text,
+            long_press,
+        )
+    } else {
+        __step_review_pairs(
+            intro_text,
+            intro_subtext,
+            pairs,
+            final_text,
+            final_button_text,
+            long_press,
+        )
+    }
+}
+
 pub fn show_spinner(text: &str) {
     if has_page_api() {
         ux_generated::show_page_spinner(text);
@@ -189,7 +279,7 @@ pub fn show_info(icon: Icon, text: &str) {
     if has_page_api() {
         ux_generated::show_page_info(icon, text);
     } else {
-        ux_generated::show_step_info(text);
+        ux_generated::show_step_info_single(text);
     }
 
     wait(20); // Wait for 20 ticker events (about 2 seconds)
