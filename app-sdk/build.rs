@@ -133,10 +133,20 @@ const STEP_MAKERS: &[(&'static str, WrappedStep)] = &[
         },
     ),
     (
-        "info",
+        "info_single",
         WrappedStep::CenteredInfo {
             pos: ct(0), // SINGLE_STEP
             icon: ct(Icon::None),
+            text: Some(rt_str("text", "&str")),
+            subtext: None,
+            style: ct(BOLD_TEXT1_INFO),
+        },
+    ),
+    (
+        "centered_info_nosubtext",
+        WrappedStep::CenteredInfo {
+            pos: rt("pos", "u8"),
+            icon: rt("icon", "Icon"),
             text: Some(rt_str("text", "&str")),
             subtext: None,
             style: ct(BOLD_TEXT1_INFO),
