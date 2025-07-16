@@ -238,6 +238,7 @@ pub fn show_page(page_desc: *const u8, page_desc_len: usize) -> u32 {
                 // small devices that implement the step UX model.
                 common::ux::Icon::Confirm => println!("{}", text),
                 common::ux::Icon::Reject => println!("{}", text),
+                common::ux::Icon::Processing => println!("{}", text),
             }
             epilogue_noaction();
         }

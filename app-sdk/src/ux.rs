@@ -3,8 +3,8 @@ use core::panic;
 use crate::{
     ecalls,
     ux_generated::{
-        make_review_pairs_content, make_review_pairs_final_confirmationbutton,
-        make_review_pairs_final_longpress, make_review_pairs_intro,
+        make_page_review_pairs_content, make_page_review_pairs_final_confirmationbutton,
+        make_page_review_pairs_final_longpress, make_page_review_pairs_intro,
     },
 };
 use alloc::vec::Vec;
@@ -112,7 +112,7 @@ pub fn review_pairs(
     let mut serialized_pages = Vec::with_capacity(n_pages as usize);
 
     // Compute and add the first page (intro)
-    serialized_pages.push(make_review_pairs_intro(
+    serialized_pages.push(make_page_review_pairs_intro(
         0,
         n_pages,
         intro_text,
@@ -131,14 +131,14 @@ pub fn review_pairs(
             let next_page = if next_page_index == (n_pages - 1) as usize {
                 // Final page
                 if long_press {
-                    make_review_pairs_final_longpress(
+                    make_page_review_pairs_final_longpress(
                         next_page_index as u32,
                         n_pages,
                         final_text,
                         final_button_text,
                     )
                 } else {
-                    make_review_pairs_final_confirmationbutton(
+                    make_page_review_pairs_final_confirmationbutton(
                         next_page_index as u32,
                         n_pages,
                         final_text,
@@ -149,7 +149,7 @@ pub fn review_pairs(
                 // Pair page (indices 1 to n_pair_pages)
                 let chunk_index = next_page_index - 1;
                 let pair_chunk = pairs.chunks(2).nth(chunk_index as usize).unwrap();
-                make_review_pairs_content(next_page_index as u32, n_pages, pair_chunk)
+                make_page_review_pairs_content(next_page_index as u32, n_pages, pair_chunk)
             };
             serialized_pages.push(next_page);
         }
@@ -178,11 +178,20 @@ pub fn review_pairs(
 }
 
 pub fn show_spinner(text: &str) {
-    ux_generated::show_page_spinner(text);
+    if has_page_api() {
+        ux_generated::show_page_spinner(text);
+    } else {
+        ux_generated::show_step_spinner(text);
+    }
 }
 
 pub fn show_info(icon: Icon, text: &str) {
-    ux_generated::show_page_info(icon, text);
+    if has_page_api() {
+        ux_generated::show_page_info(icon, text);
+    } else {
+        ux_generated::show_step_info(text);
+    }
+
     wait(20); // Wait for 20 ticker events (about 2 seconds)
 }
 
@@ -194,7 +203,6 @@ const fn step_pos(n_steps: u32, cur_step: u32) -> u8 {
     has_left_arrow << 1 | has_right_arrow
 }
 
-#[inline(always)]
 pub fn show_confirm_reject(title: &str, text: &str, confirm: &str, reject: &str) -> bool {
     if has_page_api() {
         ux_generated::show_page_confirm_reject(title, text, confirm, reject);
@@ -248,7 +256,6 @@ pub fn show_confirm_reject(title: &str, text: &str, confirm: &str, reject: &str)
     }
 }
 
-#[inline(always)]
 pub fn ux_idle() {
     if has_page_api() {
         show_page_raw(&ux_generated::RAW_PAGE_APP_DASHBOARD);

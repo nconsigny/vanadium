@@ -114,6 +114,7 @@ mod large_screen {
                 common::ux::Icon::Failure => &DENIED_CIRCLE_64PX,
                 common::ux::Icon::Confirm => core::ptr::null(), // only for small screen devices
                 common::ux::Icon::Reject => core::ptr::null(),  // only for small screen devices
+                common::ux::Icon::Processing => core::ptr::null(), // only for small screen devices
             }
         }
     }
@@ -152,6 +153,18 @@ mod small_screen {
         bitmap: &CROSSMARK_14X14_BITMAP as *const u8,
     };
 
+    const PROCESSING_14X14_BITMAP: [u8; 25] = [
+        0x00, 0x00, 0x0c, 0x01, 0x32, 0x0e, 0xdc, 0x18, 0x60, 0x00, 0x07, 0x03, 0x9c, 0x0e, 0x00,
+        0x00, 0x61, 0x83, 0xb7, 0x04, 0xc8, 0x03, 0x00, 0x00, 0x00,
+    ];
+    const PROCESSING_14PX: nbgl_icon_details_t = nbgl_icon_details_t {
+        width: 14,
+        height: 14,
+        bpp: NBGL_BPP_1,
+        isFile: false,
+        bitmap: &PROCESSING_14X14_BITMAP as *const u8,
+    };
+
     impl ToIconDetails for common::ux::Icon {
         fn to_icon_details(&self) -> *const nbgl_icon_details_t {
             match self {
@@ -160,6 +173,7 @@ mod small_screen {
                 common::ux::Icon::Failure => core::ptr::null(), // only for large screen devices
                 common::ux::Icon::Confirm => &VALIDATE_14PX,
                 common::ux::Icon::Reject => &CROSSMARK_14PX,
+                common::ux::Icon::Processing => &PROCESSING_14PX,
             }
         }
     }
