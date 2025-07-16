@@ -133,6 +133,16 @@ const STEP_MAKERS: &[(&'static str, WrappedStep)] = &[
         },
     ),
     (
+        "info",
+        WrappedStep::CenteredInfo {
+            pos: ct(0), // SINGLE_STEP
+            icon: ct(Icon::None),
+            text: Some(rt_str("text", "&str")),
+            subtext: None,
+            style: ct(BOLD_TEXT1_INFO),
+        },
+    ),
+    (
         "confirm",
         WrappedStep::CenteredInfo {
             pos: rt("pos", "u8"),
@@ -149,6 +159,16 @@ const STEP_MAKERS: &[(&'static str, WrappedStep)] = &[
             text: Some(ct_str("Reject")),
             subtext: None,
             icon: ct(Icon::Reject),
+            style: ct(BOLD_TEXT1_INFO),
+        },
+    ),
+    (
+        "spinner",
+        WrappedStep::CenteredInfo {
+            pos: ct(0), // SINGLE_STEP,
+            text: Some(rt_str("text", "&str")),
+            subtext: None,
+            icon: ct(Icon::Processing),
             style: ct(BOLD_TEXT1_INFO),
         },
     ),

@@ -241,7 +241,12 @@ pub fn make_object_maker(
     // Make a make_<page_name> function that returns the serialized page as a Vec<u8>
     writeln!(file, "#[allow(dead_code)]").expect("Could not write");
     writeln!(file, "#[inline(always)]").expect("Could not write");
-    writeln!(file, "pub fn make_{}({}) -> Vec<u8> {{", fn_name, fn_args).expect("Could not write");
+    writeln!(
+        file,
+        "pub fn make_{}_{}({}) -> Vec<u8> {{",
+        object_type, fn_name, fn_args
+    )
+    .expect("Could not write");
 
     writeln!(file, "    let mut total_len: usize = 0;").expect("Could not write");
 
