@@ -19,7 +19,7 @@ use crate::ux_generated;
 
 // Returns true if the device supports the page UX model, false if it supports the step UX model.
 // It panics for unsupported devices
-fn has_page_api() -> bool {
+pub fn has_page_api() -> bool {
     match ecalls::get_device_property(DEVICE_PROPERTY_ID) {
         0 => true,           // native target
         0x2c970060 => true,  // Ledger Stax
@@ -182,8 +182,8 @@ fn __step_review_pairs(
     intro_text: &str,
     intro_subtext: &str,
     pairs: &[TagValue],
-    final_text: &str,
-    _final_button_text: &str,
+    _final_text: &str,
+    final_button_text: &str,
     _long_press: bool,
 ) -> bool {
     // Calculate total number of pages
@@ -208,7 +208,11 @@ fn __step_review_pairs(
                 ux_generated::show_step_text_subtext(pos, &pair.tag, &pair.value);
             }
             step if step == n_pair_steps + 1 => {
-                ux_generated::show_step_centered_info_nosubtext(pos, final_text, Icon::Confirm);
+                ux_generated::show_step_centered_info_nosubtext(
+                    pos,
+                    final_button_text,
+                    Icon::Confirm,
+                );
             }
             step if step == n_pair_steps + 2 => {
                 ux_generated::show_step_reject(pos);
