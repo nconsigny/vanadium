@@ -66,8 +66,11 @@ pub enum Event {
 #[cfg_attr(feature = "wrapped_serializable", wrapped(maybe_const))]
 pub enum Icon {
     None,
-    Success,
-    Failure,
+    Success,    // only for flex/stax
+    Failure,    // only for flex/stax
+    Confirm,    // only for nanos+/nanox
+    Reject,     // only for nanos+/nanox
+    Processing, // only for nanos+/nanox
 }
 
 // Structured types
@@ -128,13 +131,13 @@ pub struct PageContentInfo {
 #[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedPage))]
 pub enum Page {
     /// A page showing a spinner and some text.
-    #[maker(make_spinner)]
+    #[maker(make_page_spinner)]
     Spinner { text: String },
     /// A page showing an icon (either success or failure) and some text.
-    #[maker(make_info)]
+    #[maker(make_page_info)]
     Info { icon: Icon, text: String },
     /// A page with a title, text, a "confirm" button, and a "reject" button.
-    #[maker(make_confirm_reject)]
+    #[maker(make_page_confirm_reject)]
     ConfirmReject {
         title: String,
         text: String,
@@ -142,10 +145,36 @@ pub enum Page {
         reject: String,
     },
     /// A generic page with navigation, implementing a subset of the pages supported by nbgl_pageDrawGenericContent
-    #[maker(make_generic_page)]
+    #[maker(make_page_generic_page)]
     GenericPage {
         navigation_info: Option<NavigationInfo>,
         page_content_info: PageContentInfo,
+    },
+}
+
+// styles for centered info steps
+pub const REGULAR_INFO: u8 = 0;
+pub const BOLD_TEXT1_INFO: u8 = 1;
+pub const BUTTON_INFO: u8 = 2;
+
+#[derive(Debug, PartialEq, Eq, Clone, Serializable)]
+#[cfg_attr(feature = "wrapped_serializable", wrapped(name = WrappedStep))]
+pub enum Step {
+    /// A step showing a spinner and some text.
+    #[maker(make_step_text_subtext)]
+    TextSubtext {
+        pos: u8,
+        text: String,
+        subtext: String,
+        style: u8,
+    },
+    #[maker(make_step_centered_info)]
+    CenteredInfo {
+        pos: u8,
+        text: Option<String>,
+        subtext: Option<String>,
+        icon: Icon,
+        style: u8,
     },
 }
 

@@ -36,7 +36,7 @@ use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 
 extern crate alloc;
 
-use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings};
+use ledger_device_sdk::nbgl::init_comm;
 
 // define print! and println! macros using debug_printf (only for running on Speculos)
 #[macro_export]

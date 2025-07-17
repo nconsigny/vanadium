@@ -29,7 +29,6 @@ use zeroize::Zeroizing;
 
 mod ux_handler;
 
-#[cfg(any(target_os = "stax", target_os = "flex"))]
 mod bitmaps;
 
 use ux_handler::*;
@@ -77,6 +76,7 @@ use device_props::*;
 // BIP32 supports up to 255, but we don't want that many, and it would be very slow anyway
 const MAX_BIP32_PATH: usize = 16;
 
+const MAX_UX_STEP_LEN: usize = 512;
 const MAX_UX_PAGE_LEN: usize = 512;
 
 #[allow(dead_code)]
@@ -1426,9 +1426,31 @@ impl<'a> CommEcallHandler<'a> {
         Ok(1)
     }
 
-    fn handle_get_device_property<E: fmt::Debug>(
+    fn handle_show_step<E: fmt::Debug>(
         &mut self,
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
+        step_ptr: GuestPointer,
+        step_len: usize,
+    ) -> Result<u32, CommEcallError> {
+        if step_len > MAX_UX_STEP_LEN {
+            return Err(CommEcallError::InvalidParameters("step_len is too large"));
+        }
+
+        let mut step_local: [u8; MAX_UX_STEP_LEN] = [0; MAX_UX_STEP_LEN];
+
+        cpu.get_segment::<E>(step_ptr.0)?
+            .read_buffer(step_ptr.0, &mut step_local[0..step_len])?;
+
+        let step = common::ux::Step::deserialize_full(&step_local[0..step_len])
+            .map_err(|_| CommEcallError::InvalidParameters("Failed to deserialize step"))?;
+
+        self.ux_handler.show_step(&step)?;
+        Ok(1)
+    }
+
+    fn handle_get_device_property<E: fmt::Debug>(
+        &mut self,
+        _cpu: &mut Cpu<OutsourcedMemory<'_>>,
         property: u32,
     ) -> Result<u32, CommEcallError> {
         match property {
@@ -1463,12 +1485,11 @@ fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
 
         match event {
             ledger_device_sdk::io::Event::Command(_e) => {
-                panic!("We don't expecte to receive APDUs here.");
+                panic!("We don't expect to receive APDUs here.");
             }
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             ledger_device_sdk::io::Event::Button(_button) => {
-                // nothing to do, we don't yet handle buttons
-                crate::println!("Button event. Unhandled");
+                // nothing to do here; we handle button events using the callbacks
             }
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             ledger_device_sdk::io::Event::TouchEvent => {
@@ -1522,6 +1543,11 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
             ECALL_SHOW_PAGE => {
                 self.handle_show_page::<CommEcallError>(cpu, GPreg!(A0), reg!(A1) as usize)?;
 
+                reg!(A0) = 1;
+            }
+            ECALL_SHOW_STEP => {
+                self.handle_show_step::<CommEcallError>(cpu, GPreg!(A0), reg!(A1) as usize)
+                    .map_err(|_| CommEcallError::GenericError("show_step failed"))?;
                 reg!(A0) = 1;
             }
             ECALL_GET_DEVICE_PROPERTY => {
