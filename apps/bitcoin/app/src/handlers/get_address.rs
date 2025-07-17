@@ -5,7 +5,7 @@ fn display_address(account_name: Option<&str>, addr: &str) -> bool {
     use alloc::vec;
     use sdk::ux::TagValue;
 
-    let pairs = match account_name {
+    let mut pairs = match account_name {
         Some(account_name) => {
             vec![TagValue {
                 tag: "Account".into(),
@@ -16,11 +16,20 @@ fn display_address(account_name: Option<&str>, addr: &str) -> bool {
             vec![]
         }
     };
+    pairs.push(TagValue {
+        tag: "Address".into(),
+        value: addr.into(),
+    });
+    let (intro_text, intro_subtext) = if sdk::ux::has_page_api() {
+        ("Verify Bitcoin\naddress", "")
+    } else {
+        ("Verify Bitcoin", "address")
+    };
     sdk::ux::review_pairs(
-        "Verify Bitcoin\naddress",
-        "",
+        intro_text,
+        intro_subtext,
         &pairs,
-        addr,
+        "The address is correct",
         "Confirm",
         false,
     )

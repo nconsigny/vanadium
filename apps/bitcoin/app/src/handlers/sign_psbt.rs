@@ -1,4 +1,9 @@
-use alloc::{format, string::ToString, vec, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
 use common::{
     bip388::{DescriptorTemplate, SegwitVersion},
@@ -60,16 +65,21 @@ fn display_warning_unverified_inputs() -> bool {
 #[cfg(not(test))]
 fn display_transaction(pairs: &[TagValue]) -> bool {
     // message on speculos or real device
-    #[cfg(target_arch = "riscv32")]
-    let button_text = "Hold to sign";
 
-    // message for native interface on the shell
-    #[cfg(not(target_arch = "riscv32"))]
-    let button_text = "Confirm";
+    let button_text = if sdk::ux::has_page_api() {
+        "Hold to sign"
+    } else {
+        "Confirm"
+    };
 
+    let (intro_text, intro_subtext) = if sdk::ux::has_page_api() {
+        ("Review transaction\nto send Bitcoin", "")
+    } else {
+        ("Review transaction", "to send Bitcoin")
+    };
     sdk::ux::review_pairs(
-        "Review transaction to send Bitcoin",
-        "",
+        intro_text,
+        intro_subtext,
         pairs,
         "Sign transaction",
         button_text,
@@ -80,6 +90,15 @@ fn display_transaction(pairs: &[TagValue]) -> bool {
 #[cfg(test)]
 fn display_transaction(_pairs: &[TagValue]) -> bool {
     true
+}
+
+const SATS_PER_BTC: u64 = 100_000_000;
+
+fn format_amount(value: u64, ticker: &str) -> String {
+    let whole_part = value / SATS_PER_BTC;
+    let fractional_part = value % SATS_PER_BTC;
+    // Pad fractional part with leading zeros to ensure 8 digits
+    format!("{}.{:08} {}", whole_part, fractional_part, ticker)
 }
 
 fn sign_input_ecdsa(
@@ -346,30 +365,35 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
     // display transaction
     //
     // pairs:
-    // - accounts we're sending from (non-negative positive spent amount)
+    // - accounts we're sending from (non-negative spent amount)
     // - accounts we're receiving to (negative spent amount)
     // - external outputs and amounts
     // - total in fees
 
     let mut pairs: Vec<TagValue> =
-        Vec::with_capacity(accounts.len() + external_outputs_indexes.len() + 1);
+        Vec::with_capacity(accounts.len() * 2 + external_outputs_indexes.len() * 2 + 1);
 
+    // TODO: format amounts correctly, with commas and decimals
     // pairs for accounts we're spending from (or refreshing)
     for (account_id, spent_amount) in account_spent_amounts.iter().enumerate() {
         let account_description = match psbt.get_account_name(account_id as u32)? {
             Some(name) => format!("account: {}", name),
             None => "default account".to_string(),
         };
-        if *spent_amount != 0 {
+        if *spent_amount >= 0 {
+            pairs.push(TagValue {
+                tag: "Spend from".into(),
+                value: format!("{}", account_description),
+            });
             if *spent_amount > 0 {
                 pairs.push(TagValue {
-                    tag: format!("Spend from {}", account_description),
-                    value: format!("{}", spent_amount),
+                    tag: "Amount".into(),
+                    value: format_amount(*spent_amount as u64, COIN_TICKER),
                 });
             } else if *spent_amount == 0 {
                 pairs.push(TagValue {
-                    tag: format!("Spend from {}", account_description),
-                    value: "0".to_string(),
+                    tag: "Amount".into(),
+                    value: "0 (self-tansfer)".to_string(),
                 });
             }
         }
@@ -383,8 +407,13 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
 
         if *spent_amount < 0 {
             pairs.push(TagValue {
-                tag: format!("Send to {}", account_description),
-                value: format!("{} {}", -spent_amount, COIN_TICKER),
+                tag: "Send to".into(),
+                value: format!("{}", account_description),
+            });
+
+            pairs.push(TagValue {
+                tag: "Amount".into(),
+                value: format_amount(-*spent_amount as u64, COIN_TICKER),
             });
         }
     }
@@ -394,9 +423,14 @@ pub fn handle_sign_psbt(_app: &mut sdk::App, psbt: &[u8]) -> Result<Response, &'
         let amount = output.value.to_sat();
         let address = Address::from_script(&output.script_pubkey, bitcoin::Network::Testnet)
             .map_err(|_| "Failed to convert script to address")?;
+
         pairs.push(TagValue {
-            tag: format!("Output: {}", address),
-            value: format!("{} {}", amount, COIN_TICKER),
+            tag: format!("Output {}", output_index),
+            value: format!("{}", address),
+        });
+        pairs.push(TagValue {
+            tag: "Amount".into(),
+            value: format_amount(amount, COIN_TICKER),
         });
     }
 
