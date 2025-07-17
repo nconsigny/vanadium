@@ -283,13 +283,10 @@ impl<'c> OutsourcedMemory<'c> {
         let proof_elements: Vec<HashOutput<32>> =
             proof_elements.into_iter().map(Into::into).collect();
 
-        // Create update proof (InclusionProof, new_root)
-        let update_proof = (proof_elements, new_root.clone());
-
         // Verify the update proof
         if !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
             &self.merkle_root,
-            &update_proof,
+            (&proof_elements, &new_root),
             page_hash_old,
             &new_page_hash,
             cached_page.idx as usize,

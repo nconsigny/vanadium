@@ -118,8 +118,14 @@ pub trait VectorAccumulator<
     /// The type representing an inclusion proof.
     type InclusionProof: Serialize + DeserializeOwned;
 
+    /// The type representing a reference to an inclusion proof.
+    type InclusionProofRef<'a>;
+
     /// The type representing an update proof.
     type UpdateProof: Serialize + DeserializeOwned;
+
+    /// The type representing a reference to an update proof.
+    type UpdateProofRef<'a>;
 
     /// Creates a new accumulator with the given data.
     fn new(data: Vec<T>) -> Self;
@@ -154,9 +160,9 @@ pub trait VectorAccumulator<
     /// # Returns
     ///
     /// `true` if the proof is valid, `false` otherwise.
-    fn verify_inclusion_proof(
+    fn verify_inclusion_proof<'a>(
         root: &H,
-        proof: &Self::InclusionProof,
+        proof: Self::InclusionProofRef<'a>,
         value_hash: &H,
         index: usize,
         size: usize,
@@ -189,9 +195,9 @@ pub trait VectorAccumulator<
     /// # Returns
     ///
     /// `true` if the update proof is valid, `false` otherwise.
-    fn verify_update_proof(
+    fn verify_update_proof<'a>(
         old_root: &H,
-        update_proof: &Self::UpdateProof,
+        update_proof: Self::UpdateProofRef<'a>,
         old_value_hash: &H,
         new_value_hash: &H,
         index: usize,
@@ -217,8 +223,11 @@ impl<
     > VectorAccumulator<T, HashOutput<OUTPUT_SIZE>> for MerkleAccumulator<H, T, OUTPUT_SIZE>
 {
     type InclusionProof = Vec<HashOutput<OUTPUT_SIZE>>;
+    type InclusionProofRef<'a> = &'a [HashOutput<OUTPUT_SIZE>];
+
     // the update proof is a Merkle proof, plus the new root of the tree
     type UpdateProof = (Self::InclusionProof, HashOutput<OUTPUT_SIZE>);
+    type UpdateProofRef<'a> = (&'a [HashOutput<OUTPUT_SIZE>], &'a HashOutput<OUTPUT_SIZE>);
 
     /// Creates a new `MerkleAccumulator` with the given data.
     ///
@@ -278,9 +287,9 @@ impl<
     }
 
     /// Verifies an inclusion proof for a given element hash and index
-    fn verify_inclusion_proof(
+    fn verify_inclusion_proof<'a>(
         root: &HashOutput<OUTPUT_SIZE>,
-        proof: &Self::InclusionProof,
+        proof: Self::InclusionProofRef<'a>,
         value_hash: &HashOutput<OUTPUT_SIZE>,
         index: usize,
         size: usize,
@@ -331,9 +340,9 @@ impl<
     }
 
     /// Verifies an update proof.
-    fn verify_update_proof(
+    fn verify_update_proof<'a>(
         old_root: &HashOutput<OUTPUT_SIZE>,
-        update_proof: &Self::UpdateProof,
+        update_proof: Self::UpdateProofRef<'a>,
         old_value_hash: &HashOutput<OUTPUT_SIZE>,
         new_value_hash: &HashOutput<OUTPUT_SIZE>,
         index: usize,
@@ -498,7 +507,7 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &new_root, // Incorrect, we pass new_root instead of the old_root
-                &update_proof,
+                (&update_proof.0, &update_proof.1),
                 &old_elem_hash,
                 &new_elem_hash,
                 2,
@@ -510,7 +519,7 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &old_root,
-                &update_proof,
+                (&update_proof.0, &update_proof.1),
                 &incorrect_elem_hash, // Incorrect old value hash
                 &new_elem_hash,
                 2,
@@ -522,7 +531,7 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &new_root,
-                &update_proof,
+                (&update_proof.0, &update_proof.1),
                 &old_elem_hash,
                 &incorrect_elem_hash, // Incorrect new value hash
                 2,
@@ -579,7 +588,7 @@ mod tests {
         assert!(
             MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &root, // old root
-                &update_proof,
+                (&update_proof.0, &update_proof.1),
                 &old_elem_hash,
                 &new_elem_hash,
                 2,
