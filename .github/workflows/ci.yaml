@@ -273,9 +273,8 @@ jobs:
     strategy:
       matrix:
         include:
-          # TODO: reenable once UX is implemented
-          # - model: nanox
-          # - model: nanosplus
+          - model: nanox
+          - model: nanosplus
           - model: flex
           - model: stax
 
@@ -358,9 +357,8 @@ jobs:
     strategy:
       matrix:
         include:
-          # TODO: reenable once UX is implemented
-          # - model: nanox
-          # - model: nanosplus
+          - model: nanox
+          - model: nanosplus
           - model: flex
           - model: stax
 

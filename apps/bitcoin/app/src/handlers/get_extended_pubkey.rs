@@ -31,14 +31,26 @@ fn display_xpub(xpub: &str, path: &[u32]) -> bool {
     let path =
         bitcoin::bip32::DerivationPath::from(path.iter().map(|&x| x.into()).collect::<Vec<_>>());
 
+    let (intro_text, intro_subtext) = if sdk::ux::has_page_api() {
+        ("Verify Bitcoin\nextended public key", "")
+    } else {
+        ("Verify Bitcoin", "extended public key")
+    };
+
     sdk::ux::review_pairs(
-        "Verify Bitcoin\nextended public key",
-        "",
-        &vec![TagValue {
-            tag: "Path".into(),
-            value: path.to_string(),
-        }],
-        xpub,
+        intro_text,
+        intro_subtext,
+        &vec![
+            TagValue {
+                tag: "Path".into(),
+                value: path.to_string(),
+            },
+            TagValue {
+                tag: "Public key".into(),
+                value: xpub.into(),
+            },
+        ],
+        "The public key is validated",
         "Confirm",
         false,
     )
