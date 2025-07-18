@@ -1,7 +1,10 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, vec, vec::Vec};
-use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulatorVerifier};
+use common::accumulator::{
+    HashOutput, Hasher, InclusionProofVerifier, MerkleAccumulator, StreamingVectorAccumulator,
+    UpdateProofVerifier,
+};
 use common::vm::{Page, PagedMemory};
 use ledger_device_sdk::io;
 
@@ -245,11 +248,36 @@ impl<'c> OutsourcedMemory<'c> {
             .map_err(|_| common::vm::MemoryError::GenericError("Invalid proof data"))?;
 
         let n = proof_response.n; // Total number of elements in the proof
-        let mut proof_elements = proof_response.proof;
+        if n == 0 {
+            return Err(common::vm::MemoryError::GenericError(
+                "Proof must contain at least one element",
+            ));
+        }
+        if proof_response.t as usize != proof_response.proof.len() {
+            return Err(common::vm::MemoryError::GenericError(
+                "Proof fragment size does not match the expected number of elements",
+            ));
+        }
+
         let new_root: HashOutput<32> = proof_response.new_root.into();
 
+        // Verify the Merkle update proof using streaming verification
+        let mut verifier = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::begin_update_proof(
+            &self.merkle_root,
+            &new_root,
+            page_hash_old,
+            &new_page_hash,
+            cached_page.idx as usize,
+            self.n_pages as usize,
+        );
+
+        for el in proof_response.proof.iter() {
+            verifier.feed(HashOutput::<32>::as_hash_output(el));
+        }
+        let mut n_processed_elements = proof_response.t as usize;
+
         // If we need more elements, request them
-        while proof_elements.len() < n as usize {
+        while n_processed_elements < n as usize {
             CommitPageProofContinuedMessage::new().serialize_to_comm(&mut comm);
 
             let Instruction::Continue(p1, p2) = io_exchange(&mut comm, AppSW::InterruptedExecution)
@@ -276,23 +304,18 @@ impl<'c> OutsourcedMemory<'c> {
             )
             .map_err(|_| common::vm::MemoryError::GenericError("Invalid continued proof data"))?;
 
-            proof_elements.extend_from_slice(&continued_response.proof);
+            if continued_response.t as usize != continued_response.proof.len() {
+                return Err(common::vm::MemoryError::GenericError(
+                    "Continued proof size does not match the expected number of elements",
+                ));
+            }
+            for el in continued_response.proof.iter() {
+                verifier.feed(HashOutput::<32>::as_hash_output(el));
+            }
+            n_processed_elements += continued_response.t as usize;
         }
 
-        // Convert proof elements to HashOutput format
-        let proof_elements: Vec<HashOutput<32>> =
-            proof_elements.into_iter().map(Into::into).collect();
-
-        // Verify the update proof
-        if !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
-            &self.merkle_root,
-            &new_root,
-            &proof_elements,
-            page_hash_old,
-            &new_page_hash,
-            cached_page.idx as usize,
-            self.n_pages as usize,
-        ) {
+        if !verifier.verified() {
             return Err(common::vm::MemoryError::GenericError(
                 "Merkle update verification failed",
             ));
@@ -368,10 +391,28 @@ impl<'c> OutsourcedMemory<'c> {
         };
 
         let n = proof_response.n; // Total number of elements in the proof
-        let mut proof_elements = proof_response.proof;
+        if proof_response.t as usize != proof_response.proof.len() {
+            return Err(common::vm::MemoryError::GenericError(
+                "Proof fragment size does not match the expected number of elements",
+            ));
+        }
+
+        // Verify the Merkle inclusion proof using streaming verification
+        let mut verifier = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::begin_inclusion_proof(
+            &self.merkle_root,
+            &page_hash,
+            page_index as usize,
+            self.n_pages as usize,
+        );
+
+        for el in proof_response.proof.iter() {
+            verifier.feed(HashOutput::<32>::as_hash_output(el));
+        }
+
+        let mut n_processed_elements = proof_response.t as usize;
 
         // If we need more elements, request them
-        while proof_elements.len() < n as usize {
+        while n_processed_elements < n as usize {
             GetPageProofContinuedMessage::new().serialize_to_comm(&mut comm);
 
             let Instruction::Continue(p1, p2) = io_exchange(&mut comm, AppSW::InterruptedExecution)
@@ -398,20 +439,19 @@ impl<'c> OutsourcedMemory<'c> {
             )
             .map_err(|_| common::vm::MemoryError::GenericError("Invalid continued proof data"))?;
 
-            proof_elements.extend_from_slice(&continued_response.proof);
+            if continued_response.t as usize != continued_response.proof.len() {
+                return Err(common::vm::MemoryError::GenericError(
+                    "Continued proof size does not match the expected number of elements",
+                ));
+            }
+
+            for el in continued_response.proof.iter() {
+                verifier.feed(HashOutput::<32>::as_hash_output(el));
+            }
+            n_processed_elements += continued_response.t as usize;
         }
 
-        // Verify the Merkle proof
-        let proof_elements: Vec<HashOutput<32>> =
-            proof_elements.into_iter().map(Into::into).collect();
-
-        if !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_inclusion_proof(
-            &self.merkle_root,
-            &proof_elements,
-            &page_hash,
-            page_index as usize,
-            self.n_pages as usize,
-        ) {
+        if !verifier.verified() {
             return Err(common::vm::MemoryError::GenericError(
                 "Merkle inclusion verification failed",
             ));
