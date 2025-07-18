@@ -286,7 +286,8 @@ impl<'c> OutsourcedMemory<'c> {
         // Verify the update proof
         if !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
             &self.merkle_root,
-            (&proof_elements, &new_root),
+            &new_root,
+            &proof_elements,
             page_hash_old,
             &new_page_hash,
             cached_page.idx as usize,

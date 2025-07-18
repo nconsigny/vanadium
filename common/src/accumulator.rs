@@ -177,15 +177,20 @@ pub trait VectorAccumulator<
     ///
     /// # Returns
     ///
-    /// An update proof, or an error string if the index is out of bounds.
-    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, AccumulatorError>;
+    /// A pair of the update proof and the new root hash, or an error string if the index is out of bounds.
+    fn update(
+        &mut self,
+        index: usize,
+        value: T,
+    ) -> Result<(Self::UpdateProof, H), AccumulatorError>;
 
     /// Verifies an update proof. This associated function is called by the verifier,
     /// rather than the owner of the instance.
     ///
     /// # Arguments
     ///
-    /// * `old_root` - The expected old root hash before the update.
+    /// * `old_root` - The old root hash before the update.
+    /// * `new_root` - The new root hash before the update.
     /// * `update_proof` - The update proof to verify.
     /// * `old_value_hash` - The hash of the old value of the element before the update.
     /// * `new_value_hash` - The hash of the new value of the element after the update.
@@ -197,6 +202,7 @@ pub trait VectorAccumulator<
     /// `true` if the update proof is valid, `false` otherwise.
     fn verify_update_proof<'a>(
         old_root: &H,
+        new_root: &H,
         update_proof: Self::UpdateProofRef<'a>,
         old_value_hash: &H,
         new_value_hash: &H,
@@ -225,9 +231,9 @@ impl<
     type InclusionProof = Vec<HashOutput<OUTPUT_SIZE>>;
     type InclusionProofRef<'a> = &'a [HashOutput<OUTPUT_SIZE>];
 
-    // the update proof is a Merkle proof, plus the new root of the tree
-    type UpdateProof = (Self::InclusionProof, HashOutput<OUTPUT_SIZE>);
-    type UpdateProofRef<'a> = (&'a [HashOutput<OUTPUT_SIZE>], &'a HashOutput<OUTPUT_SIZE>);
+    // the update proof is a Merkle proof (the new root is passed as an argument to the verifier)
+    type UpdateProof = Self::InclusionProof;
+    type UpdateProofRef<'a> = Self::InclusionProofRef<'a>;
 
     /// Creates a new `MerkleAccumulator` with the given data.
     ///
@@ -318,7 +324,11 @@ impl<
     /// # Returns
     ///
     /// An update proof, or an error string if the index is out of bounds.
-    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, AccumulatorError> {
+    fn update(
+        &mut self,
+        index: usize,
+        value: T,
+    ) -> Result<(Self::UpdateProof, HashOutput<OUTPUT_SIZE>), AccumulatorError> {
         if index >= self.data.len() {
             return Err(AccumulatorError::IndexOutOfBounds);
         }
@@ -342,17 +352,16 @@ impl<
     /// Verifies an update proof.
     fn verify_update_proof<'a>(
         old_root: &HashOutput<OUTPUT_SIZE>,
+        new_root: &HashOutput<OUTPUT_SIZE>,
         update_proof: Self::UpdateProofRef<'a>,
         old_value_hash: &HashOutput<OUTPUT_SIZE>,
         new_value_hash: &HashOutput<OUTPUT_SIZE>,
         index: usize,
         size: usize,
     ) -> bool {
-        let (proof, new_root) = update_proof;
-
         // verify that the old value was correct with old root, and the new value is correct with new root
-        Self::verify_inclusion_proof(old_root, proof, old_value_hash, index, size)
-            && Self::verify_inclusion_proof(new_root, proof, new_value_hash, index, size)
+        Self::verify_inclusion_proof(old_root, update_proof, old_value_hash, index, size)
+            && Self::verify_inclusion_proof(new_root, update_proof, new_value_hash, index, size)
     }
 
     /// Computes the hash of an element.
@@ -495,8 +504,7 @@ mod tests {
 
         // Update an element
         let new_data = b"new_data".to_vec();
-        let update_proof = ma.update(2, new_data.clone()).unwrap();
-        let new_root = ma.root().clone();
+        let (update_proof, new_root) = ma.update(2, new_data.clone()).unwrap();
 
         let old_elem_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&data[2]);
         let new_elem_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&new_data);
@@ -507,7 +515,8 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &new_root, // Incorrect, we pass new_root instead of the old_root
-                (&update_proof.0, &update_proof.1),
+                &new_root,
+                &update_proof,
                 &old_elem_hash,
                 &new_elem_hash,
                 2,
@@ -519,7 +528,8 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &old_root,
-                (&update_proof.0, &update_proof.1),
+                &new_root,
+                &update_proof,
                 &incorrect_elem_hash, // Incorrect old value hash
                 &new_elem_hash,
                 2,
@@ -530,8 +540,9 @@ mod tests {
         // Verify update proof is false with incorrect new value hash
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
+                &old_root,
                 &new_root,
-                (&update_proof.0, &update_proof.1),
+                &update_proof,
                 &old_elem_hash,
                 &incorrect_elem_hash, // Incorrect new value hash
                 2,
@@ -567,9 +578,8 @@ mod tests {
 
         // Update an element and check if root changes
         let new_data = b"new_data".to_vec();
-        let update_proof = ma.update(2, new_data.clone()).unwrap();
-        let new_root = ma.root();
-        assert_ne!(&root, new_root);
+        let (update_proof, new_root) = ma.update(2, new_data.clone()).unwrap();
+        assert_ne!(root, new_root);
 
         let new_proof = ma.prove(2).unwrap();
         let new_elem_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&new_data);
@@ -588,7 +598,8 @@ mod tests {
         assert!(
             MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &root, // old root
-                (&update_proof.0, &update_proof.1),
+                &new_root,
+                &update_proof,
                 &old_elem_hash,
                 &new_elem_hash,
                 2,
@@ -603,7 +614,7 @@ mod tests {
         assert_eq!(proof, deserialized_proof);
 
         let serialized_update_proof = postcard::to_allocvec(&update_proof).unwrap();
-        let deserialized_update_proof: (Vec<HashOutput<32>>, HashOutput<32>) =
+        let deserialized_update_proof: Vec<HashOutput<32>> =
             postcard::from_bytes(&serialized_update_proof).unwrap();
         assert_eq!(update_proof, deserialized_update_proof);
     }
