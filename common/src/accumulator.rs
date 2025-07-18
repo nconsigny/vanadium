@@ -7,7 +7,7 @@
 //! produced by the prover.
 
 use alloc::{vec, vec::Vec};
-use core::{error::Error, fmt, marker::PhantomData, mem::MaybeUninit};
+use core::{error::Error, fmt, marker::PhantomData, mem::MaybeUninit, ops::Deref};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug)]
@@ -71,15 +71,20 @@ pub trait Hasher<const OUTPUT_SIZE: usize>: Sized {
 ///
 /// This wrapper allows implementing serialization and deserialization traits
 /// for byte arrays of arbitrary lengths, which is not natively supported by Serde.
+#[repr(transparent)]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct HashOutput<const N: usize>(pub [u8; N]);
 
-impl<const N: usize> Serialize for HashOutput<N> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_bytes(&self.0)
+impl<const N: usize> Deref for HashOutput<N> {
+    type Target = [u8; N];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<const N: usize> HashOutput<N> {
+    pub fn as_hash_output(array: &[u8; N]) -> &Self {
+        unsafe { core::mem::transmute(array) }
     }
 }
 
@@ -92,6 +97,15 @@ impl<const N: usize> From<[u8; N]> for HashOutput<N> {
 impl<const N: usize> From<HashOutput<N>> for [u8; N] {
     fn from(hash: HashOutput<N>) -> Self {
         hash.0
+    }
+}
+
+impl<const N: usize> Serialize for HashOutput<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bytes(&self.0)
     }
 }
 
@@ -112,14 +126,20 @@ impl<'de, const N: usize> Deserialize<'de> for HashOutput<N> {
 /// proofs of inclusion and updates.
 pub trait VectorAccumulator<
     T: AsRef<[u8]> + Clone + Serialize + DeserializeOwned,
-    H: Clone + Serialize + DeserializeOwned,
+    H: PartialEq + Clone + Serialize + DeserializeOwned,
 >
 {
     /// The type representing an inclusion proof.
     type InclusionProof: Serialize + DeserializeOwned;
 
+    /// The type representing a reference to an inclusion proof.
+    type InclusionProofRef<'a>;
+
     /// The type representing an update proof.
     type UpdateProof: Serialize + DeserializeOwned;
+
+    /// The type representing a reference to an update proof.
+    type UpdateProofRef<'a>;
 
     /// Creates a new accumulator with the given data.
     fn new(data: Vec<T>) -> Self;
@@ -140,6 +160,38 @@ pub trait VectorAccumulator<
     /// Computes the hash of an element.
     fn hash_element<T_: AsRef<[u8]>>(element: &T_) -> H;
 
+    /// Updates the accumulator by replacing the element at the given index.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the element to be updated.
+    /// * `value` - The new value to replace the existing element.
+    ///
+    /// # Returns
+    ///
+    /// A pair of the update proof and the new root hash, or an error string if the index is out of bounds.
+    fn update(
+        &mut self,
+        index: usize,
+        value: T,
+    ) -> Result<(Self::UpdateProof, H), AccumulatorError>;
+}
+
+pub trait VectorAccumulatorVerifier<
+    T: AsRef<[u8]> + Clone + Serialize + DeserializeOwned,
+    H: PartialEq + Clone + Serialize + DeserializeOwned,
+>
+{
+    /// The type representing a reference to an inclusion proof.
+    type InclusionProofRef<'a>
+    where
+        H: 'a;
+
+    /// The type representing a reference to an update proof.
+    type UpdateProofRef<'a>
+    where
+        H: 'a;
+
     /// Verifies an inclusion proof. This associated function is called by the verifier,
     /// rather than the owner of the instance.
     ///
@@ -154,32 +206,23 @@ pub trait VectorAccumulator<
     /// # Returns
     ///
     /// `true` if the proof is valid, `false` otherwise.
-    fn verify_inclusion_proof(
+    fn verify_inclusion_proof<'a>(
         root: &H,
-        proof: &Self::InclusionProof,
+        proof: Self::InclusionProofRef<'a>,
         value_hash: &H,
         index: usize,
         size: usize,
-    ) -> bool;
-
-    /// Updates the accumulator by replacing the element at the given index.
-    ///
-    /// # Arguments
-    ///
-    /// * `index` - The index of the element to be updated.
-    /// * `value` - The new value to replace the existing element.
-    ///
-    /// # Returns
-    ///
-    /// An update proof, or an error string if the index is out of bounds.
-    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, AccumulatorError>;
+    ) -> bool
+    where
+        H: 'a;
 
     /// Verifies an update proof. This associated function is called by the verifier,
     /// rather than the owner of the instance.
     ///
     /// # Arguments
     ///
-    /// * `old_root` - The expected old root hash before the update.
+    /// * `old_root` - The old root hash before the update.
+    /// * `new_root` - The new root hash before the update.
     /// * `update_proof` - The update proof to verify.
     /// * `old_value_hash` - The hash of the old value of the element before the update.
     /// * `new_value_hash` - The hash of the new value of the element after the update.
@@ -189,14 +232,196 @@ pub trait VectorAccumulator<
     /// # Returns
     ///
     /// `true` if the update proof is valid, `false` otherwise.
-    fn verify_update_proof(
+    fn verify_update_proof<'a>(
         old_root: &H,
-        update_proof: &Self::UpdateProof,
+        new_root: &H,
+        update_proof: Self::UpdateProofRef<'a>,
         old_value_hash: &H,
         new_value_hash: &H,
         index: usize,
         size: usize,
-    ) -> bool;
+    ) -> bool
+    where
+        H: 'a;
+}
+
+/// Trait for incrementally verifying an inclusion proof.
+pub trait InclusionProofVerifier<H> {
+    /// Feeds a single proof element into the verifier.
+    fn feed(&mut self, element: &H);
+
+    /// Returns `true` if the proof has been verified, `false` otherwise.
+    fn verified(&self) -> bool;
+}
+
+/// Trait for incrementally verifying an update proof.
+pub trait UpdateProofVerifier<H> {
+    /// Feeds a single proof element into the verifier.
+    fn feed(&mut self, element: &H);
+
+    /// Returns `true` if the proof has been verified, `false` otherwise.
+    fn verified(&self) -> bool;
+}
+
+/// Trait for vector accumulators that support streaming proof verification.
+/// Assumes that the proofs are just lists of hashes.
+pub trait StreamingVectorAccumulator<
+    T: AsRef<[u8]> + Clone + Serialize + DeserializeOwned,
+    H: PartialEq + Clone + Serialize + DeserializeOwned,
+>: VectorAccumulator<T, H>
+{
+    type InclusionProofVerifier: InclusionProofVerifier<H>;
+    type UpdateProofVerifier: UpdateProofVerifier<H>;
+
+    /// Initiates an inclusion proof verifier with the given parameters.
+    fn begin_inclusion_proof(
+        root: &H,
+        value_hash: &H,
+        index: usize,
+        size: usize,
+    ) -> Self::InclusionProofVerifier;
+
+    /// Initiates an update proof verifier with the given parameters.
+    fn begin_update_proof(
+        old_root: &H,
+        new_root: &H,
+        old_value_hash: &H,
+        new_value_hash: &H,
+        index: usize,
+        size: usize,
+    ) -> Self::UpdateProofVerifier;
+}
+
+// blanket implementation of verify_inclusion_proof and verify_update_proof for a StreamingVectorAccumulator
+impl<
+        T: AsRef<[u8]> + Clone + Serialize + DeserializeOwned,
+        H: PartialEq + Clone + Serialize + DeserializeOwned,
+        S: StreamingVectorAccumulator<T, H>,
+    > VectorAccumulatorVerifier<T, H> for S
+{
+    type InclusionProofRef<'a>
+        = &'a [H]
+    where
+        H: 'a;
+    type UpdateProofRef<'a>
+        = &'a [H]
+    where
+        H: 'a;
+
+    fn verify_inclusion_proof<'a>(
+        root: &H,
+        proof: Self::InclusionProofRef<'a>,
+        value_hash: &H,
+        index: usize,
+        size: usize,
+    ) -> bool
+    where
+        H: 'a,
+    {
+        let mut verifier = Self::begin_inclusion_proof(root, value_hash, index, size);
+
+        for el in proof.iter() {
+            verifier.feed(el);
+        }
+        verifier.verified()
+    }
+
+    fn verify_update_proof<'a>(
+        old_root: &H,
+        new_root: &H,
+        update_proof: Self::UpdateProofRef<'a>,
+        old_value_hash: &H,
+        new_value_hash: &H,
+        index: usize,
+        size: usize,
+    ) -> bool
+    where
+        H: 'a,
+    {
+        let mut verifier = Self::begin_update_proof(
+            old_root,
+            new_root,
+            old_value_hash,
+            new_value_hash,
+            index,
+            size,
+        );
+
+        for el in update_proof.iter() {
+            verifier.feed(el);
+        }
+        verifier.verified()
+    }
+}
+
+/// Verifier for streaming inclusion proof verification in a Merkle tree.
+pub struct MerkleInclusionProofVerifier<H: Hasher<OUTPUT_SIZE>, const OUTPUT_SIZE: usize> {
+    current_hash: HashOutput<OUTPUT_SIZE>, // Current computed hash
+    pos: usize,                            // Current position in the tree
+    root: HashOutput<OUTPUT_SIZE>,         // Expected root hash
+    verified: bool,                        // Whether the proof has been verified
+    _marker: PhantomData<H>,               // For hasher type
+}
+
+impl<H: Hasher<OUTPUT_SIZE>, const OUTPUT_SIZE: usize>
+    InclusionProofVerifier<HashOutput<OUTPUT_SIZE>>
+    for MerkleInclusionProofVerifier<H, OUTPUT_SIZE>
+{
+    fn feed(&mut self, sibling_hash: &HashOutput<OUTPUT_SIZE>) {
+        if self.pos == 0 {
+            // Verification already completed; extra elements make the proof invalid
+
+            self.verified = false;
+            return;
+        }
+
+        // Determine if the current node is a left or right child
+        let (left, right) = if self.pos % 2 == 0 {
+            (sibling_hash, &self.current_hash) // Even pos: right child
+        } else {
+            (&self.current_hash, sibling_hash) // Odd pos: left child
+        };
+
+        // Compute the parent hash
+        let mut hasher = H::new();
+        hasher.update(&[0x01]); // Internal node prefix
+        hasher.update(&left.0);
+        hasher.update(&right.0);
+        self.current_hash = hasher.finalize().into();
+
+        // Move up the tree
+        self.pos = (self.pos - 1) / 2;
+
+        // If at the root, check if the computed hash matches
+        if self.pos == 0 {
+            self.verified = &self.current_hash == &self.root;
+        }
+    }
+
+    fn verified(&self) -> bool {
+        self.verified
+    }
+}
+
+/// Verifier for streaming update proof verification in a Merkle tree.
+/// An update proof is just a pair of inclusion proofs, one for the old element value and root, the other for
+/// the new ones.
+pub struct MerkleUpdateProofVerifier<H: Hasher<OUTPUT_SIZE>, const OUTPUT_SIZE: usize> {
+    old_verifier: MerkleInclusionProofVerifier<H, OUTPUT_SIZE>,
+    new_verifier: MerkleInclusionProofVerifier<H, OUTPUT_SIZE>,
+}
+
+impl<H: Hasher<OUTPUT_SIZE>, const OUTPUT_SIZE: usize> UpdateProofVerifier<HashOutput<OUTPUT_SIZE>>
+    for MerkleUpdateProofVerifier<H, OUTPUT_SIZE>
+{
+    fn feed(&mut self, sibling_hash: &HashOutput<OUTPUT_SIZE>) {
+        self.old_verifier.feed(sibling_hash);
+        self.new_verifier.feed(sibling_hash);
+    }
+
+    fn verified(&self) -> bool {
+        self.new_verifier.verified() && self.old_verifier.verified()
+    }
 }
 
 /// A Merkle tree-based implementation of the `VectorAccumulator` trait.
@@ -214,11 +439,59 @@ impl<
         H: Hasher<OUTPUT_SIZE>,
         T: AsRef<[u8]> + Clone + Serialize + DeserializeOwned,
         const OUTPUT_SIZE: usize,
+    > StreamingVectorAccumulator<T, HashOutput<OUTPUT_SIZE>>
+    for MerkleAccumulator<H, T, OUTPUT_SIZE>
+{
+    type InclusionProofVerifier = MerkleInclusionProofVerifier<H, OUTPUT_SIZE>;
+    type UpdateProofVerifier = MerkleUpdateProofVerifier<H, OUTPUT_SIZE>;
+
+    fn begin_inclusion_proof(
+        root: &HashOutput<OUTPUT_SIZE>,
+        value_hash: &HashOutput<OUTPUT_SIZE>,
+        index: usize,
+        size: usize,
+    ) -> Self::InclusionProofVerifier {
+        let pos = size - 1 + index;
+        MerkleInclusionProofVerifier {
+            current_hash: value_hash.clone(),
+            pos,
+            root: root.clone(),
+            // a zero-length proof (for a single-element tree) is only valid if the value hash is equal to the root
+            verified: size == 1 && value_hash == root,
+            _marker: PhantomData,
+        }
+    }
+
+    fn begin_update_proof(
+        old_root: &HashOutput<OUTPUT_SIZE>,
+        new_root: &HashOutput<OUTPUT_SIZE>,
+        old_value_hash: &HashOutput<OUTPUT_SIZE>,
+        new_value_hash: &HashOutput<OUTPUT_SIZE>,
+        index: usize,
+        size: usize,
+    ) -> Self::UpdateProofVerifier {
+        let old_verifier = Self::begin_inclusion_proof(old_root, old_value_hash, index, size);
+        let new_verifier = Self::begin_inclusion_proof(new_root, new_value_hash, index, size);
+
+        MerkleUpdateProofVerifier {
+            old_verifier,
+            new_verifier,
+        }
+    }
+}
+
+impl<
+        H: Hasher<OUTPUT_SIZE>,
+        T: AsRef<[u8]> + Clone + Serialize + DeserializeOwned,
+        const OUTPUT_SIZE: usize,
     > VectorAccumulator<T, HashOutput<OUTPUT_SIZE>> for MerkleAccumulator<H, T, OUTPUT_SIZE>
 {
     type InclusionProof = Vec<HashOutput<OUTPUT_SIZE>>;
-    // the update proof is a Merkle proof, plus the new root of the tree
-    type UpdateProof = (Self::InclusionProof, HashOutput<OUTPUT_SIZE>);
+    type InclusionProofRef<'a> = &'a [HashOutput<OUTPUT_SIZE>];
+
+    // the update proof is a Merkle proof (the new root is passed as an argument to the verifier)
+    type UpdateProof = Self::InclusionProof;
+    type UpdateProofRef<'a> = Self::InclusionProofRef<'a>;
 
     /// Creates a new `MerkleAccumulator` with the given data.
     ///
@@ -277,28 +550,6 @@ impl<
         Ok(proof)
     }
 
-    /// Verifies an inclusion proof for a given element hash and index
-    fn verify_inclusion_proof(
-        root: &HashOutput<OUTPUT_SIZE>,
-        proof: &Self::InclusionProof,
-        value_hash: &HashOutput<OUTPUT_SIZE>,
-        index: usize,
-        size: usize,
-    ) -> bool {
-        let mut hash = value_hash.clone();
-        let mut pos = size - 1 + index;
-        for sibling_hash in proof.iter() {
-            let (left, right) = if pos % 2 == 0 {
-                (sibling_hash, &hash)
-            } else {
-                (&hash, sibling_hash)
-            };
-            hash = Self::hash_internal_node(left, right);
-            pos = (pos - 1) / 2;
-        }
-        &hash == root
-    }
-
     /// Updates the Merkle tree by replacing the element at the given index.
     ///
     /// # Arguments
@@ -309,7 +560,11 @@ impl<
     /// # Returns
     ///
     /// An update proof, or an error string if the index is out of bounds.
-    fn update(&mut self, index: usize, value: T) -> Result<Self::UpdateProof, AccumulatorError> {
+    fn update(
+        &mut self,
+        index: usize,
+        value: T,
+    ) -> Result<(Self::UpdateProof, HashOutput<OUTPUT_SIZE>), AccumulatorError> {
         if index >= self.data.len() {
             return Err(AccumulatorError::IndexOutOfBounds);
         }
@@ -329,23 +584,6 @@ impl<
         let new_root = self.root();
         Ok((merkle_proof, new_root.clone()))
     }
-
-    /// Verifies an update proof.
-    fn verify_update_proof(
-        old_root: &HashOutput<OUTPUT_SIZE>,
-        update_proof: &Self::UpdateProof,
-        old_value_hash: &HashOutput<OUTPUT_SIZE>,
-        new_value_hash: &HashOutput<OUTPUT_SIZE>,
-        index: usize,
-        size: usize,
-    ) -> bool {
-        let (proof, new_root) = update_proof;
-
-        // verify that the old value was correct with old root, and the new value is correct with new root
-        Self::verify_inclusion_proof(old_root, proof, old_value_hash, index, size)
-            && Self::verify_inclusion_proof(new_root, proof, new_value_hash, index, size)
-    }
-
     /// Computes the hash of an element.
     #[inline]
     fn hash_element<T_: AsRef<[u8]>>(element: &T_) -> HashOutput<OUTPUT_SIZE> {
@@ -486,8 +724,7 @@ mod tests {
 
         // Update an element
         let new_data = b"new_data".to_vec();
-        let update_proof = ma.update(2, new_data.clone()).unwrap();
-        let new_root = ma.root().clone();
+        let (update_proof, new_root) = ma.update(2, new_data.clone()).unwrap();
 
         let old_elem_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&data[2]);
         let new_elem_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&new_data);
@@ -498,6 +735,7 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &new_root, // Incorrect, we pass new_root instead of the old_root
+                &new_root,
                 &update_proof,
                 &old_elem_hash,
                 &new_elem_hash,
@@ -510,6 +748,7 @@ mod tests {
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &old_root,
+                &new_root,
                 &update_proof,
                 &incorrect_elem_hash, // Incorrect old value hash
                 &new_elem_hash,
@@ -521,6 +760,7 @@ mod tests {
         // Verify update proof is false with incorrect new value hash
         assert!(
             !MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
+                &old_root,
                 &new_root,
                 &update_proof,
                 &old_elem_hash,
@@ -558,9 +798,8 @@ mod tests {
 
         // Update an element and check if root changes
         let new_data = b"new_data".to_vec();
-        let update_proof = ma.update(2, new_data.clone()).unwrap();
-        let new_root = ma.root();
-        assert_ne!(&root, new_root);
+        let (update_proof, new_root) = ma.update(2, new_data.clone()).unwrap();
+        assert_ne!(root, new_root);
 
         let new_proof = ma.prove(2).unwrap();
         let new_elem_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&new_data);
@@ -579,6 +818,7 @@ mod tests {
         assert!(
             MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
                 &root, // old root
+                &new_root,
                 &update_proof,
                 &old_elem_hash,
                 &new_elem_hash,
@@ -594,8 +834,61 @@ mod tests {
         assert_eq!(proof, deserialized_proof);
 
         let serialized_update_proof = postcard::to_allocvec(&update_proof).unwrap();
-        let deserialized_update_proof: (Vec<HashOutput<32>>, HashOutput<32>) =
+        let deserialized_update_proof: Vec<HashOutput<32>> =
             postcard::from_bytes(&serialized_update_proof).unwrap();
         assert_eq!(update_proof, deserialized_update_proof);
+    }
+
+    #[test]
+    fn test_size1_accumulator() {
+        // If an accumulator has only one element, valid proofs are empty
+        let data = vec![b"single_element".to_vec()];
+        let ma = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::new(data.clone());
+
+        let root = ma.root().clone();
+        let element_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&data[0]);
+
+        // For a single element, the root should equal the element hash
+        assert_eq!(root, element_hash);
+
+        // Generate proof for the single element
+        let proof = ma.prove(0).unwrap();
+
+        // Proof should be empty for a single element accumulator
+        assert!(proof.is_empty());
+
+        // Verify the empty proof is valid
+        assert!(
+            MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_inclusion_proof(
+                &root,
+                &proof,
+                &element_hash,
+                0,
+                1
+            )
+        );
+
+        // Test update on single element accumulator
+        let new_data = b"updated_element".to_vec();
+        let mut ma_mut = ma;
+        let (update_proof, new_root) = ma_mut.update(0, new_data.clone()).unwrap();
+
+        // Update proof should also be empty for single element
+        assert!(update_proof.is_empty());
+
+        let new_element_hash = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::hash_leaf(&new_data);
+
+        // Verify update proof
+        assert!(
+            MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::verify_update_proof(
+                &root,
+                &new_root,
+                &update_proof,
+                &element_hash,
+                &new_element_hash,
+                0,
+                1
+            )
+        );
     }
 }
