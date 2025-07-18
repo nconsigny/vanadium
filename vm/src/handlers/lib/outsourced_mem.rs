@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, vec, vec::Vec};
-use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulator};
+use common::accumulator::{HashOutput, Hasher, MerkleAccumulator, VectorAccumulatorVerifier};
 use common::vm::{Page, PagedMemory};
 use ledger_device_sdk::io;
 
