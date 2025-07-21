@@ -353,7 +353,7 @@ impl<'a> CommEcallHandler<'a> {
             // an empty buffer
 
             let mut comm = self.comm.borrow_mut();
-            SendPanicBufferMessage::new(size as u32, vec![]).serialize_to_comm(&mut comm);
+            SendPanicBufferMessage::new(size as u32, &[]).serialize_to_comm(&mut comm);
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
@@ -382,7 +382,7 @@ impl<'a> CommEcallHandler<'a> {
             segment.read_buffer(g_ptr, &mut buffer)?;
 
             let mut comm = self.comm.borrow_mut();
-            SendPanicBufferMessage::new(size as u32, buffer).serialize_to_comm(&mut comm);
+            SendPanicBufferMessage::new(size as u32, &buffer).serialize_to_comm(&mut comm);
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
@@ -413,7 +413,7 @@ impl<'a> CommEcallHandler<'a> {
             // an empty buffer
 
             let mut comm = self.comm.borrow_mut();
-            SendBufferMessage::new(size as u32, vec![]).serialize_to_comm(&mut comm);
+            SendBufferMessage::new(size as u32, &[]).serialize_to_comm(&mut comm);
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
@@ -442,7 +442,7 @@ impl<'a> CommEcallHandler<'a> {
             segment.read_buffer(g_ptr, &mut buffer)?;
 
             let mut comm = self.comm.borrow_mut();
-            SendBufferMessage::new(size as u32, buffer).serialize_to_comm(&mut comm);
+            SendBufferMessage::new(size as u32, &buffer).serialize_to_comm(&mut comm);
             comm.reply(AppSW::InterruptedExecution);
 
             let Instruction::Continue(p1, p2) = comm.next_command() else {
@@ -492,8 +492,6 @@ impl<'a> CommEcallHandler<'a> {
                 .map_err(|_| CommEcallError::InvalidResponse(""))?;
             let response = ReceiveBufferResponse::deserialize(raw_data)?;
 
-            drop(comm); // TODO: figure out how to avoid having to deal with this drop explicitly
-
             match remaining_length {
                 None => {
                     // first chunk, check if the total length is acceptable
@@ -513,11 +511,17 @@ impl<'a> CommEcallHandler<'a> {
                 }
             }
 
-            segment.write_buffer(g_ptr, &response.content)?;
+            // We need to clone the content (up to 255 bytes), since it is tied to the `comm` borrow, which we
+            // need to drop before segment.write_buffer.
+            let response_content = response.content.to_vec();
 
-            remaining_length = Some(remaining_length.unwrap() - response.content.len() as u32);
-            g_ptr += response.content.len() as u32;
-            total_received += response.content.len();
+            drop(comm); // TODO: figure out how to avoid having to deal with this drop explicitly
+
+            segment.write_buffer(g_ptr, &response_content)?;
+
+            remaining_length = Some(remaining_length.unwrap() - response_content.len() as u32);
+            g_ptr += response_content.len() as u32;
+            total_received += response_content.len();
         }
         Ok(total_received)
     }
