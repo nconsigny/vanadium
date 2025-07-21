@@ -227,7 +227,7 @@ impl<'c> OutsourcedMemory<'c> {
         }
 
         // Second message: communicate the updated page content
-        CommitPageContentMessage::new(payload).serialize_to_comm(&mut comm);
+        CommitPageContentMessage::new(&payload).serialize_to_comm(&mut comm);
 
         let Instruction::Continue(p1, p2) = io_exchange(&mut comm, AppSW::InterruptedExecution)
         else {
@@ -259,7 +259,7 @@ impl<'c> OutsourcedMemory<'c> {
             ));
         }
 
-        let new_root: HashOutput<32> = proof_response.new_root.into();
+        let new_root = HashOutput::<32>::as_hash_output(proof_response.new_root).clone();
 
         // Verify the Merkle update proof using streaming verification
         let mut verifier = MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::begin_update_proof(
@@ -409,6 +409,9 @@ impl<'c> OutsourcedMemory<'c> {
             verifier.feed(HashOutput::<32>::as_hash_output(el));
         }
 
+        let nonce = proof_response.nonce.clone();
+        let is_page_encrypted = proof_response.is_encrypted;
+
         let mut n_processed_elements = proof_response.t as usize;
 
         // If we need more elements, request them
@@ -457,11 +460,11 @@ impl<'c> OutsourcedMemory<'c> {
             ));
         }
 
-        if proof_response.is_encrypted {
+        if is_page_encrypted {
             // Decrypt the page data
             let aes_ctr = self.aes_ctr.borrow();
             let decrypted_data = aes_ctr
-                .decrypt(&proof_response.nonce, &data)
+                .decrypt(&nonce, &data)
                 .map_err(|_| common::vm::MemoryError::GenericError("AES decryption failed"))?;
             assert!(decrypted_data.len() == PAGE_SIZE);
 
