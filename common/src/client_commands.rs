@@ -1,4 +1,4 @@
-// Vanadium VM client commands (responsed to InterruptedExecution status word), and other related types
+// Vanadium VM client commands (responses to InterruptedExecution status word), and other related types
 
 use crate::constants::PAGE_SIZE;
 use alloc::vec::Vec;
@@ -36,7 +36,7 @@ impl fmt::Display for MessageDeserializationError {
 
 impl core::error::Error for MessageDeserializationError {}
 
-pub trait Message: Sized {
+pub trait Message<'a>: Sized {
     fn serialize_with<F: FnMut(&[u8])>(&self, f: F);
 
     #[cfg(feature = "device_sdk")]
@@ -51,7 +51,7 @@ pub trait Message: Sized {
         result
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError>;
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError>;
 }
 
 // Commands from the VM to the client
@@ -130,7 +130,7 @@ impl GetPageMessage {
     }
 }
 
-impl Message for GetPageMessage {
+impl<'a> Message<'a> for GetPageMessage {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
@@ -174,7 +174,7 @@ impl GetPageProofMessage {
     }
 }
 
-impl Message for GetPageProofMessage {
+impl<'a> Message<'a> for GetPageProofMessage {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
@@ -197,17 +197,17 @@ impl Message for GetPageProofMessage {
 /// Message sent by client in response to the VM's GetPageProofMessage
 /// It contains the page's metadata, and the merkle proof of the page (or part of it)
 #[derive(Debug, Clone)]
-pub struct GetPageProofResponse {
-    pub is_encrypted: bool,   // whether the page is encrypted
-    pub nonce: [u8; 12],      // nonce of the page encryption (all zeros if not encrypted)
-    pub n: u8,                // number of element in the proof
-    pub t: u8,                // number of proof elements in this message
-    pub proof: Vec<[u8; 32]>, // hashes of the proof
+pub struct GetPageProofResponse<'a> {
+    pub is_encrypted: bool,    // whether the page is encrypted
+    pub nonce: [u8; 12],       // nonce of the page encryption (all zeros if not encrypted)
+    pub n: u8,                 // number of element in the proof
+    pub t: u8,                 // number of proof elements in this message
+    pub proof: &'a [[u8; 32]], // hashes of the proof
 }
 
-impl GetPageProofResponse {
+impl<'a> GetPageProofResponse<'a> {
     #[inline]
-    pub fn new(is_encrypted: bool, nonce: [u8; 12], n: u8, t: u8, proof: Vec<[u8; 32]>) -> Self {
+    pub fn new(is_encrypted: bool, nonce: [u8; 12], n: u8, t: u8, proof: &'a [[u8; 32]]) -> Self {
         GetPageProofResponse {
             is_encrypted,
             nonce,
@@ -218,19 +218,19 @@ impl GetPageProofResponse {
     }
 }
 
-impl Message for GetPageProofResponse {
+impl<'a> Message<'a> for GetPageProofResponse<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.n]);
         f(&[self.t]);
         f(&[self.is_encrypted as u8]);
         f(&self.nonce);
-        for p in &self.proof {
+        for p in self.proof {
             f(p);
         }
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() < 1 + 1 + 1 + 12 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
@@ -244,14 +244,15 @@ impl Message for GetPageProofResponse {
         } else {
             [0; 12]
         };
-        let proof = data[1 + 1 + 1 + 12..]
-            .chunks_exact(32)
-            .map(|chunk| {
-                let mut arr = [0; 32];
-                arr.copy_from_slice(chunk);
-                arr
-            })
-            .collect();
+        let proof_len = data.len() - (1 + 1 + 1 + 12);
+        if proof_len % 32 != 0 {
+            return Err(MessageDeserializationError::InvalidDataLength);
+        }
+        let slice_len = proof_len / 32;
+        let proof = unsafe {
+            let ptr = data.as_ptr().add(1 + 1 + 1 + 12) as *const [u8; 32];
+            core::slice::from_raw_parts(ptr, slice_len)
+        };
 
         Ok(GetPageProofResponse {
             is_encrypted,
@@ -279,7 +280,7 @@ impl GetPageProofContinuedMessage {
     }
 }
 
-impl Message for GetPageProofContinuedMessage {
+impl<'a> Message<'a> for GetPageProofContinuedMessage {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
@@ -300,40 +301,41 @@ impl Message for GetPageProofContinuedMessage {
 }
 
 #[derive(Debug, Clone)]
-pub struct GetPageProofContinuedResponse {
-    pub t: u8,                // number of proof elements in this message
-    pub proof: Vec<[u8; 32]>, // hashes of the proof
+pub struct GetPageProofContinuedResponse<'a> {
+    pub t: u8,                 // number of proof elements in this message
+    pub proof: &'a [[u8; 32]], // hashes of the proof
 }
 
-impl GetPageProofContinuedResponse {
+impl<'a> GetPageProofContinuedResponse<'a> {
     #[inline]
-    pub fn new(t: u8, proof: Vec<[u8; 32]>) -> Self {
+    pub fn new(t: u8, proof: &'a [[u8; 32]]) -> Self {
         GetPageProofContinuedResponse { t, proof }
     }
 }
 
-impl Message for GetPageProofContinuedResponse {
+impl<'a> Message<'a> for GetPageProofContinuedResponse<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.t]);
-        for p in &self.proof {
+        for p in self.proof {
             f(p);
         }
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() < 1 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let t = data[0];
-        let proof = data[1..]
-            .chunks_exact(32)
-            .map(|chunk| {
-                let mut arr = [0; 32];
-                arr.copy_from_slice(chunk);
-                arr
-            })
-            .collect();
+        let proof_len = data.len() - 1;
+        if proof_len % 32 != 0 {
+            return Err(MessageDeserializationError::InvalidDataLength);
+        }
+        let slice_len = proof_len / 32;
+        let proof = unsafe {
+            let ptr = data.as_ptr().add(1) as *const [u8; 32];
+            core::slice::from_raw_parts(ptr, slice_len)
+        };
 
         Ok(GetPageProofContinuedResponse { t, proof })
     }
@@ -367,7 +369,7 @@ impl CommitPageMessage {
     }
 }
 
-impl Message for CommitPageMessage {
+impl<'a> Message<'a> for CommitPageMessage {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
@@ -416,14 +418,14 @@ impl Message for CommitPageMessage {
 
 /// Part of the flow started with a CommitPageMessage; it contains the content of the page
 #[derive(Debug, Clone)]
-pub struct CommitPageContentMessage {
+pub struct CommitPageContentMessage<'a> {
     pub command_code: ClientCommandCode,
-    pub data: Vec<u8>,
+    pub data: &'a [u8],
 }
 
-impl CommitPageContentMessage {
+impl<'a> CommitPageContentMessage<'a> {
     #[inline]
-    pub fn new(data: Vec<u8>) -> Self {
+    pub fn new(data: &'a [u8]) -> Self {
         if data.len() != PAGE_SIZE {
             panic!("Invalid data length for CommitPageContentMessage");
         }
@@ -434,14 +436,14 @@ impl CommitPageContentMessage {
     }
 }
 
-impl Message for CommitPageContentMessage {
+impl<'a> Message<'a> for CommitPageContentMessage<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
-        f(&self.data);
+        f(self.data);
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() != PAGE_SIZE + 1 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
@@ -453,23 +455,23 @@ impl Message for CommitPageContentMessage {
         }
         Ok(CommitPageContentMessage {
             command_code,
-            data: data[1..].to_vec(),
+            data: &data[1..],
         })
     }
 }
 
 /// Message sent by client in response to the VM's CommitPageContentMessage
 #[derive(Debug, Clone)]
-pub struct CommitPageProofResponse {
+pub struct CommitPageProofResponse<'a> {
     pub n: u8, // number of element in the Merkle tree of proof (not counting new_root)
     pub t: u8, // number of proof elements in this message
-    pub new_root: [u8; 32], // new root hash
-    pub proof: Vec<[u8; 32]>, // hashes of Merkle proof of the update proof
+    pub new_root: &'a [u8; 32], // new root hash
+    pub proof: &'a [[u8; 32]], // hashes of Merkle proof of the update proof
 }
 
-impl CommitPageProofResponse {
+impl<'a> CommitPageProofResponse<'a> {
     #[inline]
-    pub fn new(n: u8, t: u8, new_root: [u8; 32], proof: Vec<[u8; 32]>) -> Self {
+    pub fn new(n: u8, t: u8, new_root: &'a [u8; 32], proof: &'a [[u8; 32]]) -> Self {
         CommitPageProofResponse {
             n,
             t,
@@ -479,38 +481,38 @@ impl CommitPageProofResponse {
     }
 }
 
-impl Message for CommitPageProofResponse {
+impl<'a> Message<'a> for CommitPageProofResponse<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.n]);
         f(&[self.t]);
-        f(&self.new_root);
-        for p in &self.proof {
+        f(self.new_root);
+        for p in self.proof {
             f(p);
         }
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() < 2 + 32 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let n = data[0];
         let t = data[1];
 
-        let new_root = {
-            let mut arr = [0; 32];
-            arr.copy_from_slice(&data[2..34]);
-            arr
+        let new_root = unsafe {
+            let ptr = data.as_ptr().add(2) as *const [u8; 32];
+            &*ptr
         };
 
-        let proof = data[2 + 32..]
-            .chunks_exact(32)
-            .map(|chunk| {
-                let mut arr = [0; 32];
-                arr.copy_from_slice(chunk);
-                arr
-            })
-            .collect();
+        let proof_len = data.len() - (2 + 32);
+        if proof_len % 32 != 0 {
+            return Err(MessageDeserializationError::InvalidDataLength);
+        }
+        let slice_len = proof_len / 32;
+        let proof = unsafe {
+            let ptr = data.as_ptr().add(2 + 32) as *const [u8; 32];
+            core::slice::from_raw_parts(ptr, slice_len)
+        };
 
         Ok(CommitPageProofResponse {
             n,
@@ -537,7 +539,7 @@ impl CommitPageProofContinuedMessage {
     }
 }
 
-impl Message for CommitPageProofContinuedMessage {
+impl<'a> Message<'a> for CommitPageProofContinuedMessage {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
@@ -558,40 +560,42 @@ impl Message for CommitPageProofContinuedMessage {
 }
 
 #[derive(Debug, Clone)]
-pub struct CommitPageProofContinuedResponse {
-    pub t: u8,                // number of proof elements in this message
-    pub proof: Vec<[u8; 32]>, // hashes of the proof
+pub struct CommitPageProofContinuedResponse<'a> {
+    pub t: u8,                 // number of proof elements in this message
+    pub proof: &'a [[u8; 32]], // hashes of the proof
 }
 
-impl CommitPageProofContinuedResponse {
+impl<'a> CommitPageProofContinuedResponse<'a> {
     #[inline]
-    pub fn new(t: u8, proof: Vec<[u8; 32]>) -> Self {
+    pub fn new(t: u8, proof: &'a [[u8; 32]]) -> Self {
         CommitPageProofContinuedResponse { t, proof }
     }
 }
 
-impl Message for CommitPageProofContinuedResponse {
+impl<'a> Message<'a> for CommitPageProofContinuedResponse<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.t]);
-        for p in &self.proof {
+        for p in self.proof {
             f(p);
         }
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() < 1 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let t = data[0];
-        let proof = data[1..]
-            .chunks_exact(32)
-            .map(|chunk| {
-                let mut arr = [0; 32];
-                arr.copy_from_slice(chunk);
-                arr
-            })
-            .collect();
+        let proof_len = data.len() - 1;
+        if proof_len % 32 != 0 {
+            return Err(MessageDeserializationError::InvalidDataLength);
+        }
+        let slice_len = proof_len / 32;
+
+        let proof = unsafe {
+            let ptr = data.as_ptr().add(1) as *const [u8; 32];
+            core::slice::from_raw_parts(ptr, slice_len)
+        };
 
         Ok(CommitPageProofContinuedResponse { t, proof })
     }
@@ -599,15 +603,15 @@ impl Message for CommitPageProofContinuedResponse {
 
 /// Message sent by the VM to send a buffer (or the first chunk of it) to the host during an ECALL_XSEND.
 #[derive(Debug, Clone)]
-pub struct SendBufferMessage {
+pub struct SendBufferMessage<'a> {
     pub command_code: ClientCommandCode,
     pub total_remaining_size: u32,
-    pub data: Vec<u8>,
+    pub data: &'a [u8],
 }
 
-impl SendBufferMessage {
+impl<'a> SendBufferMessage<'a> {
     #[inline]
-    pub fn new(total_remaining_size: u32, data: Vec<u8>) -> Self {
+    pub fn new(total_remaining_size: u32, data: &'a [u8]) -> Self {
         if data.len() > total_remaining_size as usize {
             panic!("Data size exceeds total remaining size");
         }
@@ -620,22 +624,22 @@ impl SendBufferMessage {
     }
 }
 
-impl Message for SendBufferMessage {
+impl<'a> Message<'a> for SendBufferMessage<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
         f(&self.total_remaining_size.to_be_bytes());
-        f(&self.data);
+        f(self.data);
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         let command_code = ClientCommandCode::try_from(data[0])
             .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if (!matches!(command_code, ClientCommandCode::SendBuffer)) || (data.len() < 5) {
             return Err(MessageDeserializationError::MismatchingClientCommandCode);
         }
         let total_remaining_size = u32::from_be_bytes([data[1], data[2], data[3], data[4]]);
-        let data = data[5..].to_vec();
+        let data = &data[5..];
 
         if data.len() > total_remaining_size as usize {
             return Err(MessageDeserializationError::InvalidDataLength);
@@ -664,7 +668,7 @@ impl ReceiveBufferMessage {
     }
 }
 
-impl Message for ReceiveBufferMessage {
+impl<'a> Message<'a> for ReceiveBufferMessage {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
@@ -685,14 +689,14 @@ impl Message for ReceiveBufferMessage {
 
 /// The host's response to a ReceiveBufferMessage.
 #[derive(Debug, Clone)]
-pub struct ReceiveBufferResponse {
+pub struct ReceiveBufferResponse<'a> {
     pub remaining_length: u32,
-    pub content: Vec<u8>,
+    pub content: &'a [u8],
 }
 
-impl ReceiveBufferResponse {
+impl<'a> ReceiveBufferResponse<'a> {
     #[inline]
-    pub fn new(remaining_length: u32, content: Vec<u8>) -> Self {
+    pub fn new(remaining_length: u32, content: &'a [u8]) -> Self {
         ReceiveBufferResponse {
             remaining_length,
             content,
@@ -700,15 +704,15 @@ impl ReceiveBufferResponse {
     }
 }
 
-impl Message for ReceiveBufferResponse {
+impl<'a> Message<'a> for ReceiveBufferResponse<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&self.remaining_length.to_be_bytes());
-        f(&self.content);
+        f(self.content);
     }
 
     #[inline]
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         if data.len() < 4 {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
@@ -718,22 +722,22 @@ impl Message for ReceiveBufferResponse {
         }
         Ok(ReceiveBufferResponse {
             remaining_length,
-            content: data[4..].to_vec(),
+            content: &data[4..],
         })
     }
 }
 
 /// Identical to SendBufferMessage, except for the different command code; used for panics.
 #[derive(Debug, Clone)]
-pub struct SendPanicBufferMessage {
+pub struct SendPanicBufferMessage<'a> {
     pub command_code: ClientCommandCode,
     pub total_remaining_size: u32,
-    pub data: Vec<u8>,
+    pub data: &'a [u8],
 }
 
-impl SendPanicBufferMessage {
+impl<'a> SendPanicBufferMessage<'a> {
     #[inline]
-    pub fn new(total_remaining_size: u32, data: Vec<u8>) -> Self {
+    pub fn new(total_remaining_size: u32, data: &'a [u8]) -> Self {
         if data.len() > total_remaining_size as usize {
             panic!("Data size exceeds total remaining size");
         }
@@ -746,15 +750,15 @@ impl SendPanicBufferMessage {
     }
 }
 
-impl Message for SendPanicBufferMessage {
+impl<'a> Message<'a> for SendPanicBufferMessage<'a> {
     #[inline]
     fn serialize_with<F: FnMut(&[u8])>(&self, mut f: F) {
         f(&[self.command_code as u8]);
         f(&self.total_remaining_size.to_be_bytes());
-        f(&self.data);
+        f(self.data);
     }
 
-    fn deserialize(data: &[u8]) -> Result<Self, MessageDeserializationError> {
+    fn deserialize(data: &'a [u8]) -> Result<Self, MessageDeserializationError> {
         let command_code = ClientCommandCode::try_from(data[0])
             .map_err(|_| MessageDeserializationError::InvalidClientCommandCode)?;
         if !matches!(command_code, ClientCommandCode::SendPanicBuffer) {
@@ -765,7 +769,7 @@ impl Message for SendPanicBufferMessage {
             return Err(MessageDeserializationError::InvalidDataLength);
         }
         let total_remaining_size = u32::from_be_bytes([data[1], data[2], data[3], data[4]]);
-        let data = data[5..].to_vec();
+        let data = &data[5..];
 
         if data.len() > total_remaining_size as usize {
             return Err(MessageDeserializationError::InvalidDataLength);
