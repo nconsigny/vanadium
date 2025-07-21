@@ -225,7 +225,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             nonce,
             proof.len() as u8,
             t,
-            proof[0..t as usize].to_vec(),
+            &proof[0..t as usize],
         )
         .serialize();
 
@@ -250,11 +250,9 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
                 let remaining = proof.len() - offset;
                 let t = std::cmp::min(remaining, max_proof_elements) as u8;
 
-                let response = GetPageProofContinuedResponse::new(
-                    t,
-                    proof[offset..offset + t as usize].to_vec(),
-                )
-                .serialize();
+                let response =
+                    GetPageProofContinuedResponse::new(t, &proof[offset..offset + t as usize])
+                        .serialize();
 
                 let (new_status, new_result) = self
                     .transport
@@ -341,13 +339,9 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         let t = std::cmp::min(proof.len(), max_proof_elements) as u8;
 
         // Create the proof response
-        let response = CommitPageProofResponse::new(
-            proof.len() as u8,
-            t,
-            new_root.into(),
-            proof[0..t as usize].to_vec(),
-        )
-        .serialize();
+        let response =
+            CommitPageProofResponse::new(proof.len() as u8, t, &new_root, &proof[0..t as usize])
+                .serialize();
 
         let (status, result) = self
             .transport
@@ -375,11 +369,9 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
                 let remaining = proof.len() - offset;
                 let t = std::cmp::min(remaining, max_proof_elements) as u8;
 
-                let response = CommitPageProofContinuedResponse::new(
-                    t,
-                    proof[offset..offset + t as usize].to_vec(),
-                )
-                .serialize();
+                let response =
+                    CommitPageProofContinuedResponse::new(t, &proof[offset..offset + t as usize])
+                        .serialize();
 
                 let (new_status, new_result) = self
                     .transport
@@ -426,8 +418,10 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         let SendBufferMessage {
             command_code: _,
             total_remaining_size: mut remaining_len,
-            data: mut buf,
+            data,
         } = SendBufferMessage::deserialize(command)?;
+
+        let mut buf = data.to_vec();
 
         if (buf.len() as u32) > remaining_len {
             return Err(VAppEngineError::ResponseError(
@@ -495,7 +489,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             let chunk_len = min(remaining_len, 255 - 4);
             let data = ReceiveBufferResponse::new(
                 remaining_len,
-                bytes[offset..offset + chunk_len as usize].to_vec(),
+                &bytes[offset..offset + chunk_len as usize],
             )
             .serialize();
 
@@ -531,9 +525,10 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         let SendPanicBufferMessage {
             command_code: _,
             total_remaining_size: mut remaining_len,
-            data: mut buf,
+            data,
         } = SendPanicBufferMessage::deserialize(command)?;
 
+        let mut buf = data.to_vec();
         if (buf.len() as u32) > remaining_len {
             return Err(VAppEngineError::ResponseError(
                 "Received data length exceeds expected remaining length",
