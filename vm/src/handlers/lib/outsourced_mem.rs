@@ -20,6 +20,8 @@ use crate::aes::AesCtr;
 use crate::hash::Sha256Hasher;
 use crate::{AppSW, Instruction};
 
+use super::SerializeToComm;
+
 #[derive(Clone, Debug)]
 struct CachedPage {
     idx: u32,                  // Page index
