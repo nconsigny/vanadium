@@ -34,8 +34,9 @@ metrics = [] # Enable collection of performance metrics during execution
 trace = []              # prints each instruction to the console using semihosting
 trace_cpu = ["trace"]   # also prints the state of the CPU registers
 trace_ecalls = []       # trace every time ecalls are executed
+trace_pages = []        # trace every time a page is loaded from or committed to the host
 
-trace_all = ["trace", "trace_cpu", "trace_ecalls"]
+trace_all = ["trace", "trace_cpu", "trace_ecalls", "trace_pages"]
 
 trace_colors = []       # if tracing features are enabled, prints them with colors to the console
 

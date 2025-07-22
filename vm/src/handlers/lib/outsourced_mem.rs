@@ -195,6 +195,15 @@ impl<'c> OutsourcedMemory<'c> {
     }
 
     fn commit_page_at(&mut self, index: usize) -> Result<(), common::vm::MemoryError> {
+        #[cfg(feature = "trace_pages")]
+        crate::trace!(
+            "page_commit",
+            "light_green",
+            "section: {:?}, page_index: {}",
+            self.section_kind,
+            index
+        );
+
         let cached_page = &self.cached_pages[index];
         assert!(cached_page.valid, "Trying to commit an invalid page");
 
@@ -337,6 +346,15 @@ impl<'c> OutsourcedMemory<'c> {
         {
             self.n_page_loads += 1;
         }
+
+        #[cfg(feature = "trace_pages")]
+        crate::trace!(
+            "page_load",
+            "light_green",
+            "section: {:?}, page_index: {}",
+            self.section_kind,
+            page_index
+        );
 
         let mut comm = self.comm.borrow_mut();
         GetPageMessage::new(self.section_kind, page_index).serialize_to_comm(&mut comm);
