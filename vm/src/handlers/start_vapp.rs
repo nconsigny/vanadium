@@ -111,33 +111,21 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
             }
         };
 
-        #[cfg(feature = "trace_full")]
-        {
-            #[cfg(feature = "trace_colors")]
-            crate::print!("\x1b[93m");
-
-            crate::println!("{:?}", cpu);
-            #[cfg(feature = "trace_colors")]
-
-            crate::print!("\x1b[0m");
-        }
+        #[cfg(feature = "trace_cpu")]
+        crate::trace!("CPU State", "light_yellow", "{:?}", cpu);
 
         #[cfg(feature = "trace")]
         {
-            #[cfg(feature = "trace_colors")]
-            crate::print!("\x1b[32m");
-
             // Print the instruction, but check if it's compressed
             let (decoded_op, len) = common::riscv::decode::decode(instr);
-            if len == 2 {
+            let instruction = if len == 2 {
                 let instr_lo = (instr & 0xffffu32) as u16;
-                crate::println!("{:08x?}: {:04x?} -> {:?}", cpu.pc, instr_lo, decoded_op);
+                alloc::format!("{:08x?}: {:04x?} -> {:?}", cpu.pc, instr_lo, decoded_op)
             } else {
-                crate::println!("{:08x?}: {:08x?} -> {:?}", cpu.pc, instr, decoded_op);
-            }
+                alloc::format!("{:08x?}: {:08x?} -> {:?}", cpu.pc, instr, decoded_op)
+            };
 
-            #[cfg(feature = "trace_colors")]
-            crate::print!("\x1b[0m");
+            crate::trace!("Instruction", "green", "{}", instruction);
         }
 
         let result = cpu.execute(instr, Some(&mut ecall_handler));
