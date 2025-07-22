@@ -4,9 +4,6 @@ use crate::constants::PAGE_SIZE;
 use alloc::vec::Vec;
 use core::fmt;
 
-#[cfg(feature = "device_sdk")]
-use ledger_device_sdk::io::Comm;
-
 #[derive(Debug)]
 pub enum MessageDeserializationError {
     InvalidClientCommandCode,
@@ -38,12 +35,6 @@ impl core::error::Error for MessageDeserializationError {}
 
 pub trait Message<'a>: Sized {
     fn serialize_with<F: FnMut(&[u8])>(&self, f: F);
-
-    #[cfg(feature = "device_sdk")]
-    #[inline]
-    fn serialize_to_comm(&self, comm: &mut Comm) {
-        self.serialize_with(|data| comm.append(data));
-    }
 
     fn serialize(&self) -> Vec<u8> {
         let mut result = Vec::new();
