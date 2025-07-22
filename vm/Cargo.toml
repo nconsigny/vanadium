@@ -5,7 +5,7 @@ authors = ["Salvatore Ingala"]
 edition = "2021"
 
 [dependencies]
-common = { path = "../common", features=["device_sdk"] }
+common = { path = "../common" }
 include_gif = "1.2.0"
 serde = {version="1.0.192", default-features = false, features = ["derive"]}
 serde-json-core = { git = "https://github.com/rust-embedded-community/serde-json-core"}
