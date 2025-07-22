@@ -23,7 +23,7 @@ use ledger_secure_sdk_sys::{
 
 use crate::{AppSW, Instruction};
 
-use super::outsourced_mem::OutsourcedMemory;
+use super::{outsourced_mem::OutsourcedMemory, SerializeToComm};
 
 use zeroize::Zeroizing;
 
