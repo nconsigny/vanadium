@@ -9,10 +9,13 @@ use alloc::vec::Vec;
 use common::manifest::Manifest;
 use common::vm::{Cpu, MemorySegment};
 
-use super::lib::outsourced_mem::{LruEvictionStrategy, OutsourcedMemory, TwoQEvictionStrategy};
+use super::lib::{
+    ecall::{CommEcallError, CommEcallHandler},
+    evict::{LruEvictionStrategy, TwoQEvictionStrategy},
+    outsourced_mem::OutsourcedMemory,
+    vapp::get_vapp_hmac,
+};
 use crate::aes::{AesCtr, AesKey};
-use crate::handlers::lib::ecall::{CommEcallError, CommEcallHandler};
-use crate::handlers::lib::vapp::get_vapp_hmac;
 use crate::{println, AppSW};
 
 pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
