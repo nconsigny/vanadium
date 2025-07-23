@@ -582,6 +582,16 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
             self.eviction_strategy
                 .on_invalidate(evict_index, evicted_page_index);
             slot = Some(evict_index);
+
+            #[cfg(feature = "trace_pages")]
+            crate::trace!(
+                "page_evict",
+                "light_green",
+                "section: {:?}, page_index: {}, slot: {}",
+                self.section_kind,
+                evicted_page_index,
+                evict_index
+            );
         }
 
         let slot = slot.unwrap();
