@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use common::manifest::Manifest;
 use common::vm::{Cpu, MemorySegment};
 
-use super::lib::outsourced_mem::{LruEvictionStrategy, OutsourcedMemory};
+use super::lib::outsourced_mem::{LruEvictionStrategy, OutsourcedMemory, TwoQEvictionStrategy};
 use crate::aes::{AesCtr, AesKey};
 use crate::handlers::lib::ecall::{CommEcallError, CommEcallHandler};
 use crate::handlers::lib::vapp::get_vapp_hmac;
@@ -51,7 +51,11 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         manifest.n_code_pages(),
         manifest.code_merkle_root.into(),
         aes_ctr.clone(),
-        Box::new(LruEvictionStrategy::new(n_code_cache_pages)),
+        Box::new(TwoQEvictionStrategy::new(
+            n_code_cache_pages,
+            n_code_cache_pages / 4,
+            8,
+        )),
     );
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
