@@ -1507,6 +1507,38 @@ fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
     }
 }
 
+#[cfg(feature = "trace_ecalls")]
+fn get_ecall_name(ecall_code: u32) -> String {
+    match ecall_code {
+        ECALL_EXIT => "exit".into(),
+        ECALL_FATAL => "fatal".into(),
+        ECALL_XSEND => "xsend".into(),
+        ECALL_XRECV => "xrecv".into(),
+        ECALL_GET_EVENT => "get_event".into(),
+        ECALL_SHOW_PAGE => "show_page".into(),
+        ECALL_SHOW_STEP => "show_step".into(),
+        ECALL_GET_DEVICE_PROPERTY => "get_device_property".into(),
+        ECALL_MODM => "modm".into(),
+        ECALL_ADDM => "addm".into(),
+        ECALL_SUBM => "subm".into(),
+        ECALL_MULTM => "multm".into(),
+        ECALL_POWM => "powm".into(),
+        ECALL_HASH_INIT => "hash_init".into(),
+        ECALL_HASH_UPDATE => "hash_update".into(),
+        ECALL_HASH_DIGEST => "hash_digest".into(),
+        ECALL_DERIVE_HD_NODE => "derive_hd_node".into(),
+        ECALL_GET_MASTER_FINGERPRINT => "get_master_fingerprint".into(),
+        ECALL_ECFP_ADD_POINT => "ecfp_add_point".into(),
+        ECALL_ECFP_SCALAR_MULT => "ecfp_scalar_mult".into(),
+        ECALL_GET_RANDOM_BYTES => "get_random_bytes".into(),
+        ECALL_ECDSA_SIGN => "ecdsa_sign".into(),
+        ECALL_ECDSA_VERIFY => "ecdsa_verify".into(),
+        ECALL_SCHNORR_SIGN => "schnorr_sign".into(),
+        ECALL_SCHNORR_VERIFY => "schnorr_verify".into(),
+        _ => alloc::format!("unknown: {}", ecall_code),
+    }
+}
+
 impl<'a> EcallHandler for CommEcallHandler<'a> {
     type Memory = OutsourcedMemory<'a>;
     type Error = CommEcallError;
@@ -1525,6 +1557,15 @@ impl<'a> EcallHandler for CommEcallHandler<'a> {
         }
 
         let ecall_code = reg!(T0);
+
+        #[cfg(feature = "trace_ecalls")]
+        crate::trace!(
+            "ecall",
+            "light_blue",
+            "code: {}",
+            get_ecall_name(ecall_code)
+        );
+
         match ecall_code {
             ECALL_EXIT => return Err(CommEcallError::Exit(reg!(A0) as i32)),
             ECALL_FATAL => {
