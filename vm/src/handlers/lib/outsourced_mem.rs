@@ -330,6 +330,7 @@ pub struct OutsourcedMemory<'c> {
     is_readonly: bool,
     section_kind: SectionKind,
     eviction_strategy: Box<dyn PageEvictionStrategy + 'c>,
+    last_accessed_page: Option<(u32, usize)>,
     #[cfg(feature = "metrics")]
     pub n_page_loads: usize,
     #[cfg(feature = "metrics")]
@@ -385,6 +386,7 @@ impl<'c> OutsourcedMemory<'c> {
             is_readonly,
             section_kind,
             eviction_strategy,
+            last_accessed_page: None,
             #[cfg(feature = "metrics")]
             n_page_loads: 0,
             #[cfg(feature = "metrics")]
@@ -718,6 +720,17 @@ impl<'a> core::ops::DerefMut for CachedPageRef<'a> {
     }
 }
 
+impl<'c> OutsourcedMemory<'c> {
+    #[inline]
+    /// Returns a mutable reference to the page in the cache, updating the last accessed page.
+    fn get_cached_page_ref(&mut self, page_index: u32, slot: usize) -> CachedPageRef<'_> {
+        self.last_accessed_page = Some((page_index, slot));
+        CachedPageRef {
+            cached_page: &mut self.cached_pages[slot],
+        }
+    }
+}
+
 impl<'c> PagedMemory for OutsourcedMemory<'c> {
     type PageRef<'a>
         = CachedPageRef<'a>
@@ -725,15 +738,21 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
         Self: 'a;
 
     fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, common::vm::MemoryError> {
+        // Check if this is the same page as the last accessed one; if so, return immediately.
+        // For the purpose of cache strategies, we do not want to count consecutive accesses
+        // as separate ones. Therefore, here we return without informing the eviction strategy.
+        if let Some((last_page_index, last_slot)) = self.last_accessed_page {
+            if page_index == last_page_index {
+                return Ok(self.get_cached_page_ref(page_index, last_slot));
+            }
+        }
+
         // Search for the page in cache
         for i in 0..self.cached_pages.len() {
             if self.cached_pages[i].valid && self.cached_pages[i].idx == page_index {
                 self.eviction_strategy.on_access(i, page_index);
 
-                // Return mutable reference to the page with tracking
-                return Ok(CachedPageRef {
-                    cached_page: &mut self.cached_pages[i],
-                });
+                return Ok(self.get_cached_page_ref(page_index, i));
             }
         }
 
@@ -777,9 +796,6 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
         };
         self.eviction_strategy.on_load(slot, page_index);
 
-        // Return mutable reference to the page with tracking
-        Ok(CachedPageRef {
-            cached_page: &mut self.cached_pages[slot],
-        })
+        Ok(self.get_cached_page_ref(page_index, slot))
     }
 }
