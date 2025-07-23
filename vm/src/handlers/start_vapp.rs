@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use alloc::rc::Rc;
+use alloc::{boxed::Box, rc::Rc};
 use common::client_commands::SectionKind;
 use ledger_device_sdk::io;
 use subtle::ConstantTimeEq;
@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use common::manifest::Manifest;
 use common::vm::{Cpu, MemorySegment};
 
-use super::lib::outsourced_mem::OutsourcedMemory;
+use super::lib::outsourced_mem::{LruEvictionStrategy, OutsourcedMemory};
 use crate::aes::{AesCtr, AesKey};
 use crate::handlers::lib::ecall::{CommEcallError, CommEcallHandler};
 use crate::handlers::lib::vapp::get_vapp_hmac;
@@ -41,14 +41,17 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         AesKey::new_random().map_err(|_| AppSW::VMRuntimeError)?,
     )));
 
+    let (n_code_cache_pages, n_data_cache_pages, n_stack_cache_pages) = (12, 12, 12);
+
     let mut code_mem = OutsourcedMemory::new(
         comm.clone(),
-        12,
+        n_code_cache_pages,
         true,
         SectionKind::Code,
         manifest.n_code_pages(),
         manifest.code_merkle_root.into(),
         aes_ctr.clone(),
+        Box::new(LruEvictionStrategy::new(n_code_cache_pages)),
     );
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.code_start,
@@ -59,12 +62,13 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let mut data_mem = OutsourcedMemory::new(
         comm.clone(),
-        12,
+        n_data_cache_pages,
         false,
         SectionKind::Data,
         manifest.n_data_pages(),
         manifest.data_merkle_root.into(),
         aes_ctr.clone(),
+        Box::new(LruEvictionStrategy::new(n_data_cache_pages)),
     );
     let data_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.data_start,
@@ -75,12 +79,13 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
 
     let mut stack_mem = OutsourcedMemory::new(
         comm.clone(),
-        12,
+        n_stack_cache_pages,
         false,
         SectionKind::Stack,
         manifest.n_stack_pages(),
         manifest.stack_merkle_root.into(),
         aes_ctr.clone(),
+        Box::new(LruEvictionStrategy::new(n_stack_cache_pages)),
     );
     let stack_seg = MemorySegment::<OutsourcedMemory>::new(
         manifest.stack_start,

@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use alloc::{rc::Rc, vec, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 use common::accumulator::{
     HashOutput, Hasher, InclusionProofVerifier, MerkleAccumulator, StreamingVectorAccumulator,
     UpdateProofVerifier,
@@ -22,12 +22,68 @@ use crate::{AppSW, Instruction};
 
 use super::SerializeToComm;
 
+pub trait PageEvictionStrategy {
+    /// Called when a page is accessed in a given slot.
+    fn on_access(&mut self, slot_index: usize);
+
+    /// Called when a new page is loaded into a slot.
+    fn on_load(&mut self, slot_index: usize);
+
+    /// Choose a victim slot to evict.
+    fn choose_victim(&mut self) -> usize;
+
+    /// Called when a slot is invalidated.
+    fn on_invalidate(&mut self, slot_index: usize);
+}
+
+pub struct LruEvictionStrategy {
+    usage_counters: Vec<u32>,
+    global_counter: u32,
+}
+
+impl LruEvictionStrategy {
+    pub fn new(num_slots: usize) -> Self {
+        Self {
+            usage_counters: vec![0; num_slots],
+            global_counter: 0,
+        }
+    }
+}
+
+impl PageEvictionStrategy for LruEvictionStrategy {
+    fn on_access(&mut self, slot_index: usize) {
+        self.global_counter = self.global_counter.wrapping_add(1);
+        self.usage_counters[slot_index] = self.global_counter;
+    }
+
+    fn on_load(&mut self, slot_index: usize) {
+        self.global_counter = self.global_counter.wrapping_add(1);
+        self.usage_counters[slot_index] = self.global_counter;
+    }
+
+    fn choose_victim(&mut self) -> usize {
+        let mut oldest_usage = u32::MAX;
+        let mut evict_index = 0;
+        for i in 0..self.usage_counters.len() {
+            if self.usage_counters[i] < oldest_usage {
+                oldest_usage = self.usage_counters[i];
+                evict_index = i;
+            }
+        }
+        evict_index
+    }
+
+    fn on_invalidate(&mut self, slot_index: usize) {
+        // For LRU, we can just reset the counter.
+        self.usage_counters[slot_index] = 0;
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CachedPage {
     idx: u32,                  // Page index
     page: Page,                // Page data
     page_hash: HashOutput<32>, // Hash of the page data when loaded (before any changes)
-    usage_counter: u32,        // For LRU tracking
     valid: bool,               // Indicates if the slot contains a valid page
     modified: bool,            // Indicates if the page has been modified since it was loaded
 }
@@ -40,7 +96,6 @@ impl Default for CachedPage {
                 data: [0; PAGE_SIZE],
             },
             page_hash: [0; 32].into(),
-            usage_counter: 0,
             valid: false,
             modified: false,
         }
@@ -131,7 +186,7 @@ pub struct OutsourcedMemory<'c> {
     aes_ctr: Rc<RefCell<AesCtr>>,
     is_readonly: bool,
     section_kind: SectionKind,
-    usage_counter: u32,
+    eviction_strategy: Box<dyn PageEvictionStrategy + 'c>,
     #[cfg(feature = "metrics")]
     pub n_page_loads: usize,
     #[cfg(feature = "metrics")]
@@ -145,7 +200,6 @@ impl<'c> core::fmt::Debug for OutsourcedMemory<'c> {
             .field("cached_pages", &self.cached_pages)
             .field("is_readonly", &self.is_readonly)
             .field("section_kind", &self.section_kind)
-            .field("usage_counter", &self.usage_counter)
             .finish()
     }
 }
@@ -177,6 +231,7 @@ impl<'c> OutsourcedMemory<'c> {
         n_pages: u32,
         merkle_root: HashOutput<32>,
         aes_ctr: Rc<RefCell<AesCtr>>,
+        eviction_strategy: Box<dyn PageEvictionStrategy + 'c>,
     ) -> Self {
         Self {
             comm,
@@ -186,7 +241,7 @@ impl<'c> OutsourcedMemory<'c> {
             aes_ctr,
             is_readonly,
             section_kind,
-            usage_counter: 0,
+            eviction_strategy,
             #[cfg(feature = "metrics")]
             n_page_loads: 0,
             #[cfg(feature = "metrics")]
@@ -527,14 +582,10 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
         Self: 'a;
 
     fn get_page(&mut self, page_index: u32) -> Result<Self::PageRef<'_>, common::vm::MemoryError> {
-        // Increment the global usage counter
-        self.usage_counter = self.usage_counter.wrapping_add(1);
-
         // Search for the page in cache
         for i in 0..self.cached_pages.len() {
             if self.cached_pages[i].valid && self.cached_pages[i].idx == page_index {
-                // Update usage_counter for LRU
-                self.cached_pages[i].usage_counter = self.usage_counter;
+                self.eviction_strategy.on_access(i);
 
                 // Return mutable reference to the page with tracking
                 return Ok(CachedPageRef {
@@ -553,16 +604,9 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
             }
         }
 
-        // If no free slot, evict the least recently used page
+        // If no free slot, evict a page
         if slot.is_none() {
-            let mut oldest_usage = u32::MAX;
-            let mut evict_index = 0;
-            for i in 0..self.cached_pages.len() {
-                if self.cached_pages[i].usage_counter < oldest_usage {
-                    oldest_usage = self.cached_pages[i].usage_counter;
-                    evict_index = i;
-                }
-            }
+            let evict_index = self.eviction_strategy.choose_victim();
 
             // Commit the page if this memory is not readonly and the page was modified
             if !self.is_readonly && self.cached_pages[evict_index].modified {
@@ -571,6 +615,7 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
 
             // Invalidate the evicted page
             self.cached_pages[evict_index].valid = false;
+            self.eviction_strategy.on_invalidate(evict_index);
             slot = Some(evict_index);
         }
 
@@ -582,10 +627,10 @@ impl<'c> PagedMemory for OutsourcedMemory<'c> {
             idx: page_index,
             page: page_data,
             page_hash,
-            usage_counter: self.usage_counter,
             valid: true,
             modified: false,
         };
+        self.eviction_strategy.on_load(slot);
 
         // Return mutable reference to the page with tracking
         Ok(CachedPageRef {
