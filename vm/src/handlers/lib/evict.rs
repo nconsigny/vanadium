@@ -68,8 +68,11 @@ enum PageState {
     Am(u32), // In Am queue, with a timestamp for LRU
 }
 
-/// 2Q: A Low Overheead High Performance Buffer Management Replacement Algorithm
+/// 2Q: A Low Overhead High Performance Buffer Management Replacement Algorithm
 /// https://www.vldb.org/conf/1994/P439.PDF
+/// This implementation keeps the A1 and Am queues implied by using the `PageState` enum.
+/// While this implies linear scanning, this should be acceptable for the small size of
+/// the cache that we expect.
 #[derive(Debug)]
 pub struct TwoQEvictionStrategy {
     states: Vec<PageState>,
