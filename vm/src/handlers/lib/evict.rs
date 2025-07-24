@@ -194,14 +194,9 @@ impl TwoQEvictionStrategy {
                 }
             }
         }
+
         if !found {
-            // This should not be reached if there are pages to evict.
-            // Fallback to finding the first non-free slot.
-            for (i, state) in self.states.iter().enumerate() {
-                if !matches!(*state, PageState::Free) {
-                    return i;
-                }
-            }
+            unreachable!("This never happens, as there is always a page to evict in A1 or Am")
         }
 
         victim_index
