@@ -101,9 +101,7 @@ impl PageEvictionStrategy for TwoQEvictionStrategy {
         self.global_counter = self.global_counter.wrapping_add(1);
         match self.states[slot_index] {
             PageState::A1(_) => {
-                // Promotion from A1 to Am
-                self.a1_size -= 1;
-                self.states[slot_index] = PageState::Am(self.global_counter);
+                // do nothing: counter is not updated in A1, as it's FIFO
             }
             PageState::Am(_) => {
                 // Re-accessed in Am, update LRU counter
