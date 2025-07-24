@@ -9,6 +9,8 @@ transport = ["hidapi", "ledger-apdu", "ledger-transport-hid"]
 
 [dependencies]
 
+app-sdk = { package = "vanadium-app-sdk", path = "../app-sdk"}
+
 # If enabled as a feature, the client will load "unpackaged" V-Apps by looking Cargo.toml
 # to reconstruct the manifest. Otherwise, only packaged V-Apps will be loaded.
 cargo_toml = { version = "0.22.1", optional = true }

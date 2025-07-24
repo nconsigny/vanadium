@@ -1,5 +1,7 @@
 mod apdu;
-mod hash;
+
+// Re-export from the app SDK
+pub use app_sdk::hash;
 
 pub mod elf;
 pub mod memory;
