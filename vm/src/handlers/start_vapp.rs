@@ -44,7 +44,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         AesKey::new_random().map_err(|_| AppSW::VMRuntimeError)?,
     )));
 
-    let (n_code_cache_pages, n_data_cache_pages, n_stack_cache_pages) = (12, 12, 12);
+    let (n_code_cache_pages, n_data_cache_pages, n_stack_cache_pages) = (24, 8, 8);
 
     let mut code_mem = OutsourcedMemory::new(
         comm.clone(),
@@ -57,7 +57,7 @@ pub fn handler_start_vapp(comm: &mut io::Comm) -> Result<Vec<u8>, AppSW> {
         Box::new(TwoQEvictionStrategy::new(
             n_code_cache_pages,
             n_code_cache_pages / 4,
-            8,
+            n_code_cache_pages / 2,
         )),
     );
     let code_seg = MemorySegment::<OutsourcedMemory>::new(
