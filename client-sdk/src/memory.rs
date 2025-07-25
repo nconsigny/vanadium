@@ -5,7 +5,7 @@ use std::cmp::min;
 
 use common::accumulator::{AccumulatorError, HashOutput, MerkleAccumulator, VectorAccumulator};
 
-use crate::hash::Sha256Hasher;
+use crate::hash::Sha256;
 
 // Serializes a page in the format expected for the content of the leaf in the MerkleAccumulator, as follows:
 // - Clear-text pages are serialized as a 0 byte, followed by 12 0 bytes, followed by PAGE_SIZE bytes (page plaintext).
@@ -65,7 +65,7 @@ impl std::error::Error for MemorySegmentError {
 
 // Represents a memory segment stored by the client, using a MerkleAccumulator to provide proofs of integrity.
 pub struct MemorySegment {
-    content: MerkleAccumulator<Sha256Hasher, Vec<u8>, 32>,
+    content: MerkleAccumulator<Sha256, Vec<u8>, 32>,
 }
 
 impl MemorySegment {
@@ -104,7 +104,7 @@ impl MemorySegment {
         }
 
         Self {
-            content: MerkleAccumulator::<Sha256Hasher, Vec<u8>, 32>::new(pages),
+            content: MerkleAccumulator::<Sha256, Vec<u8>, 32>::new(pages),
         }
     }
 
