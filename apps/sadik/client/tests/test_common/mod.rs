@@ -53,7 +53,7 @@ async fn spawn_speculos_and_transport(
     Child,
     Arc<dyn Transport<Error = Box<dyn std::error::Error + Send + Sync>> + Send + Sync>,
 ) {
-    const MAX_LAUNCH_ATTEMPTS: usize = 2;
+    const MAX_LAUNCH_ATTEMPTS: usize = 10;
     const MAX_POLL_ATTEMPTS: usize = 5;
 
     let mut launch_attempts = 0;
