@@ -1424,9 +1424,6 @@ impl<'a> CommEcallHandler<'a> {
         cpu: &mut Cpu<OutsourcedMemory<'_>>,
         event_data_ptr: GuestPointer,
     ) -> Result<u32, CommEcallError> {
-        // for now, the only supported event is the ticker. So we wait for a ticker event,
-        // and return it. Once UX functionalities are added, button presses would also be
-        // returned here.
         if let Some((event_code, event_data)) = get_last_event() {
             // transmute the EventData as a [u8]
             let event_data_raw = unsafe {
