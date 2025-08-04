@@ -1509,7 +1509,7 @@ impl<'a> CommEcallHandler<'a> {
 fn wait_for_ticker(comm: &mut RefMut<'_, &mut ledger_device_sdk::io::Comm>) {
     loop {
         let mut buffer: [u8; 273] = [0; 273];
-        let status = sys_seph::io_rx(&mut buffer, false);
+        let status = sys_seph::io_rx(&mut buffer, true);
         if status > 0 {
             // TODO: yikes. But this needs to be fixed in the rust-sdk, rather
             let spi_buffer: [u8; 272] = buffer[1..273].try_into().unwrap();
