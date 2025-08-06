@@ -30,23 +30,27 @@ const SEED_MASTER_PATH: &'static str = "VANADIUM";
 
 fn get_seed() -> [u8; 32] {
     // prepend a 0x00 byte to SEED_MASTER_PATH, as required by Bolos
-    let mut path = Vec::with_capacity(SEED_MASTER_PATH.len() + 1);
-    path.push(0x00);
-    path.extend_from_slice(SEED_MASTER_PATH.as_bytes());
-    let mut seed = [0u8; 32];
-    unsafe {
-        sys::os_perso_derive_node_with_seed_key(
-            sys::HDW_SLIP21,
-            sys::CX_CURVE_SECP256K1,
-            path.as_ptr() as *const u32,
-            path.len() as u32,
-            seed.as_mut_ptr(),
-            core::ptr::null_mut(),
-            core::ptr::null_mut(),
-            0,
-        );
-    }
-    seed
+    // let mut path = Vec::with_capacity(SEED_MASTER_PATH.len() + 1);
+    // path.push(0x00);
+    // path.extend_from_slice(SEED_MASTER_PATH.as_bytes());
+    // let mut seed = [0u8; 32];
+    // unsafe {
+    //     sys::os_perso_derive_node_with_seed_key(
+    //         sys::HDW_SLIP21,
+    //         sys::CX_CURVE_SECP256K1,
+    //         path.as_ptr() as *const u32,
+    //         path.len() as u32,
+    //         seed.as_mut_ptr(),
+    //         core::ptr::null_mut(),
+    //         core::ptr::null_mut(),
+    //         0,
+    //     );
+    // }
+    // seed
+
+    // TODO: revert this once the Rust SDK has proper SLIP-21 path support
+    // We use a dummy seed for testing purposes.
+    [42u8; 32]
 }
 
 fn get_master_node() -> [u8; 64] {
