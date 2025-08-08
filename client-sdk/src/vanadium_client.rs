@@ -307,7 +307,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
 
         #[cfg(feature = "debug")]
         debug!(
-            "-> CommitPageMessage(section_kind = {:?}, page_index = {})",
+            "<- CommitPageMessage(section_kind = {:?}, page_index = {})",
             msg.section_kind, msg.page_index,
         );
 
@@ -336,7 +336,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         } = CommitPageContentMessage::deserialize(&tmp_result)?;
 
         #[cfg(feature = "debug")]
-        debug!("-> CommitPageContentMessage(data.len() = {})", data.len());
+        debug!("<- CommitPageContentMessage(data.len() = {})", data.len());
 
         assert!(data.len() == PAGE_SIZE);
         assert!(msg.is_encrypted == true); // the VM should always commit to encrypted pages
@@ -430,7 +430,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
 
         #[cfg(feature = "debug")]
         debug!(
-            "-> SendBufferMessage(total_remaining_size = {}, data.len() = {})",
+            "<- SendBufferMessage(total_remaining_size = {}, data.len() = {})",
             remaining_len,
             data.len()
         );
@@ -494,7 +494,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
         ReceiveBufferMessage::deserialize(command)?;
 
         #[cfg(feature = "debug")]
-        debug!("-> ReceiveBufferMessage()");
+        debug!("<- ReceiveBufferMessage()");
 
         // Wait for the message from the client
         let ClientMessage::ReceiveBuffer(bytes) = self
@@ -557,7 +557,7 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
 
         #[cfg(feature = "debug")]
         debug!(
-            "-> SendPanicBufferMessage(total_remaining_size = {}, data.len() = {})",
+            "<- SendPanicBufferMessage(total_remaining_size = {}, data.len() = {})",
             remaining_len,
             data.len()
         );
