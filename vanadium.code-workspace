@@ -22,7 +22,7 @@
       "path": "docs",
     },
     {
-      "path": "libs/bitcoin-hashes",
+      "path": "libs/bitcoin_hashes",
       "name": "₿ libs/bitcoin-hashes"
     },
     {
