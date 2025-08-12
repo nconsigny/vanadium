@@ -20,7 +20,7 @@ sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk"}
 base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 
 [profile.release]
-opt-level = 3
+opt-level = "s"
 lto = true
 
 [workspace]
