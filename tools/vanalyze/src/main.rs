@@ -154,7 +154,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
         let pc_str = parts[0].split(": ").next().ok_or("Malformed trace line")?;
-        let pc = u32::from_str_radix(pc_str, 16).map_err(|_| "Failed to parse PC")?;
+        if pc_str.len() < 8 {
+            return Err("PC string too short".into());
+        }
+        let pc = u32::from_str_radix(&pc_str[pc_str.len() - 8..], 16)
+            .map_err(|_| "Failed to parse PC")?;
         let decoded = parts[1];
         let inst = parse_instruction(decoded)?;
         trace_data.push((pc, inst));
