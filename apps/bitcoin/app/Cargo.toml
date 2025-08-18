@@ -22,6 +22,8 @@ base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 [profile.release]
 opt-level = "s"
 lto = true
+# improves LTO performance and code size (but it slows down compilation a bit)
+codegen-units = 1
 
 [workspace]
 
