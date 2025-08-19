@@ -348,7 +348,7 @@ impl TryFrom<&str> for KeyInformation {
     }
 }
 
-trait ToDescriptor {
+pub trait ToDescriptor {
     fn to_descriptor(
         &self,
         key_information: &[KeyInformation],
