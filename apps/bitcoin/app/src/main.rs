@@ -4,7 +4,6 @@ extern crate alloc;
 
 mod constants;
 mod handlers;
-mod merkle;
 
 use handlers::*;
 
