@@ -90,21 +90,6 @@ impl<'a> BitcoinClient {
         Ok(resp)
     }
 
-    pub async fn get_version(&mut self) -> Result<String, BitcoinClientError> {
-        let msg = postcard::to_allocvec(&Request::GetVersion).map_err(|_| {
-            BitcoinClientError::GenericError("Failed to serialize GetVersion request".to_string())
-        })?;
-
-        let response_raw = self.send_message(&msg).await?;
-        match Self::parse_response(&response_raw).await? {
-            Response::Version(version) => Ok(version),
-            e => Err(BitcoinClientError::InvalidResponse(format!(
-                "Invalid response: {:?}",
-                e
-            ))),
-        }
-    }
-
     pub async fn exit(&mut self) -> Result<i32, BitcoinClientError> {
         let msg = postcard::to_allocvec(&Request::Exit).map_err(|_| {
             BitcoinClientError::GenericError("Failed to serialize Exit request".to_string())

@@ -19,14 +19,14 @@
 //
 // Further derivations are done as in SLIP-21.
 
-use alloc::vec::Vec;
+// use alloc::vec::Vec;
 
 use ledger_device_sdk::hmac::{sha2::Sha2_512, HMACInit};
-use ledger_secure_sdk_sys as sys;
+// use ledger_secure_sdk_sys as sys;
 
 const SLIP21_MAGIC: &'static str = "Symmetric key seed";
 
-const SEED_MASTER_PATH: &'static str = "VANADIUM";
+// const SEED_MASTER_PATH: &'static str = "VANADIUM";
 
 fn get_seed() -> [u8; 32] {
     // prepend a 0x00 byte to SEED_MASTER_PATH, as required by Bolos

@@ -27,7 +27,7 @@ mod io;
 #[cfg(feature = "run_tests")]
 mod app_tests;
 
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{string::ToString, vec::Vec};
 use app_ui::menu::ui_menu_main;
 use handlers::{
     get_version::handler_get_version, register_vapp::handler_register_vapp,

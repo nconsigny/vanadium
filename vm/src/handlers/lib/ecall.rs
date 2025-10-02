@@ -11,7 +11,6 @@ use common::{
         ReceiveBufferResponse, SendBufferContinuedMessage, SendBufferMessage,
     },
     ecall_constants::{self, *},
-    manifest::Manifest,
     ux::Deserializable,
     vm::{Cpu, CpuError, EcallHandler, MemoryError},
 };
@@ -248,8 +247,6 @@ pub enum CommEcallError {
     Panic,
     InvalidParameters(&'static str),
     GenericError(&'static str),
-    WrongINS,
-    WrongP1P2,
     Overflow,
     HashError(LedgerHashContextError),
     MessageDeserializationError(MessageDeserializationError),
@@ -268,8 +265,6 @@ impl core::fmt::Display for CommEcallError {
                 write!(f, "Invalid parameters: {}", msg)
             }
             CommEcallError::GenericError(msg) => write!(f, "Error: {}", msg),
-            CommEcallError::WrongINS => write!(f, "Wrong INS"),
-            CommEcallError::WrongP1P2 => write!(f, "Wrong P1/P2"),
             CommEcallError::Overflow => write!(f, "Buffer overflow"),
             CommEcallError::HashError(e) => write!(f, "Hash error: {:?}", e),
             CommEcallError::MessageDeserializationError(e) => {
@@ -335,18 +330,13 @@ impl core::error::Error for CommEcallError {
 
 pub struct CommEcallHandler<'a, const N: usize> {
     comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm<N>>>,
-    manifest: &'a Manifest,
     ux_handler: &'static mut UxHandler,
 }
 
 impl<'a, const N: usize> CommEcallHandler<'a, N> {
-    pub fn new(
-        comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm<N>>>,
-        manifest: &'a Manifest,
-    ) -> Self {
+    pub fn new(comm: Rc<RefCell<&'a mut ledger_device_sdk::io::Comm<N>>>) -> Self {
         Self {
             comm,
-            manifest,
             ux_handler: init_ux_handler(),
         }
     }
