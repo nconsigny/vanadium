@@ -2,7 +2,6 @@ use core::cell::RefCell;
 
 use alloc::vec::Vec;
 use alloc::{boxed::Box, rc::Rc};
-use ledger_device_sdk::io;
 use subtle::ConstantTimeEq;
 
 use common::client_commands::SectionKind;
@@ -111,7 +110,7 @@ pub fn handler_start_vapp(
     cpu.regs[2] = (manifest.stack_end - 4) & !3;
     assert!(cpu.pc % 2 == 0, "Unaligned entrypoint");
 
-    let mut ecall_handler = CommEcallHandler::new(comm.clone(), &manifest);
+    let mut ecall_handler = CommEcallHandler::new(comm.clone());
 
     #[cfg(feature = "metrics")]
     let mut instr_count = 0;
