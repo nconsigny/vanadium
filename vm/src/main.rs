@@ -33,7 +33,10 @@ use handlers::{
     get_version::handler_get_version, register_vapp::handler_register_vapp,
     start_vapp::handler_start_vapp,
 };
-use ledger_device_sdk::io::{ApduHeader, Comm, Command, Reply, StatusWords};
+use ledger_device_sdk::{
+    io::{ApduHeader, Comm, Command, Reply, StatusWords},
+    nbgl::init_comm,
+};
 
 extern crate alloc;
 
@@ -223,6 +226,7 @@ extern "C" fn sample_main() {
     // If any APDU with a wrong class value is received, comm will respond automatically with
     // BadCla status word.
     let mut comm = Comm::<COMM_BUFFER_SIZE>::new();
+    init_comm(&mut comm);
 
     let mut home = ui_menu_main(&mut comm);
     home.show_and_return();
