@@ -109,16 +109,33 @@ fn is_return(inst: &Instruction) -> bool {
     }
 }
 
-fn print_node_html(tree: &Tree, node_idx: usize, indent: usize) -> String {
+fn print_node_html(tree: &Tree, node_idx: usize, parent_count: u64) -> String {
     let node = &tree.nodes[node_idx];
     let label = if node_idx == 0 {
         "root".to_string()
     } else {
         format!("{:x}", node.addr)
     };
-    let mut html = format!("<details><summary>{}: {}</summary>\n", label, node.count);
+
+    // Ratio of this node's inclusive count relative to its parent's inclusive count.
+    let ratio = if parent_count == 0 {
+        1.0
+    } else {
+        node.count as f64 / parent_count as f64
+    };
+    let pct = (ratio * 100.0).min(100.0);
+
+    // Build summary line with a proportional bar and percentage.
+    let mut html = format!(
+        "<details><summary>{}: {} <span class=\"bar-container\"><span class=\"bar\" style=\"width:{:.2}%\"></span></span> ({:.1}%)</summary>\n",
+        label,
+        node.count,
+        pct,
+        pct
+    );
+
     for &child_idx in node.children.values() {
-        html += &print_node_html(tree, child_idx, indent + 1);
+        html += &print_node_html(tree, child_idx, node.count);
     }
     html += "</details>\n";
     html
@@ -185,7 +202,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let call_hierarchy_html = print_node_html(&tree, 0, 0);
+    let call_hierarchy_html = print_node_html(&tree, 0, tree.nodes[0].count);
     let aggregate = tree.compute_aggregate_counts();
     let aggregate_html = generate_aggregate_html(&aggregate);
 
@@ -200,6 +217,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         summary {{ cursor: pointer; }}
         table {{ border-collapse: collapse; }}
         th, td {{ border: 1px solid black; padding: 5px; }}
+        .bar-container {{ display:inline-block; width:240px; height:10px; background:#eee; margin-left:8px; vertical-align:middle; }}
+        .bar {{ display:inline-block; height:100%; background:#4CAF50; }}
+        summary {{ display:flex; align-items:center; gap:4px; }}
         </style>
         </head>
         <body>
