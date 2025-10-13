@@ -299,9 +299,6 @@ impl<E: std::fmt::Debug + Send + Sync + 'static> VAppEngine<E> {
             SectionKind::Stack => &mut self.stack_seg,
         };
 
-        #[cfg(feature = "debug")]
-        debug!("<- CommitPageContentMessage(data.len() = {})", data.len());
-
         assert!(msg.is_encrypted == true); // the VM should always commit to encrypted pages
 
         let mut serialized_page = Vec::<u8>::with_capacity(1 + 12 + PAGE_SIZE);
