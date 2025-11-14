@@ -47,9 +47,9 @@ fn display_wallet_policy(
     );
 
     if approved {
-        app.show_info(Icon::Confirm, "Account registered");
+        app.show_info(Icon::Success, "Account registered");
     } else {
-        app.show_info(Icon::Reject, "Registration cancelled");
+        app.show_info(Icon::Failure, "Registration cancelled");
     }
 
     approved

@@ -56,9 +56,9 @@ fn display_xpub(app: &mut sdk::App, xpub: &str, path: &[u32]) -> bool {
         false,
     );
     if approved {
-        app.show_info(Icon::Confirm, "Public key verified");
+        app.show_info(Icon::Success, "Public key verified");
     } else {
-        app.show_info(Icon::Reject, "Public key rejected");
+        app.show_info(Icon::Failure, "Public key rejected");
     }
 
     approved
