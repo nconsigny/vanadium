@@ -526,7 +526,7 @@ pub fn handle_sign_psbt(app: &mut sdk::App, psbt: &[u8]) -> Result<Response, Err
 
     if !display_transaction(app, &pairs) {
         #[cfg(not(any(test, feature = "autoapprove")))]
-        app.show_info(Icon::Reject, "Transaction rejected");
+        app.show_info(Icon::Failure, "Transaction rejected");
 
         return Err(Error::UserRejected);
     }
@@ -640,7 +640,7 @@ pub fn handle_sign_psbt(app: &mut sdk::App, psbt: &[u8]) -> Result<Response, Err
     }
 
     #[cfg(not(any(test, feature = "autoapprove")))]
-    app.show_info(Icon::Confirm, "Transaction signed");
+    app.show_info(Icon::Success, "Transaction signed");
 
     Ok(Response::PsbtSigned(partial_signatures))
 }

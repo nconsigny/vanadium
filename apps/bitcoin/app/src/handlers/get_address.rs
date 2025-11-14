@@ -41,9 +41,9 @@ fn display_address(app: &mut sdk::App, account_name: Option<&str>, addr: &str) -
     );
 
     if approved {
-        app.show_info(Icon::Confirm, "Address verified");
+        app.show_info(Icon::Success, "Address verified");
     } else {
-        app.show_info(Icon::Reject, "Address rejected");
+        app.show_info(Icon::Failure, "Address rejected");
     }
 
     approved
