@@ -1,8 +1,0 @@
-# Duplicate of the ledger_app.toml file in the root directory
-# Workaround for the Ledger VS Code extension not recognizing the app
-# if VS Code is open using vanadium.code-workspace.
-
-[app]
-build_directory = "./"
-sdk = "Rust"
-devices = ["nanox", "nanos+", "stax", "flex", "apex_p"]
