@@ -8,6 +8,7 @@ use alloc::{vec, vec::Vec};
 use sdk::{
     curve::{Curve, EcfpPrivateKey},
     hash::Hasher,
+    ux::Icon,
     App, AppBuilder,
 };
 
@@ -22,12 +23,14 @@ const H: u32 = 0x80000000u32;
 fn show_message_ui(app: &mut App, msg: &str) -> bool {
     use alloc::format;
 
-    app.show_confirm_reject(
+    let approved = app.show_confirm_reject(
         "Sign message",
         &format!("Message: {}", msg),
         "Sign message",
         "Reject",
-    )
+    );
+
+    approved
 }
 
 #[cfg(test)]
@@ -52,8 +55,13 @@ fn process_sign_message(app: &mut App, msg: &[u8]) -> Vec<u8> {
                 .expect("invalid privkey"),
         );
         let msg_hash = sdk::hash::Sha256::hash(&msg);
-        privkey.ecdsa_sign_hash(&msg_hash).expect("Signing failed")
+        let sig = privkey.ecdsa_sign_hash(&msg_hash).expect("Signing failed");
+
+        app.show_info(Icon::Success, "Message signed");
+
+        sig
     } else {
+        app.show_info(Icon::Failure, "Signing cancelled");
         vec![]
     }
 }
