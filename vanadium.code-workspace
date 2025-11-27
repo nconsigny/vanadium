@@ -54,6 +54,13 @@
       "name": "₿ vnd-bitcoin-client"
     },
     {
+      "path": "apps/template/app",
+      "name": "vnd-template"
+    },
+    {
+      "path": "apps/template/client",
+      "name": "vnd-template-client"
+    },
       "path": "apps/test/app",
       "name": "vnd-test"
     },
