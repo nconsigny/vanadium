@@ -1053,6 +1053,24 @@ pub mod client_utils {
     use crate::transport::{TransportHID, TransportTcp, TransportWrapper};
     use crate::transport_native_hid::TransportNativeHID;
 
+    struct SharedWriter(Arc<std::sync::Mutex<Box<dyn std::io::Write + Send>>>);
+
+    impl std::io::Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Lock poisoned"))?
+                .write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.0
+                .lock()
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Lock poisoned"))?
+                .flush()
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub enum ClientUtilsError {
         /// Failed to connect to native app
@@ -1153,6 +1171,8 @@ pub mod client_utils {
     }
 
     pub enum ClientType {
+        /// Try in sequence Hid, Tcp (Speculos), then native
+        Any,
         /// Native client using TCP transport
         Native,
         /// Vanadium client using TCP transport (for Speculos)
@@ -1185,12 +1205,29 @@ pub mod client_utils {
 
         let tcp_addr = std::env::var("VAPP_ADDRESS").unwrap_or_else(|_| "127.0.0.1:2323".into());
 
+        let shared_writer = print_writer.map(|w| std::sync::Arc::new(std::sync::Mutex::new(w)));
+
+        let get_writer = || {
+            shared_writer
+                .as_ref()
+                .map(|w| Box::new(SharedWriter(w.clone())) as Box<dyn std::io::Write + Send>)
+        };
+
         match client_type {
-            ClientType::Native => create_native_client(Some(&tcp_addr), print_writer).await,
-            ClientType::Tcp => create_tcp_client(&app_path, None, print_writer)
+            ClientType::Any => {
+                if let Ok(client) = create_hid_client(&app_path, None, get_writer()).await {
+                    return Ok(client.0);
+                }
+                if let Ok(client) = create_tcp_client(&app_path, None, get_writer()).await {
+                    return Ok(client.0);
+                }
+                create_native_client(Some(&tcp_addr), get_writer()).await
+            }
+            ClientType::Native => create_native_client(Some(&tcp_addr), get_writer()).await,
+            ClientType::Tcp => create_tcp_client(&app_path, None, get_writer())
                 .await
                 .map(|(c, _hmac)| c),
-            ClientType::Hid => create_hid_client(&app_path, None, print_writer)
+            ClientType::Hid => create_hid_client(&app_path, None, get_writer())
                 .await
                 .map(|(c, _hmac)| c),
         }
