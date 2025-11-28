@@ -35,6 +35,7 @@ sed -i 's/name = "vnd-template-client"/name = "{{project-client-crate}}"/g' "$TA
 sed -i 's/name = "vnd_template_client"/name = "{{project-client-lib-binary}}"/g' "$TARGET_DIR/client/Cargo.toml.liquid"
 sed -i 's/name = "vnd_template_cli"/name = "{{project-cli-binary}}"/g' "$TARGET_DIR/client/Cargo.toml.liquid"
 sed -i 's/"vnd-template"/"{{project-app-crate}}"/g' "$TARGET_DIR/client/src/main.rs"
+sed -i 's/use vnd_template_client/use {{project-client-lib-binary}}/g' "$TARGET_DIR/client/src/main.rs"
 
 if [ "$1" == "--check" ]; then
     if diff -r generate "$TARGET_DIR"; then

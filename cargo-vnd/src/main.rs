@@ -109,7 +109,7 @@ fn main() -> Result<()> {
 
             let app_crate_name = format!("vnd-{}", name);
             let client_crate_name = format!("vnd-{}-client", name);
-            // binaries without hyphens (necessary for the lib)
+            // binaries without hyphens (necessary for the lib and when importing in source code)
             let client_lib_binary_name = format!("vnd_{}_client", name);
             let cli_binary_name = format!("vnd_{}_cli", name);
 
