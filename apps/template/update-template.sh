@@ -26,6 +26,7 @@ rm -f "$TARGET_DIR/client/Cargo.lock"
 # Replace fixed values with templating placeholders
 sed -i 's/name = "vnd-template"/name = "{{project-app-crate}}"/g' "$TARGET_DIR/app/Cargo.toml"
 sed -i 's/package = "vnd-template-client"/package = "{{project-client-crate}}"/g' "$TARGET_DIR/app/Cargo.toml"
+sed -i 's/name = "vnd-template-client"/name = "{{project-client-crate}}"/g' "$TARGET_DIR/client/Cargo.toml"
 sed -i 's/name = "vnd_template_client"/name = "{{project-client-lib-binary}}"/g' "$TARGET_DIR/client/Cargo.toml"
 sed -i 's/name = "vnd_template_cli"/name = "{{project-cli-binary}}"/g' "$TARGET_DIR/client/Cargo.toml"
 sed -i 's/"vnd-template"/"{{project-app-crate}}"/g' "$TARGET_DIR/client/src/main.rs"
