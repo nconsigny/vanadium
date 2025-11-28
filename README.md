@@ -154,6 +154,18 @@ Once Vanadium is installed:
     cargo run
     ```
 
+## Next Steps
+
+Congratulations, you built and ran your first V-App!
+
+Here are a few ways to continue your journey:
+
+*   **Explore Examples:** Check out the [Rock Paper Scissors](apps/rps) and [Bitcoin](apps/bitcoin) V-Apps to see more complex implementations.
+*   **Dive into Documentation:** Read about the [Architecture](docs/README.md), [Security Considerations](docs/security.md), and available [System Calls](docs/ecalls.md).
+*   **Start Building:** Modify your `hello` app or create a new one to build your own secure application.
+
+We look forward to seeing what you will build!
+
 # Repository Structure
 
 This repository is organized in a monorepo structure.
