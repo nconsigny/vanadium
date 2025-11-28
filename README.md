@@ -61,6 +61,12 @@ This creates:
 *   `hello/app`: The V-App (runs on device)
 *   `hello/client`: The client and CLI interface (runs on computer)
 
+If you use Visual Studio Code, you can open the multi-root workspace:
+
+```bash
+code hello/vapp.code-workspace
+```
+
 ## Building and Running
 
 ### 1. Build the V-App
