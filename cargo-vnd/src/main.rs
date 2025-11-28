@@ -116,7 +116,7 @@ fn main() -> Result<()> {
             let args = GenerateArgs {
                 template_path: TemplatePath {
                     auto_path: Some("https://github.com/LedgerHQ/vanadium.git".to_string()),
-                    branch: Some("template".to_string()),
+                    branch: Some("master".to_string()),
                     subfolder: Some("apps/template/generate".to_string()),
                     ..Default::default()
                 },
