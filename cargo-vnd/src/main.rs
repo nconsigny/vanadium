@@ -167,7 +167,10 @@ fn create_vapp_package(
     output: &PathBuf,
 ) -> Result<()> {
     // Ensure objcopy is available
-    which::which(OBJCOPY_BINARY).context(format!("`{}` not found in PATH", OBJCOPY_BINARY))?;
+    which::which(OBJCOPY_BINARY).context(format!(
+        "`{}` not found in PATH. Please install it with `sudo apt install binutils-riscv64-unknown-elf` package (on Ubuntu/Debian) or find the equivalent package for your system.",
+        OBJCOPY_BINARY
+    ))?;
 
     let section_name = ".manifest";
 
