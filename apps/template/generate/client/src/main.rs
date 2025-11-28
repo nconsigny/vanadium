@@ -1,5 +1,5 @@
 use clap::Parser;
-use vnd_template_client::Client;
+use {{project-client-lib-binary}}::Client;
 
 use sdk::vanadium_client::client_utils::{create_default_client, ClientType};
 use std::io::BufRead;
