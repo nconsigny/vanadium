@@ -131,6 +131,8 @@ To run on the device emulator, you first need the **Vanadium VM** binary.
 
 On all devices except Nano X, you can sideload the Vanadium app.
 
+First, make sure that your device's firmware is up to date. You can use [Ledger Wallet](https://www.ledger.com/ledger-live) to install the latest firmware OS.
+
 One option is to use the [Ledger VSCode Extension](https://marketplace.visualstudio.com/items?itemName=LedgerHQ.ledger-dev-tools).
 
 Alternatively, install the following dependencies:
@@ -143,8 +145,7 @@ Then, connect and unlock the device, and run:
 
 ```bash
 cd vm
-# Download binaries if not already present
-if [ ! -d "target" ]; then bash download_vanadium.sh; fi
+bash download_vanadium.sh
 bash load_vanadium.sh    
 ```
 
