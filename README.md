@@ -91,10 +91,10 @@ cargo run
 
 You can interact with the app (when needed) via the terminal.
 
-**Terminal 2 (The Client):**
+**Terminal 2 (The Client/CLI interface):**
 ```bash
 cd hello/client
-cargo run -- --native
+cargo run
 ```
 
 ### 3. Run on Speculos Emulator
@@ -118,7 +118,7 @@ To run on the device emulator, you first need the **Vanadium VM** binary.
     just run-nanosplus  # Options: run-nanox, run-flex, run-stax, run-apex_p
     ```
 
-3.  **Run your Client (in `hello/client`):**
+3.  **Run your Client/CLI interface (in `hello/client`):**
     ```bash
     cargo run
     ```
@@ -148,10 +148,10 @@ bash load_vanadium.sh
 Once Vanadium is installed:
 
 1.  Connect your device and open the Vanadium App.
-2.  Run the client:
+2.  Run the Client/CLI interfacce:
     ```bash
     cd hello/client
-    cargo run -- --hid
+    cargo run
     ```
 
 # Repository Structure
