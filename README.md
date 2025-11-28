@@ -35,7 +35,7 @@ Before you begin, ensure you have the following installed:
     
     We recommend to also install its autocomplete for the shell you are using.
 
-3.  **cargo-vnd** (Vanadium build tool):
+3.  **cargo-vnd** (Vanadium companion tool):
     ```bash
     cargo install --git https://github.com/LedgerHQ/vanadium cargo-vnd
     ```
