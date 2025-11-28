@@ -19,20 +19,21 @@ fi
 
 cp -r app client README.md vapp.code-workspace "$TARGET_DIR"
 
-# Rename Cargo.toml to Cargo.toml.template in `app` and `client` folders
-mv "$TARGET_DIR/app/Cargo.toml" "$TARGET_DIR/app/Cargo.toml.template"
-mv "$TARGET_DIR/client/Cargo.toml" "$TARGET_DIR/client/Cargo.toml.template"
+# Rename Cargo.toml to Cargo.toml.liquid in `app` and `client` folders
+# cargo-generate automatically removes this extension when generating a new project
+mv "$TARGET_DIR/app/Cargo.toml" "$TARGET_DIR/app/Cargo.toml.liquid"
+mv "$TARGET_DIR/client/Cargo.toml" "$TARGET_DIR/client/Cargo.toml.liquid"
 
 # Remove Cargo.lock files to avoid committing them in the template
 rm -f "$TARGET_DIR/app/Cargo.lock"
 rm -f "$TARGET_DIR/client/Cargo.lock"
 
 # Replace fixed values with templating placeholders
-sed -i 's/name = "vnd-template"/name = "{{project-app-crate}}"/g' "$TARGET_DIR/app/Cargo.toml.template"
-sed -i 's/package = "vnd-template-client"/package = "{{project-client-crate}}"/g' "$TARGET_DIR/app/Cargo.toml.template"
-sed -i 's/name = "vnd-template-client"/name = "{{project-client-crate}}"/g' "$TARGET_DIR/client/Cargo.toml.template"
-sed -i 's/name = "vnd_template_client"/name = "{{project-client-lib-binary}}"/g' "$TARGET_DIR/client/Cargo.toml.template"
-sed -i 's/name = "vnd_template_cli"/name = "{{project-cli-binary}}"/g' "$TARGET_DIR/client/Cargo.toml.template"
+sed -i 's/name = "vnd-template"/name = "{{project-app-crate}}"/g' "$TARGET_DIR/app/Cargo.toml.liquid"
+sed -i 's/package = "vnd-template-client"/package = "{{project-client-crate}}"/g' "$TARGET_DIR/app/Cargo.toml.liquid"
+sed -i 's/name = "vnd-template-client"/name = "{{project-client-crate}}"/g' "$TARGET_DIR/client/Cargo.toml.liquid"
+sed -i 's/name = "vnd_template_client"/name = "{{project-client-lib-binary}}"/g' "$TARGET_DIR/client/Cargo.toml.liquid"
+sed -i 's/name = "vnd_template_cli"/name = "{{project-cli-binary}}"/g' "$TARGET_DIR/client/Cargo.toml.liquid"
 sed -i 's/"vnd-template"/"{{project-app-crate}}"/g' "$TARGET_DIR/client/src/main.rs"
 
 if [ "$1" == "--check" ]; then
