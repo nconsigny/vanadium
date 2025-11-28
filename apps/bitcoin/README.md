@@ -6,6 +6,22 @@ This is the Bitcoin app for Vanadium. It is composed of the following crates:
 
 The `client` is a library crate (see [lib.rs](client/src/lib.rs)), but it also has a test executable ([main.rs](client/src/main.rs)) to interact with the app from the command line.
 
+## Project Status
+
+### ✅ Implemented Features
+- Support for all legacy, SegWit, and Taproot transaction types
+- Support for [Miniscript wallet policies](https://github.com/bitcoin/bips/blob/master/bip-0388.mediawiki)
+- Support for transactions spending/receiving to an arbitrary number of accounts
+
+### 🚧 Work in Progress / Planned
+- [Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki)
+- Identity-based output authentication
+- ...anything you can think of
+
+### 🐛 Known Issues & Limitations
+- Performance still needs major work
+- ⚠️ Not audited, only use on testnets! :)
+
 ## Build the V-App
 
 ### Risc-V
