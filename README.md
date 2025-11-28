@@ -35,11 +35,7 @@ Before you begin, ensure you have the following installed:
     
     We recommend to also install its autocomplete for the shell you are using.
 
-3.  **System Tools:**
-    *   Ubuntu/Debian: `sudo apt install binutils-riscv64-unknown-elf` (Required for `riscv64-unknown-elf-objcopy`, used by the `cargo vnd package` command)
-if not using Ubuntu/Debian, this utility might be in a different package.
-
-4.  **cargo-vnd** (Vanadium build tool):
+3.  **cargo-vnd** (Vanadium build tool):
     ```bash
     cargo install --git https://github.com/LedgerHQ/vanadium cargo-vnd
     ```
