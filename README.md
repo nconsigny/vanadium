@@ -35,7 +35,11 @@ Before you begin, ensure you have the following installed:
     
     We recommend to also install its autocomplete for the shell you are using.
 
-3.  **cargo-vnd** (Vanadium companion tool):
+3.  **Dependencies**:
+    * Ubuntu/Debian: `sudo apt install libssl-dev pkg-config libudev-dev`
+    * macOS: `brew install openssl pkg-config libusb hidapi eudev`
+
+4.  **cargo-vnd** (Vanadium companion tool):
     ```bash
     cargo install --git https://github.com/LedgerHQ/vanadium cargo-vnd
     ```
@@ -104,10 +108,22 @@ cargo run
 ```
 
 ### 3. Run on Speculos Emulator
-This section requires the installation of the [speculos](https://github.com/LedgerHQ/speculos) emulator, for example with:
+This section requires the installation of the [speculos](https://github.com/LedgerHQ/speculos) emulator. On Ubuntu/Debian: 
 
 ```bash
-pipx install speculos
+
+# install speculos dependencies
+sudo apt install \
+    git cmake gcc-arm-linux-gnueabihf libc6-dev-armhf-cross gdb-multiarch \
+    python3-pyqt6 python3-construct python3-flask-restful python3-jsonschema \
+    python3-mnemonic python3-pil python3-pyelftools python3-requests \
+    qemu-user-static libvncserver-dev libxcb-cursor0
+
+# install pipx (if you don't already have it)
+sudo apt install pipx  # if you don't already have it
+pipx ensurepath
+
+pipx install speculos  # alternatively, use a python virtual environment
 ```
 
 To run on the device emulator, you first need the **Vanadium VM** binary.
