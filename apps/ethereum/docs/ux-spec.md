@@ -87,3 +87,4 @@ Screens: Review -> Domain (app, chain) -> Type -> Fields (N screens) -> Confirm
 | Token Amount | `1,000.50 USDC` (with decimals) |
 | Raw Amount | Full integer if no metadata |
 | Hex Data | `0xabcd...1234 (N bytes)` for long data |
+
