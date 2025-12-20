@@ -1,0 +1,32 @@
+[package]
+name = "vnd-ethereum"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.vapp]
+name = "Ethereum"
+stack_size = 65536
+
+[features]
+# Used for integration tests - auto-approves UX prompts
+autoapprove = []
+
+[dependencies]
+common = { package = "vnd-ethereum-common", path = "../common" }
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+hex-literal = "0.4.1"
+postcard = { version = "1.1.1", default-features = false, features = ["alloc"] }
+sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk" }
+# Keccak256 for Ethereum hashing (no_std compatible, constant-time permutation)
+tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
+
+[dev-dependencies]
+sdk = { package = "vanadium-app-sdk", path = "../../../app-sdk", features = ["test-mode"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+# Improves LTO performance and code size (but slows compilation)
+codegen-units = 1
+
+[workspace]

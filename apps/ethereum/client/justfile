@@ -1,0 +1,27 @@
+# Build the client
+build:
+  cargo build --release
+
+# Run the CLI
+run:
+  cargo run --release
+
+# Run unit tests
+test:
+  cargo test
+
+# Run integration tests against Speculos
+# Requires the V-App and Vanadium VM to be built first:
+#   cd ../app && just build-riscv
+#   cd ../../../vm && bash download_vanadium.sh
+integration-tests:
+  cargo test --features speculos-tests
+
+# Run integration tests with debug output
+integration-tests-debug:
+  RUST_LOG=debug cargo test --features speculos-tests,debug -- --nocapture
+
+# Build everything needed for integration tests
+build-all:
+  cd ../app && just build-riscv
+  cargo build --release

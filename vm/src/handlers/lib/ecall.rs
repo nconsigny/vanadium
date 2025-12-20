@@ -1203,7 +1203,20 @@ impl<'a, const N: usize> CommEcallHandler<'a, N> {
         cpu.get_segment::<E>(signature.0)?
             .write_buffer(signature.0, &signature_local[0..signature_len as usize])?;
 
-        Ok(signature_len)
+        // Extract the parity bit (recovery ID) from the info parameter.
+        // The Ledger SDK's cx_ecdsa_sign_no_throw stores the parity in bit 0 of info.
+        // See: https://developers.ledger.com/docs/device-app/architecture/cryptography/api
+        //
+        // Return format: (recovery_id << 8) | signature_len
+        // - Low 8 bits: signature length (0-72 bytes)
+        // - Bit 8: recovery ID (0 or 1)
+        //
+        // This encoding is backward-compatible: existing code reading only the
+        // low byte will still get the correct signature length.
+        let recovery_id = info & 1;
+        let packed_result = ((recovery_id as usize) << 8) | signature_len;
+
+        Ok(packed_result)
     }
 
     fn handle_ecdsa_verify<E: fmt::Debug>(

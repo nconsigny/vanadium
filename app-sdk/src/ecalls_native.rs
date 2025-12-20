@@ -789,7 +789,7 @@ pub fn ecdsa_sign(
     privkey_bytes[..].copy_from_slice(privkey_slice);
     let signing_key =
         ecdsa::SigningKey::from_bytes(&privkey_bytes.into()).expect("Invalid private key");
-    let (signature_local, _) = signing_key
+    let (signature_local, recovery_id) = signing_key
         .sign_prehash_recoverable(msg_hash_slice)
         .expect("Signing failed");
 
@@ -801,7 +801,17 @@ pub fn ecdsa_sign(
         std::ptr::copy_nonoverlapping(signature_bytes.as_ptr(), signature, signature_bytes.len());
     }
 
-    signature_bytes.len()
+    // Return format matches VM: (recovery_id << 8) | signature_len
+    // - Low 8 bits: signature length (0-72 bytes)
+    // - Bit 8: recovery ID (0 or 1)
+    //
+    // Note: k256's RecoveryId::to_byte() can return 0-3 for secp256k1, where
+    // bits encode: bit 0 = y-coordinate parity, bit 1 = x-coordinate overflow.
+    // The x-overflow case (values 2/3) is practically impossible for secp256k1
+    // due to the relationship between curve order and field size.
+    // We mask with & 1 to extract only the parity bit, matching VM/Ledger SDK behavior.
+    let recovery_id_u8 = (recovery_id.to_byte() & 1) as usize;
+    (recovery_id_u8 << 8) | signature_bytes.len()
 }
 
 pub fn ecdsa_verify(

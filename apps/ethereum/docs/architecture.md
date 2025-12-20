@@ -10,7 +10,7 @@ The Ethereum V-App enables secure transaction and message signing for Ethereum a
 +------------------+                    +------------------+
 |   dApp/Wallet    |                    |   Metadata       |
 |   (web3, ethers) |                    |   Services       |
-+--------+---------+                    |   (CAL, ENS)     |
++--------+---------+                    |   (ENS)          |
          |                              +--------+---------+
          v                                       |
 +------------------+                             |
@@ -92,7 +92,6 @@ The Ethereum V-App enables secure transaction and message signing for Ethereum a
 ## Caching Strategy
 
 ### Client-Side Cache (untrusted)
-- Raw metadata responses from CAL
 - Can be stale or tampered
 - Performance optimization only
 
@@ -111,7 +110,6 @@ The Ethereum V-App enables secure transaction and message signing for Ethereum a
 ### Generic EVM Support
 - Any chain with valid chainId
 - EIP-155 replay protection
-- Chain-specific metadata via CAL
 
 ## Error Propagation
 

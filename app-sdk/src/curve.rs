@@ -418,8 +418,39 @@ impl EcfpPrivateKey<Secp256k1, 32> {
     /// The signature is DER-encoded as per the bitcoin standard, and up to 71 bytes long.
     /// * `Err(&'static str)` - An error message if the signing fails.
     pub fn ecdsa_sign_hash(&self, msg_hash: &[u8; 32]) -> Result<Vec<u8>, &'static str> {
-        let mut result = [0u8; 71];
-        let sig_size = ecalls::ecdsa_sign(
+        let (sig, _recovery_id) = self.ecdsa_sign_hash_recoverable(msg_hash)?;
+        Ok(sig)
+    }
+
+    /// Signs a 32-byte message hash using the ECDSA algorithm, returning both the signature
+    /// and the recovery ID (parity bit).
+    ///
+    /// The recovery ID is needed for Ethereum transaction signatures (EIP-155) and
+    /// `ecrecover` operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg_hash` - A reference to a 32-byte array containing the message hash to be signed.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok((Vec<u8>, u8))` - A tuple containing:
+    ///   - The DER-encoded ECDSA signature (up to 71 bytes)
+    ///   - The recovery ID (0 or 1), indicating the parity of the y-coordinate of the
+    ///     ephemeral public key point R used during signing
+    /// * `Err(&'static str)` - An error message if the signing fails.
+    ///
+    /// # Security
+    ///
+    /// The recovery ID is not secret information - it can be derived from the signature
+    /// and message hash by trying both recovery options. However, having it available
+    /// directly avoids the need for trial recovery.
+    pub fn ecdsa_sign_hash_recoverable(
+        &self,
+        msg_hash: &[u8; 32],
+    ) -> Result<(Vec<u8>, u8), &'static str> {
+        let mut result = [0u8; 72];
+        let packed_result = ecalls::ecdsa_sign(
             Secp256k1::get_curve_kind() as u32,
             EcdsaSignMode::RFC6979 as u32,
             HashId::Sha256 as u32,
@@ -427,10 +458,21 @@ impl EcfpPrivateKey<Secp256k1, 32> {
             msg_hash.as_ptr(),
             result.as_mut_ptr(),
         );
+
+        // The VM returns: (recovery_id << 8) | signature_len
+        // - Low 8 bits: signature length (0-72 bytes)
+        // - Bit 8: recovery ID parity (0 or 1)
+        //
+        // For secp256k1 ECDSA, the recovery ID is the y-coordinate parity.
+        // Values 2/3 (x-overflow) are practically impossible for this curve.
+        let sig_size = packed_result & 0xFF;
+        let recovery_id = ((packed_result >> 8) & 0xFF) as u8;
+
         if sig_size == 0 {
             return Err("Failed to sign hash with ecdsa");
         }
-        Ok(result[0..sig_size].to_vec())
+
+        Ok((result[0..sig_size].to_vec(), recovery_id))
     }
 
     /// Signs a message using the Schnorr signature algorithm, as defined in BIP-0340.
@@ -678,6 +720,36 @@ mod tests {
 
         let pubkey = privkey.to_public_key();
         pubkey.ecdsa_verify_hash(&msg_hash, &signature).unwrap();
+    }
+
+    #[test]
+    fn test_secp256k1_ecdsa_sign_recoverable() {
+        let privkey = EcfpPrivateKey::<Secp256k1, 32> {
+            curve_marker: PhantomData,
+            private_key: Zeroizing::new(hex!(
+                "4242424242424242424242424242424242424242424242424242424242424242"
+            )),
+        };
+        let msg = "If you don't believe me or don't get it, I don't have time to try to convince you, sorry.";
+        let msg_hash = crate::hash::Sha256::hash(msg.as_bytes());
+
+        // Test recoverable signing - should return both signature and recovery ID
+        let (signature, recovery_id) = privkey.ecdsa_sign_hash_recoverable(&msg_hash).unwrap();
+
+        // Recovery ID must be 0 or 1
+        assert!(
+            recovery_id == 0 || recovery_id == 1,
+            "Recovery ID must be 0 or 1, got {}",
+            recovery_id
+        );
+
+        // Signature must still verify
+        let pubkey = privkey.to_public_key();
+        pubkey.ecdsa_verify_hash(&msg_hash, &signature).unwrap();
+
+        // The non-recoverable version should return the same signature
+        let signature2 = privkey.ecdsa_sign_hash(&msg_hash).unwrap();
+        assert_eq!(signature, signature2);
     }
 
     #[test]

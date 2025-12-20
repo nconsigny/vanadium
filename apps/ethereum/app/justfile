@@ -1,0 +1,27 @@
+run:
+  cargo run
+
+# Build for both native and riscv targets
+build:
+  cargo build --release
+  cargo build --release --target=riscv32imc-unknown-none-elf
+
+# Build for native target only
+build-native:
+  cargo build --release
+
+# Build for riscv target only
+build-riscv:
+  cargo build --release --target=riscv32imc-unknown-none-elf
+
+# Run tests
+test:
+  cargo test
+
+# Disassemble the riscv binary
+disassemble:
+  riscv64-linux-gnu-objdump -d target/riscv32imc-unknown-none-elf/release/vnd-ethereum
+
+# Show the sections of the riscv binary
+show-sections:
+  readelf -S target/riscv32imc-unknown-none-elf/release/vnd-ethereum
