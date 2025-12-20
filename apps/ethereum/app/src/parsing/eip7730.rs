@@ -358,15 +358,36 @@ fn format_token_amount(amount_bytes: &[u8], decimals: u8, symbol: &str) -> Strin
         return alloc::format!("{} {}", decimal_str, symbol);
     }
 
-    // For shorter byte arrays, read all bytes as big-endian
-    let mut amount: u128 = 0;
-    for &byte in amount_bytes.iter().take(16) {
-        amount = (amount << 8) | (byte as u128);
+    // For non-32-byte arrays (e.g., uint160 = 20 bytes), values are big-endian
+    // with significant bytes at the END (right-aligned).
+    // We need to check if the value fits in u128 and read from the end.
+    if len <= 16 {
+        // Fits entirely in u128 - read all bytes
+        let mut amount: u128 = 0;
+        for &byte in amount_bytes {
+            amount = (amount << 8) | (byte as u128);
+        }
+        let decimal_str = format_u128_with_decimals_internal(amount, decimals);
+        return alloc::format!("{} {}", decimal_str, symbol);
     }
 
-    // Format with decimals
-    let decimal_str = format_u128_with_decimals_internal(amount, decimals);
-    alloc::format!("{} {}", decimal_str, symbol)
+    // len > 16: Check if high bytes are zero (value fits in u128)
+    let high_len = len - 16;
+    let high_zero = amount_bytes[..high_len].iter().all(|&b| b == 0);
+
+    if high_zero {
+        // Read from low bytes (last 16 bytes)
+        let mut amount: u128 = 0;
+        for &byte in &amount_bytes[high_len..] {
+            amount = (amount << 8) | (byte as u128);
+        }
+        let decimal_str = format_u128_with_decimals_internal(amount, decimals);
+        alloc::format!("{} {}", decimal_str, symbol)
+    } else {
+        // Value exceeds u128, show hex representation
+        let hex_str = alloc::format!("0x{}", hex::encode(amount_bytes));
+        alloc::format!("{} {}", hex_str, symbol)
+    }
 }
 
 /// Formats a u128 value with decimal places.
@@ -638,6 +659,49 @@ mod tests {
 
         let result = format_token_amount(&amount_bytes, 18, "ETH");
         assert!(result.starts_with("0x"), "Expected hex for overflow value: {}", result);
+        assert!(result.ends_with(" ETH"), "Expected ETH suffix: {}", result);
+    }
+
+    #[test]
+    fn test_format_token_amount_uint160() {
+        // Test uint160 (20 bytes) - the bug case where value bytes are at the END
+        // Value: 1_000_000 in a 20-byte big-endian array
+        // The first 17 bytes are zeros, value 0x0F4240 is in the last 3 bytes
+        let mut amount_bytes = [0u8; 20];
+        amount_bytes[17] = 0x0F;
+        amount_bytes[18] = 0x42;
+        amount_bytes[19] = 0x40;
+
+        let result = format_token_amount(&amount_bytes, 6, "USDC");
+        assert_eq!(result, "1 USDC", "uint160 value should be read from end, not beginning");
+    }
+
+    #[test]
+    fn test_format_token_amount_uint200() {
+        // Test uint200 (25 bytes) - another case with > 16 bytes
+        // Value: 1.5 ETH = 1_500_000_000_000_000_000 wei
+        let mut amount_bytes = [0u8; 25];
+        let value: u64 = 1_500_000_000_000_000_000;
+        let value_bytes = value.to_be_bytes();
+        // Place value at the end (bytes 17-24)
+        amount_bytes[17..25].copy_from_slice(&value_bytes);
+
+        let result = format_token_amount(&amount_bytes, 18, "ETH");
+        assert_eq!(result, "1.5 ETH", "uint200 value should be read from end");
+    }
+
+    #[test]
+    fn test_format_token_amount_uint160_overflow() {
+        // Test uint160 with a value exceeding u128
+        // 160 bits > 128 bits, so we can have values that exceed u128
+        let mut amount_bytes = [0u8; 20];
+        // Set a non-zero byte in the first 4 bytes (indices 0-3)
+        // which would be in the "high" portion for a 20-byte value
+        amount_bytes[0] = 0x01;
+        amount_bytes[19] = 0x01;
+
+        let result = format_token_amount(&amount_bytes, 18, "ETH");
+        assert!(result.starts_with("0x"), "uint160 overflow should show hex: {}", result);
         assert!(result.ends_with(" ETH"), "Expected ETH suffix: {}", result);
     }
 }
