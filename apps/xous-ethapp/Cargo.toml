@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "ethapp",
+    "ethapp-api",
+    "ethapp-common",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Vanadium Team"]
+license = "Apache-2.0"
+repository = "https://github.com/LedgerHQ/vanadium"
+
+[workspace.dependencies]
+# Shared workspace dependencies
+rkyv = { version = "0.7", default-features = false, features = ["alloc", "size_32", "validation"] }
+zeroize = { version = "1.7", default-features = false, features = ["derive"] }
+num-derive = "0.4"
+num-traits = { version = "0.2", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+
+# Cryptography
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "arithmetic"] }
+bip32 = { version = "0.5", default-features = false, features = ["secp256k1"] }
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+
+# Xous (when targeting Xous OS)
+xous = "0.9"
+xous-ipc = "0.10"
+xous-names = "0.9"
+
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Link-time optimization
+codegen-units = 1    # Better optimization
+panic = "abort"      # Smaller binary
+
+[profile.dev]
+opt-level = 1        # Some optimization even in dev
+debug = true

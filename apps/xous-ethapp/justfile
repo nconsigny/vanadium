@@ -1,0 +1,80 @@
+# Justfile for xous-ethapp
+# See https://github.com/casey/just for installation
+
+# Default recipe
+default: build-host
+
+# Build for host (testing)
+build-host:
+    cargo build
+
+# Build for Xous target
+build-xous:
+    cargo build --target riscv32imac-unknown-xous-elf
+
+# Build release for Xous
+build-release:
+    cargo build --target riscv32imac-unknown-xous-elf --release
+
+# Run all tests
+test:
+    cargo test --all
+
+# Run tests with verbose output
+test-verbose:
+    cargo test --all -- --nocapture
+
+# Check compilation for both targets
+check:
+    cargo check
+    cargo check --target riscv32imac-unknown-xous-elf
+
+# Format code
+fmt:
+    cargo fmt --all
+
+# Check formatting
+fmt-check:
+    cargo fmt --all -- --check
+
+# Run clippy lints
+clippy:
+    cargo clippy --all -- -D warnings
+
+# Clean build artifacts
+clean:
+    cargo clean
+
+# Build docs
+doc:
+    cargo doc --all --no-deps
+
+# Build docs and open in browser
+doc-open:
+    cargo doc --all --no-deps --open
+
+# Run with dev mode enabled (testing only)
+run-dev:
+    ETHAPP_DEV_MODE=1 cargo run --bin ethapp
+
+# Check for security issues using cargo-audit
+audit:
+    cargo audit
+
+# Generate test coverage report (requires cargo-tarpaulin)
+coverage:
+    cargo tarpaulin --all --out Html
+
+# Build with all optional features
+build-all-features:
+    cargo build --all-features
+
+# Build minimal (no optional features)
+build-minimal:
+    cargo build --no-default-features
+
+# Print size information for release build
+size: build-release
+    @echo "Binary sizes:"
+    @ls -lh target/riscv32imac-unknown-xous-elf/release/*.rlib 2>/dev/null || true
+    @cargo size --release --target riscv32imac-unknown-xous-elf 2>/dev/null || echo "cargo-binutils not installed"
