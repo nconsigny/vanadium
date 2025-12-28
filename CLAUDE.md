@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+THE MAIN GOAL OF THIS PROJECT IS TO CREATE AN ETHEREUM APP 
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -7,6 +9,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Vanadium is a RISC-V Virtual Machine that runs in embedded Ledger Secure Elements. It allows running V-Apps (Vanadium Apps) with outsourced encrypted, authenticated memory pages.
 
 **Warning:** This is experimental. The native target is insecure and only intended for development/testing.
+
+
+## Ethereum App Documentation
+@apps/ethereum/CLAUDE.md
+@apps/ethereum/docs/
 
 ## CRITICAL SECURITY MODEL
 
